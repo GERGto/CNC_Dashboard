@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Zahnrad">
+  <g stroke="#000" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3.5"/>
+    <path d="M12 2.5v3.2"/>
+    <path d="M12 18.3v3.2"/>
+    <path d="M2.5 12h3.2"/>
+    <path d="M18.3 12h3.2"/>
+    <path d="M5.1 5.1l2.3 2.3"/>
+    <path d="M16.6 16.6l2.3 2.3"/>
+    <path d="M18.9 5.1l-2.3 2.3"/>
+    <path d="M5.1 18.9l2.3-2.3"/>
+    <circle cx="12" cy="12" r="6.6"/>
+  </g>
+</svg>

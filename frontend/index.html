@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light" />
+  <title>CNC Dashboard</title>
+
+  <link rel="stylesheet" href="assets/app.css" />
+  <script defer src="assets/app.js"></script>
+</head>
+
+<body>
+  <div class="app">
+
+    <header class="statusbar" role="banner">
+      <div class="status-left">
+        <span id="clock">--:--</span>
+      </div>
+
+      <div class="status-center" aria-label="Maschinenstatus">
+        <span class="pill" id="machineStatus">IDLE</span>
+      </div>
+
+      <div class="status-right">
+        <!-- WiFi -->
+        <button class="icon-btn" id="wifiBtn" type="button" aria-label="WLAN Status">
+          <img class="icon" id="wifiImg" src="assets/svg/wifi-on.svg" alt="" aria-hidden="true">
+        </button>
+
+        <!-- Licht -->
+        <button class="icon-btn" id="lightBtn" type="button" aria-label="Maschinenlicht">
+          <img class="icon" id="lightImg" src="assets/svg/bulb-on.svg" alt="" aria-hidden="true">
+        </button>
+
+        <!-- Herunterfahren -->
+        <button class="icon-btn" id="shutdownBtn" type="button" aria-label="Herunterfahren">
+          <img class="icon" src="assets/svg/nav-power.svg" alt="" aria-hidden="true">
+        </button>
+      </div>
+    </header>
+
+    <main class="main" role="main">
+      <div class="gridlines"></div>
+      <!-- iFrames per JS -->
+    </main>
+
+    <nav class="nav" role="navigation" aria-label="Menü">
+      <button class="navbtn active" data-page="home" type="button">
+        <img class="navicon" src="assets/svg/nav-home.svg" alt="" aria-hidden="true">
+        Dashboard
+      </button>
+
+      <button class="navbtn" data-page="errors" type="button">
+        <img class="navicon" src="assets/svg/nav-error.svg" alt="" aria-hidden="true">
+        Fehler
+      </button>
+
+      <button class="navbtn" data-page="maintenance" type="button">
+        <img class="navicon" src="assets/svg/nav-maint.svg" alt="" aria-hidden="true">
+        Wartung
+      </button>
+
+      <button class="navbtn" data-page="system" type="button">
+        <img class="navicon" src="assets/svg/nav-system.svg" alt="" aria-hidden="true">
+        System
+      </button>
+
+    </nav>
+
+    <div class="modal" id="shutdownModal" role="dialog" aria-modal="true" aria-labelledby="shutdownTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel" role="document">
+        <h2 class="modal__title" id="shutdownTitle">Herunterfahren bestätigen</h2>
+        <p class="modal__text">Möchten Sie die Maschine wirklich herunterfahren?</p>
+        <div class="modal__actions">
+          <button class="btn" id="shutdownCancel" type="button">Abbrechen</button>
+          <button class="btn btn--danger" id="shutdownConfirm" type="button">Herunterfahren</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="lightModal" role="dialog" aria-modal="true" aria-labelledby="lightTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel" role="document">
+        <h2 class="modal__title" id="lightTitle">Beleuchtung</h2>
+        <p class="modal__text">Helligkeit einstellen</p>
+        <div class="slider">
+          <input class="slider__input" id="lightSlider" type="range" min="0" max="100" value="75" />
+          <div class="slider__value" id="lightValue">75%</div>
+        </div>
+        <div class="modal__actions">
+          <button class="btn" id="lightClose" type="button">Fertig</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
