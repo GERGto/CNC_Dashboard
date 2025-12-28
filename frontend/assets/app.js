@@ -9,6 +9,7 @@ const PAGES = [
 ];
 
 const API_BASE = "http://localhost:8080";
+const AXES_INTERVAL_MS = 250;
 
 const state = {
   activePage: "home",
@@ -247,7 +248,7 @@ function startAxesStream(){
   if (!("EventSource" in window)) return;
 
   const connect = () => {
-    const es = new EventSource(`${API_BASE}/api/axes/stream`);
+    const es = new EventSource(`${API_BASE}/api/axes/stream?intervalMs=${AXES_INTERVAL_MS}`);
     es.addEventListener("axes", (ev) => {
       try{
         const data = JSON.parse(ev.data || "{}");

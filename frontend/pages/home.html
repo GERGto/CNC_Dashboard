@@ -32,6 +32,13 @@
 
       <div class="axes-chart" role="img" aria-label="Achsenlasten Zeitverlauf">
         <div class="chart-grid" aria-hidden="true"></div>
+        <div class="axis-labels" aria-hidden="true">
+          <div class="axis-label-y axis-label-y--top">100%</div>
+          <div class="axis-label-y axis-label-y--mid">50%</div>
+          <div class="axis-label-x axis-label-x--left" id="axisLabelLeft">60s</div>
+          <div class="axis-label-x axis-label-x--mid" id="axisLabelMid">30s</div>
+          <div class="axis-label-x axis-label-x--right" id="axisLabelRight">0s</div>
+        </div>
         <svg class="axes-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <polyline class="axis-line" id="line-spindle" data-axis="spindle"></polyline>
           <polyline class="axis-line" id="line-x" data-axis="x"></polyline>
@@ -75,7 +82,23 @@
     </section>
   </main>
 
+  <div class="modal" id="graphModal" role="dialog" aria-modal="true" aria-labelledby="graphTitle" aria-hidden="true">
+    <div class="modal__backdrop" data-close="true"></div>
+    <div class="modal__panel" role="document">
+      <h2 class="modal__title" id="graphTitle">Graph Einstellungen</h2>
+      <p class="modal__text">Zeitfenster (Sekunden)</p>
+      <div class="slider">
+        <input class="slider__input" id="graphWindowSlider" type="range" min="10" max="120" step="5" value="60" />
+        <div class="slider__value" id="graphWindowValue">60s</div>
+      </div>
+      <div class="modal__actions">
+        <button class="btn" id="graphClose" type="button">Fertig</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    const API_BASE = "http://localhost:8080";
     const axisKeys = ["spindle", "x", "y", "z"];
     const axisState = {};
 
@@ -103,7 +126,6 @@
       z: document.querySelector('.axis-card[data-axis="z"]')
     };
 
-    const MAX_POINTS = 60;
     const axisValues = { spindle: 0, x: 0, y: 0, z: 0 };
     const history = {
       spindle: [],
@@ -111,6 +133,22 @@
       y: [],
       z: []
     };
+    let spindleDisplayValue = 0;
+    const SPINDLE_SMOOTH = 0.12;
+    let HISTORY_WINDOW_MS = 60000;
+    const HISTORY_INTERVAL_MS = 120;
+    let lastHistoryTs = 0;
+    let graphPressTimer = null;
+    let settingsSaveTimer = null;
+
+    const graphModal = document.getElementById("graphModal");
+    const graphClose = document.getElementById("graphClose");
+    const graphWindowSlider = document.getElementById("graphWindowSlider");
+    const graphWindowValue = document.getElementById("graphWindowValue");
+    const axisLabelLeft = document.getElementById("axisLabelLeft");
+    const axisLabelMid = document.getElementById("axisLabelMid");
+    const axisLabelRight = document.getElementById("axisLabelRight");
+    const axesChart = document.querySelector(".axes-chart");
 
     function clampPercent(value){
       const v = Number(value);
@@ -131,8 +169,7 @@
       if (axis === "spindle") setSpindleValue(v);
     }
 
-    function renderChart(){
-      const maxPoints = MAX_POINTS - 1;
+    function renderChart(now){
       axisKeys.forEach((axis) => {
         const line = lineEls[axis];
         if (!line) return;
@@ -141,23 +178,97 @@
           line.setAttribute("points", "");
           return;
         }
-        const offset = MAX_POINTS - data.length;
-        const points = data.map((value, index) => {
-          const x = ((index + offset) / maxPoints) * 100;
-          const y = 100 - (value / 100) * 100;
-          return `${x.toFixed(2)},${y.toFixed(2)}`;
-        });
+        const windowStart = now - HISTORY_WINDOW_MS;
+        const points = data
+          .filter((p) => p.t >= windowStart)
+          .map((p) => {
+            const x = ((p.t - windowStart) / HISTORY_WINDOW_MS) * 100;
+            const y = 100 - (p.v / 100) * 100;
+            return `${x.toFixed(2)},${y.toFixed(2)}`;
+          });
         line.setAttribute("points", points.join(" "));
       });
     }
 
-    function pushHistory(){
+    function updateAxisLabels(windowMs){
+      const seconds = Math.round(windowMs / 1000);
+      const mid = Math.round(seconds / 2);
+      axisLabelLeft.textContent = `${seconds}s`;
+      axisLabelMid.textContent = `${mid}s`;
+      axisLabelRight.textContent = "0s";
+    }
+
+    function updateGraphWindow(seconds){
+      const s = Math.max(10, Math.min(120, Number(seconds) || 60));
+      HISTORY_WINDOW_MS = s * 1000;
+      graphWindowSlider.value = String(s);
+      graphWindowValue.textContent = `${s}s`;
+      updateAxisLabels(HISTORY_WINDOW_MS);
+      scheduleSettingsSave(s);
+    }
+
+    function scheduleSettingsSave(seconds){
+      if (settingsSaveTimer) clearTimeout(settingsSaveTimer);
+      settingsSaveTimer = setTimeout(() => {
+        fetch(`${API_BASE}/api/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ graphWindowSec: seconds })
+        }).catch(() => {});
+      }, 300);
+    }
+
+    function loadSettings(){
+      fetch(`${API_BASE}/api/settings`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data && typeof data.graphWindowSec === "number"){
+            updateGraphWindow(data.graphWindowSec);
+          }
+        })
+        .catch(() => {});
+    }
+
+    function pushHistory(now){
       axisKeys.forEach((axis) => {
         const data = history[axis];
-        data.push(axisValues[axis]);
-        if (data.length > MAX_POINTS) data.shift();
+        data.push({ t: now, v: axisValues[axis] });
+        while (data.length && data[0].t < now - HISTORY_WINDOW_MS - 1000){
+          data.shift();
+        }
       });
-      renderChart();
+      renderChart(now);
+    }
+
+    function tick(now){
+      const spindleTarget = axisValues.spindle;
+      spindleDisplayValue += (spindleTarget - spindleDisplayValue) * SPINDLE_SMOOTH;
+      setSpindleValue(spindleDisplayValue);
+
+      if (!lastHistoryTs) lastHistoryTs = now;
+      if (now - lastHistoryTs >= HISTORY_INTERVAL_MS){
+        pushHistory(now);
+        lastHistoryTs = now;
+      }
+
+      renderChart(now);
+      requestAnimationFrame(tick);
+    }
+
+    function openGraphModal(){
+      graphModal.classList.add("is-open");
+      graphModal.setAttribute("aria-hidden", "false");
+      graphWindowSlider.focus();
+    }
+
+    function closeGraphModal(){
+      graphModal.classList.remove("is-open");
+      graphModal.setAttribute("aria-hidden", "true");
+    }
+
+    function clearGraphPress(){
+      if (graphPressTimer) clearTimeout(graphPressTimer);
+      graphPressTimer = null;
     }
 
     function setAxisEnabled(axis, enabled){
@@ -183,7 +294,10 @@
 
     const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
-    pushHistory();
+    pushHistory(performance.now());
+    updateGraphWindow(60);
+    loadSettings();
+    requestAnimationFrame(tick);
 
     function applyAxesPayload(payload){
       axisKeys.forEach((key) => {
@@ -191,7 +305,6 @@
           setAxisValue(key, payload[key]);
         }
       });
-      pushHistory();
     }
 
     window.addEventListener("message", (ev) => {
@@ -200,6 +313,30 @@
       if (msg.type !== "axes") return;
       const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
       applyAxesPayload(payload);
+    });
+
+    axesChart.addEventListener("pointerdown", (ev) => {
+      if (ev.pointerType === "mouse" && ev.button !== 0) return;
+      clearGraphPress();
+      graphPressTimer = setTimeout(() => {
+        openGraphModal();
+      }, 600);
+    });
+    axesChart.addEventListener("pointerup", clearGraphPress);
+    axesChart.addEventListener("pointerleave", clearGraphPress);
+    axesChart.addEventListener("pointercancel", clearGraphPress);
+
+    graphClose.addEventListener("click", closeGraphModal);
+    graphModal.addEventListener("click", (ev) => {
+      if (ev.target && ev.target.dataset && ev.target.dataset.close){
+        closeGraphModal();
+      }
+    });
+    graphWindowSlider.addEventListener("input", (ev) => updateGraphWindow(ev.target.value));
+    window.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && graphModal.classList.contains("is-open")){
+        closeGraphModal();
+      }
     });
   </script>
 </body>

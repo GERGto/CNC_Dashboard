@@ -124,6 +124,36 @@ body.home{
   pointer-events: none;
 }
 
+.axis-labels{
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-size: 10px;
+  color: #000;
+  opacity: 0.35;
+  letter-spacing: 0.2px;
+}
+
+.axis-label-y{
+  position: absolute;
+  left: 6px;
+  transform: translateY(-50%);
+}
+
+.axis-label-y--top{ top: 8px; transform: translateY(0); }
+.axis-label-y--mid{ top: 50%; }
+.axis-label-y--bot{ bottom: 8px; transform: translateY(0); }
+
+.axis-label-x{
+  position: absolute;
+  bottom: 6px;
+  transform: translateX(-50%);
+}
+
+.axis-label-x--left{ left: 8px; transform: translateX(0); }
+.axis-label-x--mid{ left: 50%; }
+.axis-label-x--right{ right: 8px; transform: translateX(0); }
+
 .axes-svg{
   position: relative;
   z-index: 1;
@@ -135,6 +165,8 @@ body.home{
   fill: none;
   stroke: #000;
   stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   transition: opacity 160ms ease;
 }
