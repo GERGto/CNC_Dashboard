@@ -4,8 +4,204 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Home</title>
+  <link rel="stylesheet" href="../assets/app.css" />
+  <link rel="stylesheet" href="home.css" />
 </head>
-<body>
-  <h1>Home</h1>
+<body class="home">
+  <main class="home-layout" role="main">
+    <section class="panel spindle-panel" aria-labelledby="spindleTitle">
+      <header class="panel-header">
+        <h2 id="spindleTitle">Spindellast</h2>
+        <span class="panel-sub" aria-live="polite">live</span>
+      </header>
+
+      <div class="spindle-gauge" id="spindleGauge" style="--value:68">
+        <div class="gauge__content">
+          <div class="gauge__value" id="spindleValue">68%</div>
+          <div class="gauge__label">Auslastung</div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="panel axes-panel" aria-labelledby="axesTitle">
+      <header class="panel-header">
+        <h2 id="axesTitle">Achsenlasten</h2>
+        <span class="panel-sub">Diagramm</span>
+      </header>
+
+      <div class="axes-chart" role="img" aria-label="Achsenlasten Zeitverlauf">
+        <div class="chart-grid" aria-hidden="true"></div>
+        <svg class="axes-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <polyline class="axis-line" id="line-spindle" data-axis="spindle"></polyline>
+          <polyline class="axis-line" id="line-x" data-axis="x"></polyline>
+          <polyline class="axis-line" id="line-y" data-axis="y"></polyline>
+          <polyline class="axis-line" id="line-z" data-axis="z"></polyline>
+        </svg>
+      </div>
+
+      <div class="axes-field" aria-label="Achsenlasten Legende">
+        <div class="axes-grid">
+          <div class="axis-card" data-axis="spindle" role="button" tabindex="0" aria-pressed="true">
+            <span class="axis-dot" aria-hidden="true"></span>
+            <div class="axis-info">
+              <div class="axis-name">Spindel</div>
+              <div class="axis-value" id="axis-value-spindle">68%</div>
+            </div>
+          </div>
+          <div class="axis-card" data-axis="x" role="button" tabindex="0" aria-pressed="true">
+            <span class="axis-dot" aria-hidden="true"></span>
+            <div class="axis-info">
+              <div class="axis-name">X Achse</div>
+              <div class="axis-value" id="axis-value-x">42%</div>
+            </div>
+          </div>
+          <div class="axis-card" data-axis="y" role="button" tabindex="0" aria-pressed="true">
+            <span class="axis-dot" aria-hidden="true"></span>
+            <div class="axis-info">
+              <div class="axis-name">Y Achse</div>
+              <div class="axis-value" id="axis-value-y">55%</div>
+            </div>
+          </div>
+          <div class="axis-card" data-axis="z" role="button" tabindex="0" aria-pressed="true">
+            <span class="axis-dot" aria-hidden="true"></span>
+            <div class="axis-info">
+              <div class="axis-name">Z Achse</div>
+              <div class="axis-value" id="axis-value-z">33%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const axisKeys = ["spindle", "x", "y", "z"];
+    const axisState = {};
+
+    const spindleValueEl = document.getElementById("spindleValue");
+    const spindleGauge = document.getElementById("spindleGauge");
+
+    const axisValueEls = {
+      spindle: document.getElementById("axis-value-spindle"),
+      x: document.getElementById("axis-value-x"),
+      y: document.getElementById("axis-value-y"),
+      z: document.getElementById("axis-value-z")
+    };
+
+    const lineEls = {
+      spindle: document.getElementById("line-spindle"),
+      x: document.getElementById("line-x"),
+      y: document.getElementById("line-y"),
+      z: document.getElementById("line-z")
+    };
+
+    const cardEls = {
+      spindle: document.querySelector('.axis-card[data-axis="spindle"]'),
+      x: document.querySelector('.axis-card[data-axis="x"]'),
+      y: document.querySelector('.axis-card[data-axis="y"]'),
+      z: document.querySelector('.axis-card[data-axis="z"]')
+    };
+
+    const MAX_POINTS = 60;
+    const axisValues = { spindle: 0, x: 0, y: 0, z: 0 };
+    const history = {
+      spindle: [],
+      x: [],
+      y: [],
+      z: []
+    };
+
+    function clampPercent(value){
+      const v = Number(value);
+      if (Number.isNaN(v)) return 0;
+      return Math.max(0, Math.min(100, Math.round(v)));
+    }
+
+    function setSpindleValue(value){
+      const v = clampPercent(value);
+      spindleValueEl.textContent = `${v}%`;
+      spindleGauge.style.setProperty("--value", v);
+    }
+
+    function setAxisValue(axis, value){
+      const v = clampPercent(value);
+      axisValues[axis] = v;
+      if (axisValueEls[axis]) axisValueEls[axis].textContent = `${v}%`;
+      if (axis === "spindle") setSpindleValue(v);
+    }
+
+    function renderChart(){
+      const maxPoints = MAX_POINTS - 1;
+      axisKeys.forEach((axis) => {
+        const line = lineEls[axis];
+        if (!line) return;
+        const data = history[axis];
+        if (!data.length){
+          line.setAttribute("points", "");
+          return;
+        }
+        const offset = MAX_POINTS - data.length;
+        const points = data.map((value, index) => {
+          const x = ((index + offset) / maxPoints) * 100;
+          const y = 100 - (value / 100) * 100;
+          return `${x.toFixed(2)},${y.toFixed(2)}`;
+        });
+        line.setAttribute("points", points.join(" "));
+      });
+    }
+
+    function pushHistory(){
+      axisKeys.forEach((axis) => {
+        const data = history[axis];
+        data.push(axisValues[axis]);
+        if (data.length > MAX_POINTS) data.shift();
+      });
+      renderChart();
+    }
+
+    function setAxisEnabled(axis, enabled){
+      const isOn = !!enabled;
+      axisState[axis] = isOn;
+
+      if (cardEls[axis]) cardEls[axis].classList.toggle("is-off", !isOn);
+      if (lineEls[axis]) lineEls[axis].classList.toggle("is-off", !isOn);
+      if (cardEls[axis]) cardEls[axis].setAttribute("aria-pressed", String(isOn));
+    }
+
+    document.querySelectorAll(".axis-card").forEach((card) => {
+      const axis = card.dataset.axis;
+      setAxisEnabled(axis, true);
+      card.addEventListener("click", () => setAxisEnabled(axis, !axisState[axis]));
+      card.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " "){
+          ev.preventDefault();
+          setAxisEnabled(axis, !axisState[axis]);
+        }
+      });
+    });
+
+    const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
+    axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
+    pushHistory();
+
+    function applyAxesPayload(payload){
+      axisKeys.forEach((key) => {
+        if (payload && payload[key] !== undefined){
+          setAxisValue(key, payload[key]);
+        }
+      });
+      pushHistory();
+    }
+
+    window.addEventListener("message", (ev) => {
+      if (ev.origin !== location.origin) return;
+      const msg = ev.data || {};
+      if (msg.type !== "axes") return;
+      const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
+      applyAxesPayload(payload);
+    });
+  </script>
 </body>
 </html>
+
