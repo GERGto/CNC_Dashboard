@@ -212,6 +212,19 @@ body{
   filter: invert(1);
 }
 
+.nav-alert{
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d01616;
+  border: 1px solid #000;
+  flex: 0 0 auto;
+}
+
+.navbtn.active .nav-alert{
+  border-color: #fff;
+}
+
 .navicon{
   width: 22px;
   height: 22px;

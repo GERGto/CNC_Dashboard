@@ -196,8 +196,18 @@
       return d;
     }
 
+    function hasAutomaticInterval(task){
+      if (!task || typeof task !== "object") return false;
+      const intervalType = String(task.intervalType || "").trim();
+      const rawIntervalValue = task.intervalValue;
+      if (intervalType === "none") return false;
+      if (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-") return false;
+      return intervalType === "runtimeHours" || intervalType === "calendarMonths";
+    }
+
     function isTaskDue(task){
       if (!task || typeof task !== "object") return false;
+      if (!hasAutomaticInterval(task)) return false;
       if (!task.lastCompletedAt) return true;
 
       const intervalType = String(task.intervalType || "");
@@ -219,6 +229,9 @@
     }
 
     function formatInterval(task){
+      if (!hasAutomaticInterval(task)){
+        return "-";
+      }
       const intervalValue = Math.max(1, Math.floor(toNumber(task.intervalValue, 1)));
       if (task.intervalType === "runtimeHours"){
         return `Alle ${intervalValue}h`;
@@ -267,7 +280,8 @@
     }
 
     function buildTaskModalPayload(task){
-      const due = isTaskDue(task);
+      const autoDue = hasAutomaticInterval(task);
+      const due = autoDue && isTaskDue(task);
       const lastRuntimeSec = Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0)));
       const runtimeSinceSec = task.lastCompletedAt ? Math.max(0, state.spindleRuntimeSec - lastRuntimeSec) : 0;
 
@@ -277,7 +291,7 @@
         title: task.title || "Wartungsaufgabe",
         intervalText: formatInterval(task),
         effortText: `${Math.max(1, Math.floor(toNumber(task.effortMin, 1)))}m`,
-        statusText: due ? "Fällig" : "In Ordnung",
+        statusText: autoDue ? (due ? "Fällig" : "In Ordnung") : "Manuell",
         due,
         lastDoneText: task.lastCompletedAt ? `${formatDateTime(task.lastCompletedAt)} (bei ${getHoursText(lastRuntimeSec)})` : "Noch nie",
         sinceDoneText: task.lastCompletedAt ? `vor ${getHoursText(runtimeSinceSec)} Betriebsstunden` : "-",
@@ -336,12 +350,22 @@
       if (!task || typeof task !== "object") return null;
       const id = String(task.id || "").trim();
       if (!id) return null;
-      const intervalType = String(task.intervalType || "");
+      const rawIntervalType = String(task.intervalType || "").trim();
+      const rawIntervalValue = task.intervalValue;
+      let intervalType = "runtimeHours";
+      if (rawIntervalType === "calendarMonths"){
+        intervalType = "calendarMonths";
+      }
+      if (rawIntervalType === "none" || (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-")){
+        intervalType = "none";
+      }
       return {
         id,
         title: String(task.title || id),
-        intervalType: intervalType === "calendarMonths" ? "calendarMonths" : "runtimeHours",
-        intervalValue: Math.max(1, Math.floor(toNumber(task.intervalValue, 1))),
+        intervalType,
+        intervalValue: intervalType === "none"
+          ? "-"
+          : Math.max(1, Math.floor(toNumber(rawIntervalValue, 1))),
         effortMin: Math.max(1, Math.floor(toNumber(task.effortMin, 1))),
         description: String(task.description || ""),
         steps: normalizeTaskSteps(task.steps),

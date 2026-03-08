@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import subprocess
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -84,6 +85,10 @@ def default_ui_settings():
         "lightBrightness": 75,
         "fanSpeed": 40,
         "fanAuto": False,
+        "wifiSsid": "",
+        "wifiPassword": "",
+        "wifiAutoConnect": False,
+        "wifiConnected": True,
         "axisVisibility": {
             "spindle": True,
             "x": True,
@@ -176,15 +181,34 @@ def normalize_maintenance_tasks(raw_tasks):
             "spindleRuntimeSecAtCompletion": 0,
         })
 
-        interval_type = str(item.get("intervalType", template["intervalType"])).strip()
-        if interval_type not in ("runtimeHours", "calendarMonths"):
-            interval_type = template["intervalType"]
+        interval_type_raw = str(item.get("intervalType", template["intervalType"])).strip()
+        raw_interval_value = item.get("intervalValue", template["intervalValue"])
 
-        try:
-            interval_value = int(item.get("intervalValue", template["intervalValue"]))
-        except (ValueError, TypeError):
-            interval_value = int(template["intervalValue"])
-        interval_value = max(1, interval_value)
+        interval_value_marker = raw_interval_value
+        if isinstance(interval_value_marker, str):
+            interval_value_marker = interval_value_marker.strip()
+
+        interval_disabled = (
+            interval_type_raw == "none"
+            or interval_value_marker == "-"
+        )
+
+        if interval_disabled:
+            interval_type = "none"
+            interval_value = "-"
+        else:
+            interval_type = interval_type_raw
+            if interval_type not in ("runtimeHours", "calendarMonths"):
+                interval_type = template["intervalType"]
+
+            try:
+                interval_value = int(raw_interval_value)
+            except (ValueError, TypeError):
+                try:
+                    interval_value = int(template["intervalValue"])
+                except (ValueError, TypeError):
+                    interval_value = 1
+            interval_value = max(1, interval_value)
 
         try:
             effort_min = int(item.get("effortMin", template["effortMin"]))
@@ -255,6 +279,84 @@ def send_sse(handler, event, data):
     handler.wfile.flush()
 
 
+def _dedupe_strings(values):
+    unique = []
+    seen = set()
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        unique.append(item)
+    return unique
+
+
+def scan_wifi_networks():
+    candidates = []
+
+    # Linux (NetworkManager)
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "SSID", "dev", "wifi", "list"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            candidates.extend([line.strip() for line in (result.stdout or "").splitlines()])
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        pass
+
+    # Linux (iwlist)
+    if not candidates:
+        try:
+            result = subprocess.run(
+                ["iwlist", "scan"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=4,
+            )
+            if result.returncode == 0:
+                for line in (result.stdout or "").splitlines():
+                    line = line.strip()
+                    if "ESSID:" not in line:
+                        continue
+                    essid = line.split("ESSID:", 1)[1].strip().strip('"')
+                    candidates.append(essid)
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            pass
+
+    # Windows
+    if not candidates and os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["netsh", "wlan", "show", "networks", "mode=Bssid"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=4,
+            )
+            if result.returncode == 0:
+                for line in (result.stdout or "").splitlines():
+                    line = line.strip()
+                    if not line.startswith("SSID "):
+                        continue
+                    parts = line.split(":", 1)
+                    if len(parts) != 2:
+                        continue
+                    candidates.append(parts[1].strip())
+        except (FileNotFoundError, OSError, subprocess.SubprocessError):
+            pass
+
+    networks = _dedupe_strings(candidates)
+    saved_ssid = load_ui_settings().get("wifiSsid", "")
+    if saved_ssid:
+        networks = _dedupe_strings(networks + [saved_ssid])
+    return networks
+
+
 def mock_axes_load(t_ms):
     def base(i):
         value = (math.sin(t_ms / 700.0 + i) * 40.0 + 50.0)
@@ -271,11 +373,17 @@ def mock_axes_load(t_ms):
 def normalize_ui_settings(raw_data):
     defaults = default_ui_settings()
     data = raw_data if isinstance(raw_data, dict) else {}
+    wifi_ssid = str(data.get("wifiSsid", defaults["wifiSsid"])).strip()
+    wifi_password = str(data.get("wifiPassword", defaults["wifiPassword"]))
     normalized = {
         "graphWindowSec": clamp(to_int(data.get("graphWindowSec", defaults["graphWindowSec"]), defaults["graphWindowSec"]), 10, 120),
         "lightBrightness": clamp(to_int(data.get("lightBrightness", defaults["lightBrightness"]), defaults["lightBrightness"]), 0, 100),
         "fanSpeed": clamp(to_int(data.get("fanSpeed", defaults["fanSpeed"]), defaults["fanSpeed"]), 0, 100),
         "fanAuto": bool(data.get("fanAuto", defaults["fanAuto"])),
+        "wifiSsid": wifi_ssid,
+        "wifiPassword": wifi_password,
+        "wifiAutoConnect": bool(data.get("wifiAutoConnect", defaults["wifiAutoConnect"])),
+        "wifiConnected": bool(data.get("wifiConnected", defaults["wifiConnected"])),
         "axisVisibility": normalize_axis_visibility(data.get("axisVisibility")),
     }
     return normalized
@@ -342,7 +450,17 @@ def load_settings():
 def save_settings(patch):
     payload = patch if isinstance(patch, dict) else {}
 
-    ui_keys = {"graphWindowSec", "lightBrightness", "fanSpeed", "fanAuto", "axisVisibility"}
+    ui_keys = {
+        "graphWindowSec",
+        "lightBrightness",
+        "fanSpeed",
+        "fanAuto",
+        "wifiSsid",
+        "wifiPassword",
+        "wifiAutoConnect",
+        "wifiConnected",
+        "axisVisibility",
+    }
     ui_patch = {k: payload[k] for k in ui_keys if k in payload}
     if ui_patch:
         save_ui_settings(ui_patch)
@@ -432,6 +550,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             return json_response(self, 200, load_settings())
 
+        if path == "/api/wifi/networks":
+            return json_response(self, 200, {"networks": scan_wifi_networks()})
+
         if path == "/api/maintenance/tasks":
             settings = load_settings()
             return json_response(self, 200, {"tasks": settings.get("maintenanceTasks", [])})
@@ -442,6 +563,50 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/shutdown":
             return json_response(self, 202, {"ok": True, "message": "Shutdown scheduled (mock)"})
+        if parsed.path == "/api/wifi/connect":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(raw.decode("utf-8")) if raw else {}
+                if not isinstance(payload, dict):
+                    return json_response(self, 400, {"error": "Invalid payload"})
+            except (ValueError, json.JSONDecodeError):
+                return json_response(self, 400, {"error": "Invalid payload"})
+
+            ssid = str(payload.get("ssid", "")).strip()
+            password = str(payload.get("password", ""))
+            auto_connect = payload.get("autoConnect", False)
+
+            if not ssid:
+                return json_response(self, 400, {"error": "SSID is required"})
+            if not isinstance(auto_connect, bool):
+                if isinstance(auto_connect, (int, float)) and auto_connect in (0, 1):
+                    auto_connect = bool(auto_connect)
+                else:
+                    return json_response(self, 400, {"error": "Invalid autoConnect"})
+
+            saved = save_settings({
+                "wifiSsid": ssid,
+                "wifiPassword": password,
+                "wifiAutoConnect": auto_connect,
+                "wifiConnected": True,
+            })
+            return json_response(self, 200, {
+                "ok": True,
+                "connected": bool(saved.get("wifiConnected", False)),
+                "ssid": str(saved.get("wifiSsid", "")),
+                "autoConnect": bool(saved.get("wifiAutoConnect", False)),
+            })
+
+        if parsed.path == "/api/wifi/disconnect":
+            saved = save_settings({"wifiConnected": False})
+            return json_response(self, 200, {
+                "ok": True,
+                "connected": bool(saved.get("wifiConnected", False)),
+                "ssid": str(saved.get("wifiSsid", "")),
+                "autoConnect": bool(saved.get("wifiAutoConnect", False)),
+            })
+
         if parsed.path == "/api/settings":
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -479,6 +644,32 @@ class Handler(BaseHTTPRequestHandler):
                     updated["fanAuto"] = bool(value)
                 else:
                     return json_response(self, 400, {"error": "Invalid fanAuto"})
+            if "wifiSsid" in payload:
+                value = payload["wifiSsid"]
+                if not isinstance(value, str):
+                    return json_response(self, 400, {"error": "Invalid wifiSsid"})
+                updated["wifiSsid"] = value.strip()
+            if "wifiPassword" in payload:
+                value = payload["wifiPassword"]
+                if not isinstance(value, str):
+                    return json_response(self, 400, {"error": "Invalid wifiPassword"})
+                updated["wifiPassword"] = value
+            if "wifiAutoConnect" in payload:
+                value = payload["wifiAutoConnect"]
+                if isinstance(value, bool):
+                    updated["wifiAutoConnect"] = value
+                elif isinstance(value, (int, float)) and value in (0, 1):
+                    updated["wifiAutoConnect"] = bool(value)
+                else:
+                    return json_response(self, 400, {"error": "Invalid wifiAutoConnect"})
+            if "wifiConnected" in payload:
+                value = payload["wifiConnected"]
+                if isinstance(value, bool):
+                    updated["wifiConnected"] = value
+                elif isinstance(value, (int, float)) and value in (0, 1):
+                    updated["wifiConnected"] = bool(value)
+                else:
+                    return json_response(self, 400, {"error": "Invalid wifiConnected"})
             if "axisVisibility" in payload:
                 if not isinstance(payload["axisVisibility"], dict):
                     return json_response(self, 400, {"error": "Invalid axisVisibility"})

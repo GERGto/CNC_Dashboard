@@ -3,9 +3,13 @@
   "lightBrightness": 57,
   "fanSpeed": 54,
   "fanAuto": true,
+  "wifiSsid": "coppi_homenet",
+  "wifiPassword": "",
+  "wifiAutoConnect": true,
+  "wifiConnected": true,
   "axisVisibility": {
     "spindle": true,
-    "x": true,
+    "x": false,
     "y": false,
     "z": false
   }

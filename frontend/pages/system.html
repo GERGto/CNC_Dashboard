@@ -106,8 +106,184 @@
       padding:12px;
       box-sizing:border-box;
       max-width:560px;
-      font-size:16px;
+      display:grid;
+      gap:10px;
+    }
+
+    .cfg-list{
+      display:grid;
+      gap:10px;
+      max-width:560px;
+    }
+
+    .cfg-card{
+      border:2px solid var(--line);
+      border-radius:2px;
+      padding:12px;
+      display:grid;
+      gap:8px;
+      background:#fff;
+    }
+
+    .cfg-card__head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      font-size:18px;
+      font-weight:800;
+    }
+
+    .cfg-card__text{
+      font-size:15px;
+      color:var(--muted);
       font-weight:600;
+    }
+
+    .cfg-card__btn{
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      color:#000;
+      font-size:15px;
+      font-weight:700;
+      padding:8px 12px;
+      justify-self:start;
+    }
+
+    .cfg-card__btn:active{
+      transform: translateY(1px);
+    }
+
+    .cfg-note{
+      border:2px dashed var(--line);
+      border-radius:2px;
+      padding:10px 12px;
+      color:var(--muted);
+      font-size:14px;
+      font-weight:700;
+    }
+
+    .cfg__title{
+      margin:0;
+      font-size:20px;
+      font-weight:800;
+    }
+
+    .cfg__status{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      font-size:15px;
+      font-weight:700;
+    }
+
+    .cfg__dot{
+      width:10px;
+      height:10px;
+      border-radius:50%;
+      border:1px solid #000;
+      background:#777;
+    }
+
+    .cfg__dot.is-on{
+      background:#0f8f3a;
+    }
+
+    .cfg__dot.is-off{
+      background:#b61e1e;
+    }
+
+    .cfg__grid{
+      display:grid;
+      gap:10px;
+    }
+
+    .cfg__field{
+      display:grid;
+      gap:6px;
+    }
+
+    .cfg__ssid-row{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:8px;
+      align-items:center;
+    }
+
+    .cfg__label{
+      font-size:14px;
+      font-weight:700;
+      color:var(--muted);
+    }
+
+    .cfg__input{
+      width:100%;
+      border:2px solid var(--line);
+      border-radius:2px;
+      font-size:16px;
+      padding:8px 10px;
+      box-sizing:border-box;
+      background:#fff;
+      color:#000;
+    }
+
+    .cfg__switch{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      padding:8px 10px;
+      font-size:15px;
+      font-weight:700;
+    }
+
+    .cfg__check{
+      width:20px;
+      height:20px;
+      accent-color:#000;
+    }
+
+    .cfg__actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .cfg__btn{
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      color:#000;
+      font-size:15px;
+      font-weight:700;
+      padding:8px 12px;
+    }
+
+    .cfg__btn--primary{
+      background:#000;
+      color:#fff;
+    }
+
+    .cfg__msg{
+      min-height:20px;
+      font-size:14px;
+      font-weight:700;
+      color:var(--muted);
+    }
+
+    .cfg__msg.is-error{
+      color:#b61e1e;
+    }
+
+    .cfg__msg.is-ok{
+      color:#0f8f3a;
+    }
+
+    .modal__panel--wifi{
+      width:min(560px, 92vw);
     }
   </style>
 </head>
@@ -126,9 +302,56 @@
     </section>
 
     <section class="panel" id="panelConfig" role="tabpanel" aria-labelledby="tabConfig">
-      <div class="cfg">Bereich für Systemkonfiguration.</div>
+      <div class="cfg-list">
+        <div class="cfg-card">
+          <div class="cfg-card__head">
+            <span>WLAN</span>
+            <div class="cfg__status">
+              <span class="cfg__dot" id="wifiStateDot" aria-hidden="true"></span>
+              <span id="wifiStateText">Status: Unbekannt</span>
+            </div>
+          </div>
+          <div class="cfg-card__text">Netzwerk auswählen, Zugangsdaten speichern und Verbindung steuern.</div>
+          <button class="cfg-card__btn" id="openWifiConfigBtn" type="button">WLAN konfigurieren</button>
+        </div>
+
+        <div class="cfg-note">Platzhalter für weitere Systemkonfigurationen.</div>
+      </div>
     </section>
   </main>
+
+  <div class="modal" id="wifiConfigModal" role="dialog" aria-modal="true" aria-labelledby="wifiConfigTitle" aria-hidden="true">
+    <div class="modal__backdrop" data-close="true"></div>
+    <div class="modal__panel modal__panel--wifi" role="document">
+      <h2 class="cfg__title" id="wifiConfigTitle">WLAN konfigurieren</h2>
+      <div class="cfg__grid">
+        <label class="cfg__field" for="wifiSsidSelect">
+          <span class="cfg__label">Netzwerkname (SSID)</span>
+          <div class="cfg__ssid-row">
+            <select class="cfg__input" id="wifiSsidSelect"></select>
+            <button class="cfg__btn" id="wifiScanBtn" type="button">Neu laden</button>
+          </div>
+        </label>
+        <label class="cfg__field" for="wifiPasswordInput">
+          <span class="cfg__label">Passwort</span>
+          <input class="cfg__input" id="wifiPasswordInput" type="password" autocomplete="off" />
+        </label>
+        <label class="cfg__switch" for="wifiAutoConnectInput">
+          <span>Automatisch verbinden</span>
+          <input class="cfg__check" id="wifiAutoConnectInput" type="checkbox" />
+        </label>
+      </div>
+      <div class="cfg__actions">
+        <button class="cfg__btn" id="wifiSaveBtn" type="button">Speichern</button>
+        <button class="cfg__btn cfg__btn--primary" id="wifiConnectBtn" type="button">Verbinden</button>
+        <button class="cfg__btn" id="wifiDisconnectBtn" type="button">Trennen</button>
+      </div>
+      <div class="cfg__msg" id="wifiConfigMsg" aria-live="polite"></div>
+      <div class="modal__actions">
+        <button class="btn" id="wifiModalClose" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const API_BASE = "http://localhost:8080";
@@ -137,8 +360,22 @@
     const tabConfig = document.getElementById("tabConfig");
     const panelOverview = document.getElementById("panelOverview");
     const panelConfig = document.getElementById("panelConfig");
+    const openWifiConfigBtn = document.getElementById("openWifiConfigBtn");
+    const wifiConfigModal = document.getElementById("wifiConfigModal");
+    const wifiModalClose = document.getElementById("wifiModalClose");
+    const wifiStateDot = document.getElementById("wifiStateDot");
+    const wifiStateText = document.getElementById("wifiStateText");
+    const wifiSsidSelect = document.getElementById("wifiSsidSelect");
+    const wifiScanBtn = document.getElementById("wifiScanBtn");
+    const wifiPasswordInput = document.getElementById("wifiPasswordInput");
+    const wifiAutoConnectInput = document.getElementById("wifiAutoConnectInput");
+    const wifiSaveBtn = document.getElementById("wifiSaveBtn");
+    const wifiConnectBtn = document.getElementById("wifiConnectBtn");
+    const wifiDisconnectBtn = document.getElementById("wifiDisconnectBtn");
+    const wifiConfigMsg = document.getElementById("wifiConfigMsg");
 
     let spindleRuntimeSec = 0;
+    let wifiConnected = false;
 
     function setActiveTab(name){
       const overview = name === "overview";
@@ -157,7 +394,100 @@
       runtimeCompactEl.textContent = `${hours} Stunden`;
     }
 
-    function loadRuntimeFromSettings(){
+    function openWifiModal(){
+      wifiConfigModal.classList.add("is-open");
+      wifiConfigModal.setAttribute("aria-hidden", "false");
+      wifiSsidSelect.focus();
+      loadWifiNetworks(wifiSsidSelect.value);
+    }
+
+    function closeWifiModal(){
+      wifiConfigModal.classList.remove("is-open");
+      wifiConfigModal.setAttribute("aria-hidden", "true");
+      openWifiConfigBtn.focus();
+    }
+
+    function setWifiStatus(connected, ssid = ""){
+      wifiConnected = !!connected;
+      wifiStateDot.classList.toggle("is-on", wifiConnected);
+      wifiStateDot.classList.toggle("is-off", !wifiConnected);
+      const networkName = String(ssid || wifiSsidSelect.value || "").trim();
+      if (wifiConnected){
+        wifiStateText.textContent = networkName ? `Status: Verbunden mit ${networkName}` : "Status: Verbunden";
+      } else {
+        wifiStateText.textContent = "Status: Nicht verbunden";
+      }
+    }
+
+    function setWifiMessage(message, type = "info"){
+      wifiConfigMsg.textContent = String(message || "");
+      wifiConfigMsg.classList.toggle("is-error", type === "error");
+      wifiConfigMsg.classList.toggle("is-ok", type === "ok");
+    }
+
+    function readWifiPayload(){
+      return {
+        ssid: String(wifiSsidSelect.value || "").trim(),
+        password: String(wifiPasswordInput.value || ""),
+        autoConnect: !!wifiAutoConnectInput.checked,
+      };
+    }
+
+    function setWifiSsidOptions(networks, preferredSsid = ""){
+      const list = Array.isArray(networks) ? networks : [];
+      const selectedBefore = String(wifiSsidSelect.value || "").trim();
+      const preferred = String(preferredSsid || "").trim();
+      const merged = [];
+
+      for (const raw of list){
+        const ssid = String(raw || "").trim();
+        if (!ssid || merged.includes(ssid)) continue;
+        merged.push(ssid);
+      }
+      if (preferred && !merged.includes(preferred)){
+        merged.push(preferred);
+      }
+
+      wifiSsidSelect.innerHTML = "";
+      if (merged.length === 0){
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "Keine Netzwerke gefunden";
+        wifiSsidSelect.appendChild(emptyOption);
+        wifiSsidSelect.value = "";
+        return;
+      }
+
+      for (const ssid of merged){
+        const option = document.createElement("option");
+        option.value = ssid;
+        option.textContent = ssid;
+        wifiSsidSelect.appendChild(option);
+      }
+
+      if (preferred && merged.includes(preferred)){
+        wifiSsidSelect.value = preferred;
+      } else if (selectedBefore && merged.includes(selectedBefore)){
+        wifiSsidSelect.value = selectedBefore;
+      } else {
+        wifiSsidSelect.value = merged[0];
+      }
+    }
+
+    function loadWifiNetworks(preferredSsid = ""){
+      fetch(`${API_BASE}/api/wifi/networks`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          const networks = data && Array.isArray(data.networks) ? data.networks : [];
+          setWifiSsidOptions(networks, preferredSsid);
+        })
+        .catch(() => {
+          setWifiSsidOptions([], preferredSsid);
+          setWifiMessage("WLAN-Netzwerke konnten nicht geladen werden.", "error");
+        });
+    }
+
+    function loadSystemSettings(){
       fetch(`${API_BASE}/api/settings`)
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
@@ -165,8 +495,96 @@
           if (typeof data.spindleRuntimeSec === "number"){
             renderSpindleRuntime(data.spindleRuntimeSec);
           }
+          const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : "";
+          loadWifiNetworks(currentSsid);
+          if (typeof data.wifiPassword === "string"){
+            wifiPasswordInput.value = data.wifiPassword;
+          }
+          if (typeof data.wifiAutoConnect === "boolean"){
+            wifiAutoConnectInput.checked = data.wifiAutoConnect;
+          } else if (typeof data.wifiAutoConnect === "number" && (data.wifiAutoConnect === 0 || data.wifiAutoConnect === 1)){
+            wifiAutoConnectInput.checked = Boolean(data.wifiAutoConnect);
+          }
+          if (typeof data.wifiConnected === "boolean"){
+            setWifiStatus(data.wifiConnected, currentSsid);
+          } else if (typeof data.wifiConnected === "number" && (data.wifiConnected === 0 || data.wifiConnected === 1)){
+            setWifiStatus(Boolean(data.wifiConnected), currentSsid);
+          } else {
+            setWifiStatus(false, currentSsid);
+          }
         })
-        .catch(() => {});
+        .catch(() => {
+          loadWifiNetworks(wifiSsidSelect.value);
+        });
+    }
+
+    function saveWifiConfig(){
+      const payload = readWifiPayload();
+      fetch(`${API_BASE}/api/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          wifiSsid: payload.ssid,
+          wifiPassword: payload.password,
+          wifiAutoConnect: payload.autoConnect,
+        })
+      })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (!data || typeof data !== "object"){
+            setWifiMessage("WLAN-Einstellungen konnten nicht gespeichert werden.", "error");
+            return;
+          }
+          setWifiMessage("WLAN-Einstellungen gespeichert.", "ok");
+        })
+        .catch(() => {
+          setWifiMessage("WLAN-Einstellungen konnten nicht gespeichert werden.", "error");
+        });
+    }
+
+    function connectWifi(){
+      const payload = readWifiPayload();
+      if (!payload.ssid){
+        setWifiMessage("Bitte WLAN auswählen.", "error");
+        return;
+      }
+      fetch(`${API_BASE}/api/wifi/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (!data || !data.ok){
+            setWifiMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+            return;
+          }
+          setWifiStatus(!!data.connected, data.ssid || payload.ssid);
+          window.parent.postMessage({ type: "setWifi", connected: !!data.connected }, location.origin);
+          setWifiMessage("WLAN verbunden.", "ok");
+        })
+        .catch(() => {
+          setWifiMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+        });
+    }
+
+    function disconnectWifi(){
+      fetch(`${API_BASE}/api/wifi/disconnect`, {
+        method: "POST",
+      })
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (!data || !data.ok){
+            setWifiMessage("WLAN konnte nicht getrennt werden.", "error");
+            return;
+          }
+          setWifiStatus(false, data.ssid || wifiSsidSelect.value);
+          window.parent.postMessage({ type: "setWifi", connected: false }, location.origin);
+          setWifiMessage("WLAN getrennt.", "ok");
+        })
+        .catch(() => {
+          setWifiMessage("WLAN konnte nicht getrennt werden.", "error");
+        });
     }
 
     window.addEventListener("message", (ev) => {
@@ -180,13 +598,36 @@
       if (msg.type === "spindleRuntime" && typeof msg.seconds === "number"){
         renderSpindleRuntime(msg.seconds);
       }
+      if (msg.type === "init" && typeof msg.wifiConnected === "boolean"){
+        setWifiStatus(msg.wifiConnected, wifiSsidSelect.value);
+      }
+      if (msg.type === "wifi" && typeof msg.connected === "boolean"){
+        setWifiStatus(msg.connected, wifiSsidSelect.value);
+      }
     });
 
     tabOverview.addEventListener("click", () => setActiveTab("overview"));
     tabConfig.addEventListener("click", () => setActiveTab("config"));
+    openWifiConfigBtn.addEventListener("click", openWifiModal);
+    wifiModalClose.addEventListener("click", closeWifiModal);
+    wifiConfigModal.addEventListener("click", (ev) => {
+      if (ev.target && ev.target.dataset && ev.target.dataset.close){
+        closeWifiModal();
+      }
+    });
+    wifiScanBtn.addEventListener("click", () => loadWifiNetworks(wifiSsidSelect.value));
+    wifiSaveBtn.addEventListener("click", saveWifiConfig);
+    wifiConnectBtn.addEventListener("click", connectWifi);
+    wifiDisconnectBtn.addEventListener("click", disconnectWifi);
+    window.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && wifiConfigModal.classList.contains("is-open")){
+        closeWifiModal();
+      }
+    });
 
     renderSpindleRuntime(spindleRuntimeSec);
-    loadRuntimeFromSettings();
+    setWifiStatus(wifiConnected);
+    loadSystemSettings();
   </script>
 </body>
 </html>

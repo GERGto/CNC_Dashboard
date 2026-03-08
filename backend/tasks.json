@@ -1,58 +1,221 @@
 {
   "maintenanceTasks": [
     {
-      "id": "axes-grease",
-      "title": "Achsen Fetten",
+      "id": "clean-chips",
+      "title": "Grobe Reinigung & Späne entfernen",
       "intervalType": "runtimeHours",
       "intervalValue": 8,
-      "effortMin": 5,
-      "description": "Fettpunkte der X/Y/Z-Achsen abschmieren.",
+      "effortMin": 10,
+      "description": "Gesamte Maschine absaugen oder abkehren, insbesondere Linearführungen und Kugelumlaufspindeln. Keine Druckluft verwenden, damit Staub nicht in Lager gedrückt wird.",
       "steps": [
         {
-          "instruction": "Schmierpresse befüllen und auf die Schmiernippel der Achsen ansetzen.",
-          "image": "assets/images/presse.png",
-          "imageAlt": "Schmierpresse für die Achsenschmierung"
+          "instruction": "Maschine stromlos schalten und den Arbeitsbereich freimachen."
         },
         {
-          "instruction": "Je Schmierpunkt 1 bis 2 Hübe ausführen und auf gleichmäßigen Fettfluss achten."
+          "instruction": "Späne und Staub im gesamten Verfahrbereich absaugen oder mit weicher Bürste abkehren."
         },
         {
-          "instruction": "Überschüssiges Fett entfernen und Schmierstellen auf Dichtheit prüfen."
+          "instruction": "Linearführungen, Kugelumlaufspindeln und Endschalterbereiche gezielt reinigen."
+        },
+        {
+          "instruction": "Keine Druckluft einsetzen und abschließend Sichtkontrolle auf freie Führungen durchführen."
         }
       ],
-      "lastCompletedAt": null,
+      "lastCompletedAt": "2026-03-08T21:15:21Z",
+      "spindleRuntimeSecAtCompletion": 4267
+    },
+    {
+      "id": "lubricate-guides-spindles",
+      "title": "Schmierung der Linearführungen und Spindeln",
+      "intervalType": "runtimeHours",
+      "intervalValue": 45,
+      "effortMin": 15,
+      "description": "Schmierfett oder Bettbahnöl an Führungswagen und Gewindespindeln der X-, Y- und Z-Achse auftragen, um Reibung und Verschleiß zu minimieren.",
+      "steps": [
+        {
+          "instruction": "Schmierstellen an Führungswagen und Spindeln vor dem Abschmieren reinigen."
+        },
+        {
+          "instruction": "Schmiermittel gemäß Herstellerempfehlung an allen Achsen auftragen."
+        },
+        {
+          "instruction": "Achsen langsam verfahren, damit sich das Schmiermittel gleichmäßig verteilt."
+        },
+        {
+          "instruction": "Überschüsse entfernen und Schmierstellen auf Dichtheit kontrollieren."
+        }
+      ],
+      "lastCompletedAt": "2026-03-08T21:30:02Z",
+      "spindleRuntimeSecAtCompletion": 5002
+    },
+    {
+      "id": "spindle-coolant-check",
+      "title": "Kühlmittel der Spindel prüfen",
+      "intervalType": "runtimeHours",
+      "intervalValue": 45,
+      "effortMin": 8,
+      "description": "Wasserstand im Reservoir prüfen, auf Verschmutzung oder Algenbildung achten und Schläuche auf Knicke oder Lecks kontrollieren. Vollständiger Wasserwechsel alle 6 Monate.",
+      "steps": [
+        {
+          "instruction": "Füllstand im Kühlkreislauf prüfen und bei Bedarf mit geeignetem Medium auffüllen."
+        },
+        {
+          "instruction": "Reservoir auf Trübung, Partikel und Algen kontrollieren."
+        },
+        {
+          "instruction": "Alle Schläuche und Anschlüsse auf Knicke, Scheuerstellen und Leckagen prüfen."
+        },
+        {
+          "instruction": "Bei fälligem Halbjahreswechsel Kühlwasser vollständig tauschen."
+        }
+      ],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
       "spindleRuntimeSecAtCompletion": 0
     },
     {
-      "id": "coolant-check",
-      "title": "Kühlmittelstand prüfen",
+      "id": "dust-extraction-service",
+      "title": "Absaugung leeren & Filter reinigen",
+      "intervalType": "runtimeHours",
+      "intervalValue": 35,
+      "effortMin": 10,
+      "description": "Füllstand der Staubabsaugung prüfen, Behälter leeren und Filter reinigen, damit die Saugleistung stabil bleibt.",
+      "steps": [
+        {
+          "instruction": "Füllstand von Zyklon oder Staubsaugerbehälter kontrollieren und Behälter entleeren."
+        },
+        {
+          "instruction": "Filter ausbauen und ausklopfen oder vorsichtig absaugen."
+        },
+        {
+          "instruction": "Dichtungen und Verbindungen prüfen und Absaugung wieder korrekt montieren."
+        }
+      ],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
+      "spindleRuntimeSecAtCompletion": 0
+    },
+    {
+      "id": "spoilboard-check-planing",
+      "title": "Zustand der Opferplatte prüfen & planen",
       "intervalType": "calendarMonths",
       "intervalValue": 1,
-      "effortMin": 3,
-      "description": "Kühlmittelstand kontrollieren und bei Bedarf nachfüllen.",
-      "steps": [],
+      "effortMin": 25,
+      "description": "Opferplatte auf tiefe Riefen und Ebenheit prüfen. Bei Bedarf mit Planfräser abziehen, um eine saubere Z-Referenz zu behalten.",
+      "steps": [
+        {
+          "instruction": "Opferplatte visuell auf Riefen, Ausbrüche und Unebenheit prüfen."
+        },
+        {
+          "instruction": "Bei Bedarf Planfräser einrichten und die Oberfläche mit geringem Abtrag planfräsen."
+        },
+        {
+          "instruction": "Neue Z-Referenz setzen und Ergebnis auf gleichmäßige Oberfläche prüfen."
+        }
+      ],
       "lastCompletedAt": "2026-03-08T00:00:00Z",
       "spindleRuntimeSecAtCompletion": 0
     },
     {
-      "id": "emergency-stop-test",
-      "title": "Not-Aus prüfen",
+      "id": "drag-chain-cables-check",
+      "title": "Schleppketten und Kabelage kontrollieren",
+      "intervalType": "calendarMonths",
+      "intervalValue": 1,
+      "effortMin": 8,
+      "description": "Alle beweglichen Kabel in Schleppketten auf Scheuerstellen, Knicke und lose Stecker prüfen, um Kabelbrüche frühzeitig zu vermeiden.",
+      "steps": [
+        {
+          "instruction": "Schleppketten über den gesamten Verfahrweg beobachten und auf mechanische Behinderung prüfen."
+        },
+        {
+          "instruction": "Kabelmäntel auf Scheuerstellen, Quetschungen und Knickstellen prüfen."
+        },
+        {
+          "instruction": "Steckverbindungen kontrollieren und gegebenenfalls nachsetzen."
+        }
+      ],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
+      "spindleRuntimeSecAtCompletion": 0
+    },
+    {
+      "id": "belt-backlash-check",
+      "title": "Antriebsriemen & Umkehrspiel prüfen",
       "intervalType": "calendarMonths",
       "intervalValue": 3,
-      "effortMin": 10,
-      "description": "Funktion aller Not-Aus-Schalter prüfen.",
-      "steps": [],
+      "effortMin": 20,
+      "description": "Riemenspannung prüfen oder bei Spindelantrieben das Umkehrspiel messen und bei Bedarf mechanisch oder in der Steuerung nachstellen.",
+      "steps": [
+        {
+          "instruction": "Riemenantriebe auf korrekte Spannung und Beschädigungen prüfen."
+        },
+        {
+          "instruction": "Umkehrspiel (Backlash) der Achsen messen und dokumentieren."
+        },
+        {
+          "instruction": "Bei Abweichungen Spindelmuttern, Kupplungen oder Software-Kompensation nachjustieren."
+        }
+      ],
       "lastCompletedAt": "2026-03-08T00:00:00Z",
       "spindleRuntimeSecAtCompletion": 0
     },
     {
-      "id": "lubrication-lines-check",
-      "title": "Schmierleitungen prüfen",
+      "id": "bolt-retorque",
+      "title": "Mechanische Schraubverbindungen nachziehen",
+      "intervalType": "calendarMonths",
+      "intervalValue": 3,
+      "effortMin": 15,
+      "description": "Wichtige Struktur-Schrauben, Motorhalterungen und Spindelklemmung auf festen Sitz prüfen und bei Bedarf nachziehen.",
+      "steps": [
+        {
+          "instruction": "Maschinenrahmen, Gantry und Achsträger systematisch auf lockere Schrauben prüfen."
+        },
+        {
+          "instruction": "Motorhalterungen und Kupplungen kontrollieren und nach Herstellervorgabe nachziehen."
+        },
+        {
+          "instruction": "Spindelhalterung prüfen und Klemmung sicherstellen."
+        }
+      ],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
+      "spindleRuntimeSecAtCompletion": 0
+    },
+    {
+      "id": "electronics-fan-cleaning",
+      "title": "Elektronikgehäuse und Lüfter entstauben",
+      "intervalType": "none",
+      "intervalValue": "-",
+      "effortMin": 20,
+      "description": "Elektronikgehäuse nach dem Spannungsfreischalten reinigen und Lüfter von Steppertreibern und Netzteil entstauben, um Überhitzung zu vermeiden.",
+      "steps": [
+        {
+          "instruction": "Maschine vollständig stromlos schalten und gegen Wiedereinschalten sichern."
+        },
+        {
+          "instruction": "Elektronikgehäuse öffnen und Staub mit geeigneter Absaugung entfernen."
+        },
+        {
+          "instruction": "Lüfterräder und Luftwege vorsichtig reinigen und Luftstrom prüfen."
+        }
+      ],
+      "lastCompletedAt": "2026-03-08T21:23:49Z",
+      "spindleRuntimeSecAtCompletion": 4750
+    },
+    {
+      "id": "geometry-calibration",
+      "title": "Geometrie und Rechtwinkligkeit kalibrieren",
       "intervalType": "calendarMonths",
       "intervalValue": 6,
-      "effortMin": 8,
-      "description": "Sichtprüfung der Schmierleitungen auf Undichtigkeiten.",
-      "steps": [],
+      "effortMin": 30,
+      "description": "X/Y-Rechtwinkligkeit sowie Z-Senkrechtstellung prüfen und bei Bedarf nachjustieren. Immer zusätzlich nach harten Kollisionen durchführen.",
+      "steps": [
+        {
+          "instruction": "Maschine mit Referenzwerkzeugen auf X/Y-Winkel und Z-Senkrechtstellung prüfen."
+        },
+        {
+          "instruction": "Abweichungen dokumentieren und mechanische Korrekturen durchführen."
+        },
+        {
+          "instruction": "Kontrollmessung wiederholen und neue Referenzwerte in der Steuerung sichern."
+        }
+      ],
       "lastCompletedAt": "2026-03-08T00:00:00Z",
       "spindleRuntimeSecAtCompletion": 0
     }

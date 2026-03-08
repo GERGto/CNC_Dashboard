@@ -11,6 +11,7 @@ const API_BASE = "http://localhost:8080";
 const AXES_INTERVAL_MS = 250;
 const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
+const MAINTENANCE_REFRESH_MS = 60000;
 
 const state = {
   activePage: "home",
@@ -83,6 +84,7 @@ const maintenanceTaskClose = document.getElementById("maintenanceTaskClose");
 const maintenanceGuidePrev = document.getElementById("maintenanceGuidePrev");
 const maintenanceGuideNext = document.getElementById("maintenanceGuideNext");
 const maintenanceTaskDone = document.getElementById("maintenanceTaskDone");
+const maintenanceDueDot = document.getElementById("maintenanceDueDot");
 
 const frames = new Map();
 let uiSettingsSaveTimer = null;
@@ -94,6 +96,7 @@ let maintenanceModalTaskId = null;
 let maintenanceModalTab = "overview";
 let maintenanceModalSteps = [];
 let maintenanceModalStepIndex = 0;
+let maintenanceTasksCache = [];
 
 // -----------------------------
 // Uhr
@@ -221,6 +224,109 @@ function openGraphModal(seconds){
 function closeGraphModal(){
   graphModal.classList.remove("is-open");
   graphModal.setAttribute("aria-hidden", "true");
+}
+
+function toNumber(value, fallback = 0){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function addMonths(date, months){
+  const d = new Date(date.getTime());
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function normalizeMaintenanceTask(task){
+  if (!task || typeof task !== "object") return null;
+  const id = String(task.id || "").trim();
+  if (!id) return null;
+
+  const rawIntervalType = String(task.intervalType || "").trim();
+  const rawIntervalValue = task.intervalValue;
+  let intervalType = "runtimeHours";
+  if (rawIntervalType === "calendarMonths"){
+    intervalType = "calendarMonths";
+  }
+  if (rawIntervalType === "none" || (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-")){
+    intervalType = "none";
+  }
+
+  return {
+    id,
+    intervalType,
+    intervalValue: intervalType === "none"
+      ? "-"
+      : Math.max(1, Math.floor(toNumber(rawIntervalValue, 1))),
+    lastCompletedAt: task.lastCompletedAt ? String(task.lastCompletedAt) : null,
+    spindleRuntimeSecAtCompletion: Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0))),
+  };
+}
+
+function hasAutomaticInterval(task){
+  if (!task || typeof task !== "object") return false;
+  const intervalType = String(task.intervalType || "").trim();
+  const intervalValue = task.intervalValue;
+  if (intervalType === "none") return false;
+  if (typeof intervalValue === "string" && intervalValue.trim() === "-") return false;
+  return intervalType === "runtimeHours" || intervalType === "calendarMonths";
+}
+
+function isMaintenanceTaskDue(task){
+  if (!task || typeof task !== "object") return false;
+  if (!hasAutomaticInterval(task)) return false;
+  if (!task.lastCompletedAt) return true;
+
+  const intervalType = String(task.intervalType || "");
+  const intervalValue = Math.max(1, Math.floor(toNumber(task.intervalValue, 1)));
+
+  if (intervalType === "runtimeHours"){
+    const lastSec = Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0)));
+    const elapsedSec = Math.max(0, state.spindleRuntimeSec - lastSec);
+    return elapsedSec >= (intervalValue * 3600);
+  }
+
+  if (intervalType === "calendarMonths"){
+    const lastDone = new Date(task.lastCompletedAt);
+    if (Number.isNaN(lastDone.getTime())) return true;
+    return Date.now() >= addMonths(lastDone, intervalValue).getTime();
+  }
+
+  return false;
+}
+
+function updateMaintenanceDueIndicator(){
+  if (!maintenanceDueDot) return;
+  const hasDueTask = maintenanceTasksCache.some((task) => isMaintenanceTaskDue(task));
+  maintenanceDueDot.hidden = !hasDueTask;
+}
+
+function setMaintenanceTasks(tasks){
+  const list = Array.isArray(tasks) ? tasks : [];
+  maintenanceTasksCache = list.map(normalizeMaintenanceTask).filter(Boolean);
+  updateMaintenanceDueIndicator();
+}
+
+function upsertMaintenanceTask(task){
+  const normalized = normalizeMaintenanceTask(task);
+  if (!normalized) return;
+  const idx = maintenanceTasksCache.findIndex((item) => item.id === normalized.id);
+  if (idx >= 0){
+    maintenanceTasksCache[idx] = normalized;
+  } else {
+    maintenanceTasksCache.push(normalized);
+  }
+  updateMaintenanceDueIndicator();
+}
+
+function loadMaintenanceTasks(){
+  fetch(`${API_BASE}/api/maintenance/tasks`)
+    .then((res) => res.ok ? res.json() : null)
+    .then((payload) => {
+      const tasks = payload && Array.isArray(payload.tasks) ? payload.tasks : [];
+      setMaintenanceTasks(tasks);
+    })
+    .catch(() => {});
 }
 
 function normalizeMaintenanceSteps(rawSteps){
@@ -351,6 +457,7 @@ function completeMaintenanceTask(){
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data || !data.task) return;
+      upsertMaintenanceTask(data.task);
       broadcastToFrames({ type: "maintenanceTaskCompleted", task: data.task });
       closeMaintenanceTaskModal();
     })
@@ -393,6 +500,7 @@ function setSpindleRuntimeSec(value, persist = false){
   spindleRuntimeRawSec = v;
   state.spindleRuntimeSec = v;
   broadcastToFrames({ type: "spindleRuntime", seconds: v });
+  updateMaintenanceDueIndicator();
   if (persist){
     queueRuntimeSave();
   }
@@ -428,6 +536,7 @@ function updateSpindleRuntimeFromAxes(data){
   if (rounded !== state.spindleRuntimeSec){
     state.spindleRuntimeSec = rounded;
     broadcastToFrames({ type: "spindleRuntime", seconds: rounded });
+    updateMaintenanceDueIndicator();
     queueRuntimeSave();
   }
 }
@@ -437,6 +546,13 @@ function loadUiSettings(){
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data || typeof data !== "object") return;
+      if (typeof data.wifiConnected === "boolean"){
+        setWifiConnected(data.wifiConnected);
+        broadcastToFrames({ type: "wifi", connected: state.wifiConnected });
+      } else if (typeof data.wifiConnected === "number" && (data.wifiConnected === 0 || data.wifiConnected === 1)){
+        setWifiConnected(Boolean(data.wifiConnected));
+        broadcastToFrames({ type: "wifi", connected: state.wifiConnected });
+      }
       if (typeof data.lightBrightness === "number"){
         const v = Math.max(0, Math.min(100, data.lightBrightness));
         state.lightBrightness = v;
@@ -710,7 +826,10 @@ window.addEventListener("message", (ev) => {
 
   switch (msg.type){
     case "setStatus":  setMachineStatus(msg.status); break;
-    case "setWifi":    setWifiConnected(!!msg.connected); break;
+    case "setWifi":
+      setWifiConnected(!!msg.connected);
+      broadcastToFrames({ type: "wifi", connected: state.wifiConnected });
+      break;
     case "setLight":   setLightOn(!!msg.on); break;
     case "toggleLight":toggleLight(); break;
     case "setFan":     setFanOn(!!msg.on); break;
@@ -738,4 +857,6 @@ broadcastToFrames({
 });
 
 loadUiSettings();
+loadMaintenanceTasks();
+setInterval(loadMaintenanceTasks, MAINTENANCE_REFRESH_MS);
 startAxesStream();

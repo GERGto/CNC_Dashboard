@@ -13,11 +13,20 @@ and streaming axis/spindle load values. For development it serves mock values.
   - `event: axes` with `{ timestamp, axes: { spindle,x,y,z } }` every ~250ms
   - Optional query: `?intervalMs=250`
 - GET `/api/settings`
-  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - POST `/api/settings`
-  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - GET `/api/maintenance/tasks`
   - `{ tasks: [{ id, title, intervalType, intervalValue, effortMin, description, lastCompletedAt, spindleRuntimeSecAtCompletion }] }`
+  - `intervalType`: `runtimeHours` | `calendarMonths` | `none`
+  - `intervalValue`: Zahl oder `"-"` (`"-"` bzw. `intervalType: "none"` bedeutet: keine automatische Fälligkeit)
+- GET `/api/wifi/networks`
+  - `{ networks: [ "<ssid1>", "<ssid2>", ... ] }`
+- POST `/api/wifi/connect`
+  - Request: `{ ssid, password, autoConnect }`
+  - Response: `{ ok, connected, ssid, autoConnect }`
+- POST `/api/wifi/disconnect`
+  - Response: `{ ok, connected, ssid, autoConnect }`
 - POST `/api/maintenance/tasks/<taskId>/complete`
   - Markiert Aufgabe als erledigt (mit aktuellem Datum und aktueller Spindellaufzeit)
 - POST `/api/shutdown`
@@ -40,6 +49,6 @@ The server listens on `http://localhost:8080` by default.
 
 ## Persistenzdateien
 
-- `settings.json`: UI-Einstellungen (`graphWindowSec`, Licht/Lüfter, `axisVisibility`)
+- `settings.json`: UI-Einstellungen (`graphWindowSec`, Licht/Lüfter, WLAN, `axisVisibility`)
 - `tasks.json`: Wartungsaufgaben (`maintenanceTasks`)
 - `machine_stats.json`: Maschinenstatistiken (`spindleRuntimeSec`)
