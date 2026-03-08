@@ -115,6 +115,10 @@ body{
 }
 .icon-btn:active{ transform: translateY(1px); }
 
+.icon-btn--status{
+  pointer-events: none;
+}
+
 .icon{
   width: 22px;
   height: 22px;
@@ -299,6 +303,22 @@ body{
   font-weight: 700;
   font-size: 18px;
   text-align: right;
+}
+
+.switch-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.switch-row__check{
+  width: 24px;
+  height: 24px;
+  accent-color: #000;
 }
 
 .btn{

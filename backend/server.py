@@ -10,7 +10,11 @@ PORT = int(os.getenv("PORT", "8080"))
 DEFAULT_INTERVAL_MS = int(os.getenv("AXES_INTERVAL_MS", "250"))
 SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "settings.json")
 DEFAULT_SETTINGS = {
-    "graphWindowSec": 60
+    "graphWindowSec": 60,
+    "lightBrightness": 75,
+    "fanSpeed": 40,
+    "fanAuto": False,
+    "spindleRuntimeSec": 0,
 }
 
 
@@ -61,7 +65,7 @@ def load_settings():
 
 
 def save_settings(settings):
-    data = {**DEFAULT_SETTINGS, **settings}
+    data = {**load_settings(), **settings}
     with open(SETTINGS_PATH, "w", encoding="utf-8") as handle:
         json.dump(data, handle)
     return data
@@ -144,6 +148,34 @@ class Handler(BaseHTTPRequestHandler):
                     updated["graphWindowSec"] = clamp(value, 10, 120)
                 except (ValueError, TypeError):
                     return json_response(self, 400, {"error": "Invalid graphWindowSec"})
+            if "lightBrightness" in payload:
+                try:
+                    value = int(payload["lightBrightness"])
+                    updated["lightBrightness"] = clamp(value, 0, 100)
+                except (ValueError, TypeError):
+                    return json_response(self, 400, {"error": "Invalid lightBrightness"})
+            if "fanSpeed" in payload:
+                try:
+                    value = int(payload["fanSpeed"])
+                    updated["fanSpeed"] = clamp(value, 0, 100)
+                except (ValueError, TypeError):
+                    return json_response(self, 400, {"error": "Invalid fanSpeed"})
+            if "fanAuto" in payload:
+                value = payload["fanAuto"]
+                if isinstance(value, bool):
+                    updated["fanAuto"] = value
+                elif isinstance(value, (int, float)) and value in (0, 1):
+                    updated["fanAuto"] = bool(value)
+                else:
+                    return json_response(self, 400, {"error": "Invalid fanAuto"})
+            if "spindleRuntimeSec" in payload:
+                try:
+                    value = int(payload["spindleRuntimeSec"])
+                    if value < 0:
+                        raise ValueError()
+                    updated["spindleRuntimeSec"] = value
+                except (ValueError, TypeError):
+                    return json_response(self, 400, {"error": "Invalid spindleRuntimeSec"})
 
             saved = save_settings(updated)
             return json_response(self, 200, saved)

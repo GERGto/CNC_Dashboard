@@ -4,8 +4,188 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Systemkonfiguration</title>
+  <style>
+    :root{
+      --line:#000;
+      --bg:#fff;
+      --fg:#000;
+      --muted:#555;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    html, body{
+      margin:0;
+      padding:0;
+      background:var(--bg);
+      color:var(--fg);
+      font-family:var(--font);
+    }
+
+    .wrap{
+      padding:16px;
+      box-sizing:border-box;
+    }
+
+    h1{
+      margin:0 0 14px 0;
+      font-size:30px;
+      line-height:1.2;
+    }
+
+    .seg{
+      display:inline-flex;
+      border:2px solid var(--line);
+      border-radius:2px;
+      overflow:hidden;
+      margin:0 0 14px 0;
+      background:#fff;
+    }
+
+    .seg__btn{
+      border:0;
+      border-left:2px solid var(--line);
+      background:#fff;
+      color:#000;
+      font-size:15px;
+      font-weight:700;
+      padding:10px 12px;
+      min-width:160px;
+      cursor:pointer;
+    }
+
+    .seg__btn:first-child{
+      border-left:0;
+    }
+
+    .seg__btn.is-active{
+      background:#000;
+      color:#fff;
+    }
+
+    .panel{
+      display:none;
+    }
+
+    .panel.is-active{
+      display:block;
+    }
+
+    .tile{
+      border:2px solid var(--line);
+      border-radius:2px;
+      padding:10px 12px;
+      box-sizing:border-box;
+      width:220px;
+    }
+
+    .tile__label{
+      margin:0;
+      font-size:14px;
+      font-weight:700;
+      letter-spacing:0.2px;
+    }
+
+    .tile__value{
+      margin-top:6px;
+      font-size:34px;
+      font-weight:700;
+      letter-spacing:0.8px;
+      line-height:1;
+    }
+
+    .hint{
+      margin-top:8px;
+      font-size:14px;
+      color:var(--muted);
+    }
+
+    .cfg{
+      border:2px solid var(--line);
+      border-radius:2px;
+      padding:12px;
+      box-sizing:border-box;
+      max-width:560px;
+      font-size:16px;
+      font-weight:600;
+    }
+  </style>
 </head>
 <body>
-  <h1>Systemkonfiguration</h1>
+  <main class="wrap">
+    <div class="seg" role="tablist" aria-label="Systembereiche">
+      <button class="seg__btn is-active" id="tabOverview" type="button" role="tab" aria-selected="true" aria-controls="panelOverview">Systemübersicht</button>
+      <button class="seg__btn" id="tabConfig" type="button" role="tab" aria-selected="false" aria-controls="panelConfig">Systemkonfiguration</button>
+    </div>
+
+    <section class="panel is-active" id="panelOverview" role="tabpanel" aria-labelledby="tabOverview">
+      <div class="tile" aria-label="Spindellaufzeit">
+        <p class="tile__label">Spindellaufzeit</p>
+        <div class="tile__value" id="runtimeCompact">0,0 Stunden</div>
+      </div>
+    </section>
+
+    <section class="panel" id="panelConfig" role="tabpanel" aria-labelledby="tabConfig">
+      <div class="cfg">Bereich für Systemkonfiguration.</div>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = "http://localhost:8080";
+    const runtimeCompactEl = document.getElementById("runtimeCompact");
+    const tabOverview = document.getElementById("tabOverview");
+    const tabConfig = document.getElementById("tabConfig");
+    const panelOverview = document.getElementById("panelOverview");
+    const panelConfig = document.getElementById("panelConfig");
+
+    let spindleRuntimeSec = 0;
+
+    function setActiveTab(name){
+      const overview = name === "overview";
+      tabOverview.classList.toggle("is-active", overview);
+      tabConfig.classList.toggle("is-active", !overview);
+      tabOverview.setAttribute("aria-selected", String(overview));
+      tabConfig.setAttribute("aria-selected", String(!overview));
+      panelOverview.classList.toggle("is-active", overview);
+      panelConfig.classList.toggle("is-active", !overview);
+    }
+
+    function renderSpindleRuntime(seconds){
+      const sec = Math.max(0, Math.floor(Number(seconds) || 0));
+      spindleRuntimeSec = sec;
+      const hours = (sec / 3600).toFixed(1).replace(".", ",");
+      runtimeCompactEl.textContent = `${hours} Stunden`;
+    }
+
+    function loadRuntimeFromSettings(){
+      fetch(`${API_BASE}/api/settings`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (!data || typeof data !== "object") return;
+          if (typeof data.spindleRuntimeSec === "number"){
+            renderSpindleRuntime(data.spindleRuntimeSec);
+          }
+        })
+        .catch(() => {});
+    }
+
+    window.addEventListener("message", (ev) => {
+      if (ev.origin !== location.origin) return;
+      const msg = ev.data || {};
+      if (typeof msg !== "object") return;
+
+      if (msg.type === "init" && typeof msg.spindleRuntimeSec === "number"){
+        renderSpindleRuntime(msg.spindleRuntimeSec);
+      }
+      if (msg.type === "spindleRuntime" && typeof msg.seconds === "number"){
+        renderSpindleRuntime(msg.seconds);
+      }
+    });
+
+    tabOverview.addEventListener("click", () => setActiveTab("overview"));
+    tabConfig.addEventListener("click", () => setActiveTab("config"));
+
+    renderSpindleRuntime(spindleRuntimeSec);
+    loadRuntimeFromSettings();
+  </script>
 </body>
 </html>

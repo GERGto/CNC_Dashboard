@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Lüfter aus">
+  <circle cx="12" cy="12" r="8.7" fill="none" stroke="#000" stroke-width="1.8" opacity="0.55"/>
+  <g fill="#000" opacity="0.55">
+    <ellipse cx="12" cy="6.6" rx="2.1" ry="4.1"/>
+    <ellipse cx="12" cy="6.6" rx="2.1" ry="4.1" transform="rotate(120 12 12)"/>
+    <ellipse cx="12" cy="6.6" rx="2.1" ry="4.1" transform="rotate(240 12 12)"/>
+    <circle cx="12" cy="12" r="1.9"/>
+  </g>
+  <line x1="5.2" y1="5.2" x2="18.8" y2="18.8" stroke="#000" stroke-width="2.6" stroke-linecap="round"/>
+</svg>

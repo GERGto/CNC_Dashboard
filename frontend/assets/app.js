@@ -3,13 +3,14 @@
 // -----------------------------
 const PAGES = [
   { id: "home",        title: "Dashboard",      src: "pages/home.html" },
-  { id: "errors",      title: "Fehler",         src: "pages/errors.html" },
   { id: "maintenance", title: "Wartung",        src: "pages/maintenance.html" },
   { id: "system",      title: "Systemkonfiguration", src: "pages/system.html" },
 ];
 
 const API_BASE = "http://localhost:8080";
 const AXES_INTERVAL_MS = 250;
+const SPINDLE_RUNNING_THRESHOLD = 5;
+const RUNTIME_SAVE_INTERVAL_MS = 5000;
 
 const state = {
   activePage: "home",
@@ -17,6 +18,10 @@ const state = {
   wifiConnected: true,
   lightOn: true,
   lightBrightness: 75,
+  fanOn: true,
+  fanSpeed: 40,
+  fanAuto: false,
+  spindleRuntimeSec: 0,
 };
 
 const ICONS = {
@@ -24,6 +29,8 @@ const ICONS = {
   wifiOff: "assets/svg/wifi-off.svg",
   bulbOn: "assets/svg/bulb-on.svg",
   bulbOff: "assets/svg/bulb-off.svg",
+  fanOn: "assets/svg/fan-on.svg",
+  fanOff: "assets/svg/fan-off.svg",
 };
 
 const mainEl = document.querySelector(".main");
@@ -32,10 +39,12 @@ const statusEl = document.getElementById("machineStatus");
 
 const wifiBtn = document.getElementById("wifiBtn");
 const lightBtn = document.getElementById("lightBtn");
+const fanBtn = document.getElementById("fanBtn");
 const shutdownBtn = document.getElementById("shutdownBtn");
 
 const wifiImg = document.getElementById("wifiImg");
 const lightImg = document.getElementById("lightImg");
+const fanImg = document.getElementById("fanImg");
 const shutdownModal = document.getElementById("shutdownModal");
 const shutdownCancel = document.getElementById("shutdownCancel");
 const shutdownConfirm = document.getElementById("shutdownConfirm");
@@ -43,8 +52,17 @@ const lightModal = document.getElementById("lightModal");
 const lightClose = document.getElementById("lightClose");
 const lightSlider = document.getElementById("lightSlider");
 const lightValue = document.getElementById("lightValue");
+const fanModal = document.getElementById("fanModal");
+const fanClose = document.getElementById("fanClose");
+const fanSlider = document.getElementById("fanSlider");
+const fanValue = document.getElementById("fanValue");
+const fanAutoInput = document.getElementById("fanAuto");
 
 const frames = new Map();
+let uiSettingsSaveTimer = null;
+let runtimeSaveTimer = null;
+let spindleRuntimeRawSec = 0;
+let lastAxesTimestampMs = null;
 
 // -----------------------------
 // Uhr
@@ -99,10 +117,39 @@ function updateLightBrightness(value){
   lightSlider.value = String(v);
   lightValue.textContent = `${v}%`;
   broadcastToFrames({ type: "lightBrightness", value: v });
+  queueUiSettingsSave();
+}
+
+function setFanOn(isOn){
+  state.fanOn = !!isOn;
+  fanImg.src = state.fanOn ? ICONS.fanOn : ICONS.fanOff;
+  fanBtn.setAttribute("aria-label", state.fanOn ? "Lüfter an" : "Lüfter aus");
+}
+
+function toggleFan(){
+  setFanOn(!state.fanOn);
+  broadcastToFrames({ type: "fan", on: state.fanOn });
+}
+
+function updateFanSpeed(value){
+  const v = Math.max(0, Math.min(100, Number(value) || 0));
+  state.fanSpeed = v;
+  fanSlider.value = String(v);
+  fanValue.textContent = `${v}%`;
+  broadcastToFrames({ type: "fanSpeed", value: v });
+  queueUiSettingsSave();
+}
+
+function setFanAuto(isAuto, persist = false){
+  state.fanAuto = !!isAuto;
+  fanAutoInput.checked = state.fanAuto;
+  broadcastToFrames({ type: "fanAuto", enabled: state.fanAuto });
+  if (persist) queueUiSettingsSave();
 }
 
 function openLightModal(){
-  updateLightBrightness(state.lightBrightness);
+  lightSlider.value = String(state.lightBrightness);
+  lightValue.textContent = `${state.lightBrightness}%`;
   lightModal.classList.add("is-open");
   lightModal.setAttribute("aria-hidden", "false");
   lightSlider.focus();
@@ -112,6 +159,124 @@ function closeLightModal(){
   lightModal.classList.remove("is-open");
   lightModal.setAttribute("aria-hidden", "true");
   lightBtn.focus();
+}
+
+function openFanModal(){
+  fanSlider.value = String(state.fanSpeed);
+  fanValue.textContent = `${state.fanSpeed}%`;
+  setFanAuto(state.fanAuto);
+  fanModal.classList.add("is-open");
+  fanModal.setAttribute("aria-hidden", "false");
+  fanSlider.focus();
+}
+
+function queueUiSettingsSave(){
+  if (uiSettingsSaveTimer) clearTimeout(uiSettingsSaveTimer);
+  uiSettingsSaveTimer = setTimeout(() => {
+    persistUiSettings();
+  }, 250);
+}
+
+function queueRuntimeSave(){
+  if (runtimeSaveTimer) return;
+  runtimeSaveTimer = setTimeout(() => {
+    runtimeSaveTimer = null;
+    persistUiSettings();
+  }, RUNTIME_SAVE_INTERVAL_MS);
+}
+
+function persistUiSettings(){
+  fetch(`${API_BASE}/api/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      lightBrightness: state.lightBrightness,
+      fanSpeed: state.fanSpeed,
+      fanAuto: state.fanAuto,
+      spindleRuntimeSec: state.spindleRuntimeSec
+    })
+  }).catch(() => {});
+}
+
+function setSpindleRuntimeSec(value, persist = false){
+  const v = Math.max(0, Math.floor(Number(value) || 0));
+  spindleRuntimeRawSec = v;
+  state.spindleRuntimeSec = v;
+  broadcastToFrames({ type: "spindleRuntime", seconds: v });
+  if (persist){
+    queueRuntimeSave();
+  }
+}
+
+function updateSpindleRuntimeFromAxes(data){
+  const nowMs = Math.max(0, Number(data && data.timestamp) || Date.now());
+  if (lastAxesTimestampMs === null){
+    lastAxesTimestampMs = nowMs;
+    return;
+  }
+
+  let deltaSec = (nowMs - lastAxesTimestampMs) / 1000;
+  lastAxesTimestampMs = nowMs;
+  if (!Number.isFinite(deltaSec) || deltaSec <= 0){
+    return;
+  }
+  if (deltaSec > 10){
+    deltaSec = 0;
+  }
+  if (deltaSec <= 0){
+    return;
+  }
+
+  const axes = (data && typeof data.axes === "object") ? data.axes : null;
+  const spindleLoad = Number(axes && axes.spindle);
+  if (!Number.isFinite(spindleLoad) || spindleLoad <= SPINDLE_RUNNING_THRESHOLD){
+    return;
+  }
+
+  spindleRuntimeRawSec += deltaSec;
+  const rounded = Math.floor(spindleRuntimeRawSec);
+  if (rounded !== state.spindleRuntimeSec){
+    state.spindleRuntimeSec = rounded;
+    broadcastToFrames({ type: "spindleRuntime", seconds: rounded });
+    queueRuntimeSave();
+  }
+}
+
+function loadUiSettings(){
+  fetch(`${API_BASE}/api/settings`)
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || typeof data !== "object") return;
+      if (typeof data.lightBrightness === "number"){
+        const v = Math.max(0, Math.min(100, data.lightBrightness));
+        state.lightBrightness = v;
+        lightSlider.value = String(v);
+        lightValue.textContent = `${v}%`;
+        broadcastToFrames({ type: "lightBrightness", value: v });
+      }
+      if (typeof data.fanSpeed === "number"){
+        const v = Math.max(0, Math.min(100, data.fanSpeed));
+        state.fanSpeed = v;
+        fanSlider.value = String(v);
+        fanValue.textContent = `${v}%`;
+        broadcastToFrames({ type: "fanSpeed", value: v });
+      }
+      if (typeof data.fanAuto === "boolean"){
+        setFanAuto(data.fanAuto);
+      } else if (typeof data.fanAuto === "number" && (data.fanAuto === 0 || data.fanAuto === 1)){
+        setFanAuto(Boolean(data.fanAuto));
+      }
+      if (typeof data.spindleRuntimeSec === "number"){
+        setSpindleRuntimeSec(data.spindleRuntimeSec);
+      }
+    })
+    .catch(() => {});
+}
+
+function closeFanModal(){
+  fanModal.classList.remove("is-open");
+  fanModal.setAttribute("aria-hidden", "true");
+  fanBtn.focus();
 }
 
 function openShutdownModal(){
@@ -131,10 +296,10 @@ function confirmShutdown(){
   closeShutdownModal();
 }
 
-// Demo: WiFi per Klick toggeln (für Test). In Produktion ersetzen durch echten Status.
-wifiBtn.addEventListener("click", () => setWifiConnected(!state.wifiConnected));
 let lightPressTimer = null;
 let lightLongPress = false;
+let fanPressTimer = null;
+let fanLongPress = false;
 
 lightBtn.addEventListener("pointerdown", (ev) => {
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
@@ -160,6 +325,31 @@ lightBtn.addEventListener("click", () => {
   }
   toggleLight();
 });
+
+fanBtn.addEventListener("pointerdown", (ev) => {
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  fanLongPress = false;
+  fanPressTimer = setTimeout(() => {
+    fanLongPress = true;
+    openFanModal();
+  }, 600);
+});
+
+const clearFanPress = () => {
+  if (fanPressTimer) clearTimeout(fanPressTimer);
+  fanPressTimer = null;
+};
+
+fanBtn.addEventListener("pointerup", clearFanPress);
+fanBtn.addEventListener("pointerleave", clearFanPress);
+fanBtn.addEventListener("pointercancel", clearFanPress);
+fanBtn.addEventListener("click", () => {
+  if (fanLongPress){
+    fanLongPress = false;
+    return;
+  }
+  toggleFan();
+});
 shutdownBtn.addEventListener("click", openShutdownModal);
 shutdownCancel.addEventListener("click", closeShutdownModal);
 shutdownConfirm.addEventListener("click", confirmShutdown);
@@ -175,6 +365,14 @@ lightModal.addEventListener("click", (ev) => {
   }
 });
 lightSlider.addEventListener("input", (ev) => updateLightBrightness(ev.target.value));
+fanClose.addEventListener("click", closeFanModal);
+fanModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    closeFanModal();
+  }
+});
+fanSlider.addEventListener("input", (ev) => updateFanSpeed(ev.target.value));
+fanAutoInput.addEventListener("change", (ev) => setFanAuto(ev.target.checked, true));
 window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && shutdownModal.classList.contains("is-open")){
     closeShutdownModal();
@@ -182,12 +380,17 @@ window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && lightModal.classList.contains("is-open")){
     closeLightModal();
   }
+  if (ev.key === "Escape" && fanModal.classList.contains("is-open")){
+    closeFanModal();
+  }
 });
 
 // Initial
 setMachineStatus(state.machineStatus);
 setWifiConnected(state.wifiConnected);
 setLightOn(state.lightOn);
+setFanOn(state.fanOn);
+setFanAuto(state.fanAuto);
 
 // -----------------------------
 // iFrames erstellen & vorladen
@@ -252,6 +455,7 @@ function startAxesStream(){
     es.addEventListener("axes", (ev) => {
       try{
         const data = JSON.parse(ev.data || "{}");
+        updateSpindleRuntimeFromAxes(data);
         broadcastToFrames({ type: "axes", ...data });
       }catch (_err){
         // Ignore malformed payloads in dev.
@@ -276,6 +480,11 @@ window.addEventListener("message", (ev) => {
     case "setWifi":    setWifiConnected(!!msg.connected); break;
     case "setLight":   setLightOn(!!msg.on); break;
     case "toggleLight":toggleLight(); break;
+    case "setFan":     setFanOn(!!msg.on); break;
+    case "toggleFan":  toggleFan(); break;
+    case "setFanSpeed":updateFanSpeed(msg.value); break;
+    case "setFanAuto": setFanAuto(!!msg.enabled); break;
+    case "setSpindleRuntime": setSpindleRuntimeSec(msg.seconds, true); break;
     case "navigate":   if (typeof msg.page === "string") showPage(msg.page); break;
     default: break;
   }
@@ -286,7 +495,12 @@ broadcastToFrames({
   type: "init",
   machineStatus: state.machineStatus,
   wifiConnected: state.wifiConnected,
-  lightOn: state.lightOn
+  lightOn: state.lightOn,
+  fanOn: state.fanOn,
+  fanSpeed: state.fanSpeed,
+  fanAuto: state.fanAuto,
+  spindleRuntimeSec: state.spindleRuntimeSec
 });
 
+loadUiSettings();
 startAxesStream();

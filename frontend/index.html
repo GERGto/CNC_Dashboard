@@ -23,14 +23,19 @@
       </div>
 
       <div class="status-right">
-        <!-- WiFi -->
-        <button class="icon-btn" id="wifiBtn" type="button" aria-label="WLAN Status">
+        <!-- WiFi (nur Statusanzeige) -->
+        <div class="icon-btn icon-btn--status" id="wifiBtn" role="img" aria-label="WLAN Status">
           <img class="icon" id="wifiImg" src="assets/svg/wifi-on.svg" alt="" aria-hidden="true">
-        </button>
+        </div>
 
         <!-- Licht -->
         <button class="icon-btn" id="lightBtn" type="button" aria-label="Maschinenlicht">
           <img class="icon" id="lightImg" src="assets/svg/bulb-on.svg" alt="" aria-hidden="true">
+        </button>
+
+        <!-- Lüfter -->
+        <button class="icon-btn" id="fanBtn" type="button" aria-label="Lüfter an">
+          <img class="icon" id="fanImg" src="assets/svg/fan-on.svg" alt="" aria-hidden="true">
         </button>
 
         <!-- Herunterfahren -->
@@ -49,11 +54,6 @@
       <button class="navbtn active" data-page="home" type="button">
         <img class="navicon" src="assets/svg/nav-home.svg" alt="" aria-hidden="true">
         Dashboard
-      </button>
-
-      <button class="navbtn" data-page="errors" type="button">
-        <img class="navicon" src="assets/svg/nav-error.svg" alt="" aria-hidden="true">
-        Fehler
       </button>
 
       <button class="navbtn" data-page="maintenance" type="button">
@@ -91,6 +91,25 @@
         </div>
         <div class="modal__actions">
           <button class="btn" id="lightClose" type="button">Fertig</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="fanModal" role="dialog" aria-modal="true" aria-labelledby="fanTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel" role="document">
+        <h2 class="modal__title" id="fanTitle">Lüfter</h2>
+        <p class="modal__text">Lüftergeschwindigkeit einstellen</p>
+        <div class="slider">
+          <input class="slider__input" id="fanSlider" type="range" min="0" max="100" value="40" />
+          <div class="slider__value" id="fanValue">40%</div>
+        </div>
+        <label class="switch-row" for="fanAuto">
+          <span>Automatisches Ein/Aus</span>
+          <input class="switch-row__check" id="fanAuto" type="checkbox" />
+        </label>
+        <div class="modal__actions">
+          <button class="btn" id="fanClose" type="button">Fertig</button>
         </div>
       </div>
     </div>

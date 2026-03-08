@@ -13,9 +13,9 @@ and streaming axis/spindle load values. For development it serves mock values.
   - `event: axes` with `{ timestamp, axes: { spindle,x,y,z } }` every ~250ms
   - Optional query: `?intervalMs=250`
 - GET `/api/settings`
-  - `{ graphWindowSec }`
+  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, spindleRuntimeSec }`
 - POST `/api/settings`
-  - `{ graphWindowSec }`
+  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, spindleRuntimeSec }`
 - POST `/api/shutdown`
   - `{ ok: true, message: "Shutdown scheduled (mock)" }`
 
