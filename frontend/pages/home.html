@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Home</title>
+  <link rel="stylesheet" href="../assets/ui-common.css" />
   <link rel="stylesheet" href="../assets/app.css" />
   <link rel="stylesheet" href="home.css" />
 </head>
@@ -82,21 +83,6 @@
     </section>
   </main>
 
-  <div class="modal" id="graphModal" role="dialog" aria-modal="true" aria-labelledby="graphTitle" aria-hidden="true">
-    <div class="modal__backdrop" data-close="true"></div>
-    <div class="modal__panel" role="document">
-      <h2 class="modal__title" id="graphTitle">Graph Einstellungen</h2>
-      <p class="modal__text">Zeitfenster (Sekunden)</p>
-      <div class="slider">
-        <input class="slider__input" id="graphWindowSlider" type="range" min="10" max="120" step="5" value="60" />
-        <div class="slider__value" id="graphWindowValue">60s</div>
-      </div>
-      <div class="modal__actions">
-        <button class="btn" id="graphClose" type="button">Fertig</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     const API_BASE = "http://localhost:8080";
     const axisKeys = ["spindle", "x", "y", "z"];
@@ -140,11 +126,7 @@
     let lastHistoryTs = 0;
     let graphPressTimer = null;
     let settingsSaveTimer = null;
-
-    const graphModal = document.getElementById("graphModal");
-    const graphClose = document.getElementById("graphClose");
-    const graphWindowSlider = document.getElementById("graphWindowSlider");
-    const graphWindowValue = document.getElementById("graphWindowValue");
+    let axisSaveTimer = null;
     const axisLabelLeft = document.getElementById("axisLabelLeft");
     const axisLabelMid = document.getElementById("axisLabelMid");
     const axisLabelRight = document.getElementById("axisLabelRight");
@@ -201,8 +183,6 @@
     function updateGraphWindow(seconds){
       const s = Math.max(10, Math.min(120, Number(seconds) || 60));
       HISTORY_WINDOW_MS = s * 1000;
-      graphWindowSlider.value = String(s);
-      graphWindowValue.textContent = `${s}s`;
       updateAxisLabels(HISTORY_WINDOW_MS);
       scheduleSettingsSave(s);
     }
@@ -222,11 +202,32 @@
       fetch(`${API_BASE}/api/settings`)
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
-          if (data && typeof data.graphWindowSec === "number"){
+          if (!data || typeof data !== "object") return;
+          if (typeof data.graphWindowSec === "number"){
             updateGraphWindow(data.graphWindowSec);
+          }
+          if (data.axisVisibility && typeof data.axisVisibility === "object"){
+            axisKeys.forEach((axis) => {
+              if (data.axisVisibility[axis] !== undefined){
+                setAxisEnabled(axis, !!data.axisVisibility[axis], false);
+              }
+            });
           }
         })
         .catch(() => {});
+    }
+
+    function scheduleAxisVisibilitySave(){
+      if (axisSaveTimer) clearTimeout(axisSaveTimer);
+      axisSaveTimer = setTimeout(() => {
+        fetch(`${API_BASE}/api/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            axisVisibility: axisState
+          })
+        }).catch(() => {});
+      }, 300);
     }
 
     function pushHistory(now){
@@ -255,39 +256,29 @@
       requestAnimationFrame(tick);
     }
 
-    function openGraphModal(){
-      graphModal.classList.add("is-open");
-      graphModal.setAttribute("aria-hidden", "false");
-      graphWindowSlider.focus();
-    }
-
-    function closeGraphModal(){
-      graphModal.classList.remove("is-open");
-      graphModal.setAttribute("aria-hidden", "true");
-    }
-
     function clearGraphPress(){
       if (graphPressTimer) clearTimeout(graphPressTimer);
       graphPressTimer = null;
     }
 
-    function setAxisEnabled(axis, enabled){
+    function setAxisEnabled(axis, enabled, persist = true){
       const isOn = !!enabled;
       axisState[axis] = isOn;
 
       if (cardEls[axis]) cardEls[axis].classList.toggle("is-off", !isOn);
       if (lineEls[axis]) lineEls[axis].classList.toggle("is-off", !isOn);
       if (cardEls[axis]) cardEls[axis].setAttribute("aria-pressed", String(isOn));
+      if (persist) scheduleAxisVisibilitySave();
     }
 
     document.querySelectorAll(".axis-card").forEach((card) => {
       const axis = card.dataset.axis;
-      setAxisEnabled(axis, true);
-      card.addEventListener("click", () => setAxisEnabled(axis, !axisState[axis]));
+      setAxisEnabled(axis, true, false);
+      card.addEventListener("click", () => setAxisEnabled(axis, !axisState[axis], true));
       card.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" || ev.key === " "){
           ev.preventDefault();
-          setAxisEnabled(axis, !axisState[axis]);
+          setAxisEnabled(axis, !axisState[axis], true);
         }
       });
     });
@@ -310,34 +301,28 @@
     window.addEventListener("message", (ev) => {
       if (ev.origin !== location.origin) return;
       const msg = ev.data || {};
-      if (msg.type !== "axes") return;
-      const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
-      applyAxesPayload(payload);
+      if (msg.type === "axes"){
+        const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
+        applyAxesPayload(payload);
+      }
+      if (msg.type === "setGraphWindow"){
+        updateGraphWindow(msg.seconds);
+      }
     });
 
     axesChart.addEventListener("pointerdown", (ev) => {
       if (ev.pointerType === "mouse" && ev.button !== 0) return;
       clearGraphPress();
       graphPressTimer = setTimeout(() => {
-        openGraphModal();
+        window.parent.postMessage({
+          type: "openGraphSettingsModal",
+          seconds: Math.round(HISTORY_WINDOW_MS / 1000)
+        }, location.origin);
       }, 600);
     });
     axesChart.addEventListener("pointerup", clearGraphPress);
     axesChart.addEventListener("pointerleave", clearGraphPress);
     axesChart.addEventListener("pointercancel", clearGraphPress);
-
-    graphClose.addEventListener("click", closeGraphModal);
-    graphModal.addEventListener("click", (ev) => {
-      if (ev.target && ev.target.dataset && ev.target.dataset.close){
-        closeGraphModal();
-      }
-    });
-    graphWindowSlider.addEventListener("input", (ev) => updateGraphWindow(ev.target.value));
-    window.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && graphModal.classList.contains("is-open")){
-        closeGraphModal();
-      }
-    });
   </script>
 </body>
 </html>

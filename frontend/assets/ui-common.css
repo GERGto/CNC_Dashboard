@@ -1,0 +1,262 @@
+:root{
+  --bg: #fff;
+  --fg: #000;
+  --line: #000;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --btn-radius: 2px;
+}
+
+.modal{
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal.is-open{
+  display: flex;
+}
+
+.modal__backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.modal__panel{
+  position: relative;
+  width: min(520px, 90vw);
+  background: #fff;
+  color: #000;
+  border: 2px solid var(--line);
+  border-radius: var(--btn-radius);
+  padding: 22px 20px;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.modal__title{
+  margin: 0 0 8px 0;
+  font-size: 20px;
+}
+
+.modal__text{
+  margin: 0 0 16px 0;
+  font-size: 16px;
+}
+
+.modal__actions{
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.slider{
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 14px 0;
+}
+
+.slider__input{
+  width: 100%;
+  height: 12px;
+  appearance: none;
+  background: #000;
+  border: 2px solid var(--line);
+  border-radius: var(--btn-radius);
+}
+
+.slider__input::-webkit-slider-thumb{
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: var(--btn-radius);
+}
+
+.slider__input::-moz-range-thumb{
+  width: 26px;
+  height: 26px;
+  background: #fff;
+  border: 2px solid #000;
+  border-radius: var(--btn-radius);
+}
+
+.slider__value{
+  font-weight: 700;
+  font-size: 18px;
+  text-align: right;
+}
+
+.switch-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.switch-row__check{
+  width: 24px;
+  height: 24px;
+  accent-color: #000;
+}
+
+.btn{
+  border: 2px solid var(--line);
+  border-radius: var(--btn-radius);
+  background: #fff;
+  color: #000;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.btn:active{
+  transform: translateY(1px);
+}
+
+.btn--danger{
+  background: #000;
+  color: #fff;
+}
+
+.modal__panel--maintenance{
+  width: min(760px, 94vw);
+  height: 90vh;
+  height: 90dvh;
+  max-height: 90vh;
+  max-height: 90dvh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px;
+}
+
+.modal__title--maintenance{
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.maintenance-tabs{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.maintenance-tab{
+  border: 2px solid var(--line);
+  border-radius: var(--btn-radius);
+  background: #fff;
+  color: #000;
+  font-size: 16px;
+  font-weight: 700;
+  padding: 8px 10px;
+}
+
+.maintenance-tab.is-active{
+  background: #000;
+  color: #fff;
+}
+
+.maintenance-panels{
+  min-height: 0;
+  border: 2px solid var(--line);
+  border-radius: var(--btn-radius);
+  padding: 10px;
+  overflow: hidden;
+}
+
+.maintenance-panel{
+  display: none;
+  height: 100%;
+  min-height: 0;
+}
+
+.maintenance-panel.is-active{
+  display: block;
+}
+
+.detail-list{
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.detail-row{
+  display: grid;
+  grid-template-columns: minmax(140px, 190px) 1fr;
+  gap: 10px;
+  font-size: 16px;
+}
+
+.detail-label{
+  color: #666;
+  font-weight: 700;
+}
+
+.detail-value{
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.detail-value.is-due{
+  color: #9d1111;
+}
+
+.modal__actions--maintenance{
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.maintenance-btn{
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.maintenance-guide{
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 100%;
+}
+
+.maintenance-guide__meta{
+  font-weight: 700;
+  color: #555;
+  font-size: 15px;
+}
+
+.maintenance-guide__text{
+  margin: 0;
+  font-size: clamp(18px, 3vw, 28px);
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+.maintenance-guide__image{
+  display: block;
+  width: min(460px, 100%);
+  max-height: min(230px, 30vh);
+  object-fit: contain;
+  background: #fff;
+  margin-top: 2px;
+}
+
+.maintenance-guide-empty{
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-size: 20px;
+  font-weight: 600;
+  color: #555;
+  text-align: center;
+}

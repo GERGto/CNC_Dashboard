@@ -1,0 +1,60 @@
+{
+  "maintenanceTasks": [
+    {
+      "id": "axes-grease",
+      "title": "Achsen Fetten",
+      "intervalType": "runtimeHours",
+      "intervalValue": 8,
+      "effortMin": 5,
+      "description": "Fettpunkte der X/Y/Z-Achsen abschmieren.",
+      "steps": [
+        {
+          "instruction": "Schmierpresse befüllen und auf die Schmiernippel der Achsen ansetzen.",
+          "image": "assets/images/presse.png",
+          "imageAlt": "Schmierpresse für die Achsenschmierung"
+        },
+        {
+          "instruction": "Je Schmierpunkt 1 bis 2 Hübe ausführen und auf gleichmäßigen Fettfluss achten."
+        },
+        {
+          "instruction": "Überschüssiges Fett entfernen und Schmierstellen auf Dichtheit prüfen."
+        }
+      ],
+      "lastCompletedAt": null,
+      "spindleRuntimeSecAtCompletion": 0
+    },
+    {
+      "id": "coolant-check",
+      "title": "Kühlmittelstand prüfen",
+      "intervalType": "calendarMonths",
+      "intervalValue": 1,
+      "effortMin": 3,
+      "description": "Kühlmittelstand kontrollieren und bei Bedarf nachfüllen.",
+      "steps": [],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
+      "spindleRuntimeSecAtCompletion": 0
+    },
+    {
+      "id": "emergency-stop-test",
+      "title": "Not-Aus prüfen",
+      "intervalType": "calendarMonths",
+      "intervalValue": 3,
+      "effortMin": 10,
+      "description": "Funktion aller Not-Aus-Schalter prüfen.",
+      "steps": [],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
+      "spindleRuntimeSecAtCompletion": 0
+    },
+    {
+      "id": "lubrication-lines-check",
+      "title": "Schmierleitungen prüfen",
+      "intervalType": "calendarMonths",
+      "intervalValue": 6,
+      "effortMin": 8,
+      "description": "Sichtprüfung der Schmierleitungen auf Undichtigkeiten.",
+      "steps": [],
+      "lastCompletedAt": "2026-03-08T00:00:00Z",
+      "spindleRuntimeSecAtCompletion": 0
+    }
+  ]
+}

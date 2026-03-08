@@ -57,12 +57,43 @@ const fanClose = document.getElementById("fanClose");
 const fanSlider = document.getElementById("fanSlider");
 const fanValue = document.getElementById("fanValue");
 const fanAutoInput = document.getElementById("fanAuto");
+const graphModal = document.getElementById("graphModal");
+const graphClose = document.getElementById("graphClose");
+const graphWindowSlider = document.getElementById("graphWindowSlider");
+const graphWindowValue = document.getElementById("graphWindowValue");
+const maintenanceTaskModal = document.getElementById("maintenanceTaskModal");
+const maintenanceTaskTitle = document.getElementById("maintenanceTaskTitle");
+const maintenanceDetailInterval = document.getElementById("maintenanceDetailInterval");
+const maintenanceDetailEffort = document.getElementById("maintenanceDetailEffort");
+const maintenanceDetailStatus = document.getElementById("maintenanceDetailStatus");
+const maintenanceDetailLastDone = document.getElementById("maintenanceDetailLastDone");
+const maintenanceDetailSinceDone = document.getElementById("maintenanceDetailSinceDone");
+const maintenanceDetailDescription = document.getElementById("maintenanceDetailDescription");
+const maintenanceDetailGuideInfo = document.getElementById("maintenanceDetailGuideInfo");
+const maintenanceTabOverview = document.getElementById("maintenanceTabOverview");
+const maintenanceTabGuide = document.getElementById("maintenanceTabGuide");
+const maintenancePanelOverview = document.getElementById("maintenancePanelOverview");
+const maintenancePanelGuide = document.getElementById("maintenancePanelGuide");
+const maintenanceGuideContent = document.getElementById("maintenanceGuideContent");
+const maintenanceGuideEmpty = document.getElementById("maintenanceGuideEmpty");
+const maintenanceGuideStepMeta = document.getElementById("maintenanceGuideStepMeta");
+const maintenanceGuideStepText = document.getElementById("maintenanceGuideStepText");
+const maintenanceGuideStepImage = document.getElementById("maintenanceGuideStepImage");
+const maintenanceTaskClose = document.getElementById("maintenanceTaskClose");
+const maintenanceGuidePrev = document.getElementById("maintenanceGuidePrev");
+const maintenanceGuideNext = document.getElementById("maintenanceGuideNext");
+const maintenanceTaskDone = document.getElementById("maintenanceTaskDone");
 
 const frames = new Map();
 let uiSettingsSaveTimer = null;
 let runtimeSaveTimer = null;
 let spindleRuntimeRawSec = 0;
 let lastAxesTimestampMs = null;
+let graphWindowSec = 60;
+let maintenanceModalTaskId = null;
+let maintenanceModalTab = "overview";
+let maintenanceModalSteps = [];
+let maintenanceModalStepIndex = 0;
 
 // -----------------------------
 // Uhr
@@ -170,6 +201,165 @@ function openFanModal(){
   fanSlider.focus();
 }
 
+function updateGraphWindowModal(seconds, emitToHome = false){
+  const s = Math.max(10, Math.min(120, Number(seconds) || 60));
+  graphWindowSec = s;
+  graphWindowSlider.value = String(s);
+  graphWindowValue.textContent = `${s}s`;
+  if (emitToHome){
+    postToFrame("home", { type: "setGraphWindow", seconds: s });
+  }
+}
+
+function openGraphModal(seconds){
+  updateGraphWindowModal(seconds ?? graphWindowSec, false);
+  graphModal.classList.add("is-open");
+  graphModal.setAttribute("aria-hidden", "false");
+  graphWindowSlider.focus();
+}
+
+function closeGraphModal(){
+  graphModal.classList.remove("is-open");
+  graphModal.setAttribute("aria-hidden", "true");
+}
+
+function normalizeMaintenanceSteps(rawSteps){
+  if (!Array.isArray(rawSteps)){
+    return [];
+  }
+  const steps = [];
+  for (const step of rawSteps){
+    if (!step || typeof step !== "object") continue;
+    const instruction = String(step.instruction || step.text || step.title || "").trim();
+    const image = String(step.image || "").trim();
+    const imageAlt = String(step.imageAlt || "Arbeitsschritt").trim();
+    if (!instruction) continue;
+    steps.push({ instruction, image, imageAlt });
+  }
+  return steps;
+}
+
+function renderMaintenanceGuideStep(){
+  const count = maintenanceModalSteps.length;
+  if (count === 0){
+    maintenanceGuideContent.hidden = true;
+    maintenanceGuideEmpty.hidden = false;
+    maintenanceGuidePrev.disabled = true;
+    maintenanceGuideNext.disabled = true;
+    return;
+  }
+
+  maintenanceGuideContent.hidden = false;
+  maintenanceGuideEmpty.hidden = true;
+
+  if (maintenanceModalStepIndex < 0){
+    maintenanceModalStepIndex = 0;
+  }
+  if (maintenanceModalStepIndex > count - 1){
+    maintenanceModalStepIndex = count - 1;
+  }
+
+  const step = maintenanceModalSteps[maintenanceModalStepIndex];
+  maintenanceGuideStepMeta.textContent = `Schritt ${maintenanceModalStepIndex + 1} / ${count}`;
+  maintenanceGuideStepText.textContent = step.instruction || "-";
+
+  if (step.image){
+    maintenanceGuideStepImage.src = step.image;
+    maintenanceGuideStepImage.alt = step.imageAlt || "Arbeitsschritt";
+    maintenanceGuideStepImage.hidden = false;
+  } else {
+    maintenanceGuideStepImage.src = "";
+    maintenanceGuideStepImage.alt = "";
+    maintenanceGuideStepImage.hidden = true;
+  }
+
+  maintenanceGuidePrev.disabled = maintenanceModalStepIndex <= 0;
+  maintenanceGuideNext.disabled = maintenanceModalStepIndex >= (count - 1);
+}
+
+function setMaintenanceTab(tab){
+  maintenanceModalTab = (tab === "guide") ? "guide" : "overview";
+  const isGuide = maintenanceModalTab === "guide";
+
+  maintenanceTabOverview.classList.toggle("is-active", !isGuide);
+  maintenanceTabOverview.setAttribute("aria-selected", isGuide ? "false" : "true");
+  maintenanceTabOverview.setAttribute("tabindex", isGuide ? "-1" : "0");
+
+  maintenanceTabGuide.classList.toggle("is-active", isGuide);
+  maintenanceTabGuide.setAttribute("aria-selected", isGuide ? "true" : "false");
+  maintenanceTabGuide.setAttribute("tabindex", isGuide ? "0" : "-1");
+
+  maintenancePanelOverview.classList.toggle("is-active", !isGuide);
+  maintenancePanelOverview.setAttribute("aria-hidden", isGuide ? "true" : "false");
+
+  maintenancePanelGuide.classList.toggle("is-active", isGuide);
+  maintenancePanelGuide.setAttribute("aria-hidden", isGuide ? "false" : "true");
+
+  maintenanceGuidePrev.hidden = !isGuide;
+  maintenanceGuideNext.hidden = !isGuide;
+
+  if (isGuide){
+    renderMaintenanceGuideStep();
+    if (!maintenanceGuideNext.disabled){
+      maintenanceGuideNext.focus();
+    } else if (!maintenanceGuidePrev.disabled){
+      maintenanceGuidePrev.focus();
+    } else {
+      maintenanceTaskDone.focus();
+    }
+    return;
+  }
+  maintenanceTaskDone.focus();
+}
+
+function openMaintenanceTaskModal(payload){
+  const data = (payload && typeof payload === "object") ? payload : {};
+  maintenanceModalTaskId = data.taskId ? String(data.taskId) : null;
+  maintenanceTaskTitle.textContent = String(data.title || "Wartungsaufgabe");
+  maintenanceDetailInterval.textContent = String(data.intervalText || "-");
+  maintenanceDetailEffort.textContent = String(data.effortText || "-");
+  maintenanceDetailStatus.textContent = String(data.statusText || "-");
+  maintenanceDetailStatus.classList.toggle("is-due", !!data.due);
+  maintenanceDetailLastDone.textContent = String(data.lastDoneText || "-");
+  maintenanceDetailSinceDone.textContent = String(data.sinceDoneText || "-");
+  maintenanceDetailDescription.textContent = String(data.description || "-");
+  maintenanceModalSteps = normalizeMaintenanceSteps(data.steps);
+  maintenanceModalStepIndex = 0;
+  maintenanceDetailGuideInfo.textContent = maintenanceModalSteps.length > 0
+    ? `${maintenanceModalSteps.length} Schritte`
+    : "Keine Anleitung hinterlegt";
+
+  maintenanceTaskDone.disabled = !maintenanceModalTaskId;
+  maintenanceTaskModal.classList.add("is-open");
+  maintenanceTaskModal.setAttribute("aria-hidden", "false");
+  setMaintenanceTab("overview");
+}
+
+function closeMaintenanceTaskModal(){
+  maintenanceModalTaskId = null;
+  maintenanceModalSteps = [];
+  maintenanceModalStepIndex = 0;
+  maintenanceModalTab = "overview";
+  maintenanceTaskModal.classList.remove("is-open");
+  maintenanceTaskModal.setAttribute("aria-hidden", "true");
+}
+
+function completeMaintenanceTask(){
+  if (!maintenanceModalTaskId) return;
+  maintenanceTaskDone.disabled = true;
+  fetch(`${API_BASE}/api/maintenance/tasks/${encodeURIComponent(maintenanceModalTaskId)}/complete`, { method: "POST" })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || !data.task) return;
+      broadcastToFrames({ type: "maintenanceTaskCompleted", task: data.task });
+      closeMaintenanceTaskModal();
+    })
+    .catch(() => {})
+    .finally(() => {
+      maintenanceTaskDone.disabled = false;
+    });
+}
+
 function queueUiSettingsSave(){
   if (uiSettingsSaveTimer) clearTimeout(uiSettingsSaveTimer);
   uiSettingsSaveTimer = setTimeout(() => {
@@ -268,6 +458,9 @@ function loadUiSettings(){
       }
       if (typeof data.spindleRuntimeSec === "number"){
         setSpindleRuntimeSec(data.spindleRuntimeSec);
+      }
+      if (typeof data.graphWindowSec === "number"){
+        updateGraphWindowModal(data.graphWindowSec, false);
       }
     })
     .catch(() => {});
@@ -373,6 +566,32 @@ fanModal.addEventListener("click", (ev) => {
 });
 fanSlider.addEventListener("input", (ev) => updateFanSpeed(ev.target.value));
 fanAutoInput.addEventListener("change", (ev) => setFanAuto(ev.target.checked, true));
+graphClose.addEventListener("click", closeGraphModal);
+graphModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    closeGraphModal();
+  }
+});
+graphWindowSlider.addEventListener("input", (ev) => updateGraphWindowModal(ev.target.value, true));
+maintenanceTaskClose.addEventListener("click", closeMaintenanceTaskModal);
+maintenanceTabOverview.addEventListener("click", () => setMaintenanceTab("overview"));
+maintenanceTabGuide.addEventListener("click", () => setMaintenanceTab("guide"));
+maintenanceGuidePrev.addEventListener("click", () => {
+  if (maintenanceModalStepIndex <= 0) return;
+  maintenanceModalStepIndex -= 1;
+  renderMaintenanceGuideStep();
+});
+maintenanceGuideNext.addEventListener("click", () => {
+  if (maintenanceModalStepIndex >= maintenanceModalSteps.length - 1) return;
+  maintenanceModalStepIndex += 1;
+  renderMaintenanceGuideStep();
+});
+maintenanceTaskDone.addEventListener("click", completeMaintenanceTask);
+maintenanceTaskModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    closeMaintenanceTaskModal();
+  }
+});
 window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && shutdownModal.classList.contains("is-open")){
     closeShutdownModal();
@@ -382,6 +601,20 @@ window.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape" && fanModal.classList.contains("is-open")){
     closeFanModal();
+  }
+  if (ev.key === "Escape" && graphModal.classList.contains("is-open")){
+    closeGraphModal();
+  }
+  if (ev.key === "Escape" && maintenanceTaskModal.classList.contains("is-open")){
+    closeMaintenanceTaskModal();
+  }
+  if (maintenanceTaskModal.classList.contains("is-open") && maintenanceModalTab === "guide"){
+    if (ev.key === "ArrowLeft" && !maintenanceGuidePrev.disabled){
+      maintenanceGuidePrev.click();
+    }
+    if (ev.key === "ArrowRight" && !maintenanceGuideNext.disabled){
+      maintenanceGuideNext.click();
+    }
   }
 });
 
@@ -485,6 +718,8 @@ window.addEventListener("message", (ev) => {
     case "setFanSpeed":updateFanSpeed(msg.value); break;
     case "setFanAuto": setFanAuto(!!msg.enabled); break;
     case "setSpindleRuntime": setSpindleRuntimeSec(msg.seconds, true); break;
+    case "openGraphSettingsModal": openGraphModal(msg.seconds); break;
+    case "openMaintenanceTaskModal": openMaintenanceTaskModal(msg); break;
     case "navigate":   if (typeof msg.page === "string") showPage(msg.page); break;
     default: break;
   }

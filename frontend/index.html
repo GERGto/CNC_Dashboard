@@ -7,6 +7,7 @@
   <title>CNC Dashboard</title>
 
   <link rel="stylesheet" href="assets/app.css" />
+  <link rel="stylesheet" href="assets/ui-common.css" />
   <script defer src="assets/app.js"></script>
 </head>
 
@@ -110,6 +111,102 @@
         </label>
         <div class="modal__actions">
           <button class="btn" id="fanClose" type="button">Fertig</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="graphModal" role="dialog" aria-modal="true" aria-labelledby="graphTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel" role="document">
+        <h2 class="modal__title" id="graphTitle">Graph Einstellungen</h2>
+        <p class="modal__text">Zeitfenster (Sekunden)</p>
+        <div class="slider">
+          <input class="slider__input" id="graphWindowSlider" type="range" min="10" max="120" step="5" value="60" />
+          <div class="slider__value" id="graphWindowValue">60s</div>
+        </div>
+        <div class="modal__actions">
+          <button class="btn" id="graphClose" type="button">Fertig</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="maintenanceTaskModal" role="dialog" aria-modal="true" aria-labelledby="maintenanceTaskTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel modal__panel--maintenance" role="document">
+        <h2 class="modal__title modal__title--maintenance" id="maintenanceTaskTitle">Wartungsaufgabe</h2>
+        <div class="maintenance-tabs" role="tablist" aria-label="Wartungsdetails">
+          <button
+            class="maintenance-tab is-active"
+            id="maintenanceTabOverview"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="maintenancePanelOverview"
+          >
+            Übersicht
+          </button>
+          <button
+            class="maintenance-tab"
+            id="maintenanceTabGuide"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="maintenancePanelGuide"
+            tabindex="-1"
+          >
+            Anleitung
+          </button>
+        </div>
+
+        <div class="maintenance-panels">
+          <section class="maintenance-panel is-active" id="maintenancePanelOverview" role="tabpanel" aria-labelledby="maintenanceTabOverview">
+            <div class="detail-list">
+              <div class="detail-row">
+                <div class="detail-label">Intervall</div>
+                <div class="detail-value" id="maintenanceDetailInterval"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Aufwand</div>
+                <div class="detail-value" id="maintenanceDetailEffort"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Status</div>
+                <div class="detail-value" id="maintenanceDetailStatus"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Zuletzt erledigt</div>
+                <div class="detail-value" id="maintenanceDetailLastDone"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Seit letzter Erledigung</div>
+                <div class="detail-value" id="maintenanceDetailSinceDone"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Hinweis</div>
+                <div class="detail-value" id="maintenanceDetailDescription"></div>
+              </div>
+              <div class="detail-row">
+                <div class="detail-label">Anleitung</div>
+                <div class="detail-value" id="maintenanceDetailGuideInfo"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="maintenance-panel" id="maintenancePanelGuide" role="tabpanel" aria-labelledby="maintenanceTabGuide" aria-hidden="true">
+            <div class="maintenance-guide" id="maintenanceGuideContent">
+              <div class="maintenance-guide__meta" id="maintenanceGuideStepMeta"></div>
+              <p class="maintenance-guide__text" id="maintenanceGuideStepText"></p>
+              <img class="maintenance-guide__image" id="maintenanceGuideStepImage" src="" alt="" hidden />
+            </div>
+            <div class="maintenance-guide-empty" id="maintenanceGuideEmpty" hidden>Keine Anleitung hinterlegt.</div>
+          </section>
+        </div>
+
+        <div class="modal__actions modal__actions--maintenance">
+          <button class="btn maintenance-btn" id="maintenanceTaskClose" type="button">Schließen</button>
+          <button class="btn maintenance-btn" id="maintenanceGuidePrev" type="button" hidden>Zurück</button>
+          <button class="btn maintenance-btn" id="maintenanceGuideNext" type="button" hidden>Weiter</button>
+          <button class="btn maintenance-btn" id="maintenanceTaskDone" type="button">Erledigt</button>
         </div>
       </div>
     </div>
