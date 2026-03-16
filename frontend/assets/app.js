@@ -21,6 +21,7 @@ const WIFI_EASTEREGG_DURATION_MS = 12000;
 const state = {
   activePage: "home",
   machineStatus: "IDLE", // IDLE | RUNNING | ERROR
+  maintenanceDue: false,
   wifiConnected: true,
   wifiSsid: "",
   lightOn: true,
@@ -183,15 +184,35 @@ setInterval(updateClock, 1000);
 function setMachineStatus(newStatus){
   const s = String(newStatus || "").toUpperCase();
   state.machineStatus = s || "IDLE";
-  statusEl.textContent = state.machineStatus;
+  applyStatusbarState();
+}
 
-  statusEl.style.letterSpacing = (state.machineStatus === "ERROR") ? "0.8px" : "0.2px";
+function applyStatusbarState(){
+  const isError = state.machineStatus === "ERROR";
+  const isMaintenance = !isError && state.maintenanceDue;
+  const isRunning = !isError && !isMaintenance && state.machineStatus === "RUNNING";
+
+  if (isError){
+    statusEl.textContent = "ERROR";
+    statusEl.style.letterSpacing = "0.8px";
+  } else if (isMaintenance){
+    statusEl.textContent = "WARTUNG FÄLLIG";
+    statusEl.style.letterSpacing = "0.4px";
+  } else {
+    statusEl.textContent = state.machineStatus;
+    statusEl.style.letterSpacing = "0.2px";
+  }
 
   const statusBar = document.querySelector(".statusbar");
-  if (statusBar){
-    statusBar.classList.toggle("is-running", state.machineStatus === "RUNNING");
-    statusBar.classList.toggle("is-error", state.machineStatus === "ERROR");
-  }
+  if (!statusBar) return;
+  statusBar.classList.toggle("is-running", isRunning);
+  statusBar.classList.toggle("is-error", isError);
+  statusBar.classList.toggle("is-maintenance", isMaintenance);
+}
+
+function setMaintenanceDue(isDue){
+  state.maintenanceDue = !!isDue;
+  applyStatusbarState();
 }
 
 function setWifiConnected(isConnected, ssid = null){
@@ -865,9 +886,11 @@ function isMaintenanceTaskDue(task){
 }
 
 function updateMaintenanceDueIndicator(){
-  if (!maintenanceDueDot) return;
   const hasDueTask = maintenanceTasksCache.some((task) => isMaintenanceTaskDue(task));
-  maintenanceDueDot.hidden = !hasDueTask;
+  if (maintenanceDueDot){
+    maintenanceDueDot.hidden = !hasDueTask;
+  }
+  setMaintenanceDue(hasDueTask);
 }
 
 function setMaintenanceTasks(tasks){

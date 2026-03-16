@@ -84,6 +84,11 @@ body{
   color: #fff;
 }
 
+.statusbar.is-maintenance{
+  background: #e58a00;
+  color: #000;
+}
+
 .statusbar.is-running .icon-btn,
 .statusbar.is-error .icon-btn{
   background: transparent;
@@ -91,14 +96,28 @@ body{
   color: #fff;
 }
 
+.statusbar.is-maintenance .icon-btn{
+  background: transparent;
+  border-color: #000;
+  color: #000;
+}
+
 .statusbar.is-running .icon,
 .statusbar.is-error .icon{
   filter: invert(1);
 }
 
+.statusbar.is-maintenance .icon{
+  filter: none;
+}
+
 .statusbar.is-running .pill,
 .statusbar.is-error .pill{
   color: #fff;
+}
+
+.statusbar.is-maintenance .pill{
+  color: #000;
 }
 
 .icon-btn{
