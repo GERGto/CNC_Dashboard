@@ -1334,7 +1334,6 @@ wifiScanBtn.addEventListener("click", () => loadWifiNetworks(wifiSsidSelect.valu
 wifiSaveBtn.addEventListener("click", saveWifiConfig);
 wifiConnectBtn.addEventListener("click", connectWifi);
 wifiDisconnectBtn.addEventListener("click", disconnectWifi);
-wifiEastereggOverlay.addEventListener("click", hideWifiEasteregg);
 keyboardCancelBtn.addEventListener("click", () => finishKeyboardModal(false));
 keyboardOkBtn.addEventListener("click", () => finishKeyboardModal(true));
 keyboardModal.addEventListener("click", (ev) => {
@@ -1374,11 +1373,6 @@ maintenanceTaskModal.addEventListener("click", (ev) => {
   }
 });
 window.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && !wifiEastereggOverlay.hidden){
-    hideWifiEasteregg();
-    return;
-  }
-
   if (isKeyboardOpen()){
     if (ev.key === "Escape"){
       finishKeyboardModal(false);
