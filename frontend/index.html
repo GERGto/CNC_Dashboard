@@ -161,6 +161,19 @@
       </div>
     </div>
 
+    <div class="modal modal--keyboard" id="keyboardModal" role="dialog" aria-modal="true" aria-labelledby="keyboardTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel modal__panel--keyboard" role="document">
+        <h2 class="modal__title" id="keyboardTitle">Eingabe</h2>
+        <input class="keyboard__display" id="keyboardDisplayInput" type="text" readonly />
+        <div class="keyboard__keys" id="keyboardKeys" aria-label="Bildschirmtastatur"></div>
+        <div class="modal__actions">
+          <button class="btn" id="keyboardCancelBtn" type="button">Abbrechen</button>
+          <button class="btn btn--danger" id="keyboardOkBtn" type="button">Übernehmen</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal" id="graphModal" role="dialog" aria-modal="true" aria-labelledby="graphTitle" aria-hidden="true">
       <div class="modal__backdrop" data-close="true"></div>
       <div class="modal__panel" role="document">

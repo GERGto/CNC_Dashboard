@@ -76,6 +76,12 @@ const wifiFeedbackSpinner = document.getElementById("wifiFeedbackSpinner");
 const wifiFeedbackSuccess = document.getElementById("wifiFeedbackSuccess");
 const wifiFeedbackError = document.getElementById("wifiFeedbackError");
 const wifiConnectFeedbackText = document.getElementById("wifiConnectFeedbackText");
+const keyboardModal = document.getElementById("keyboardModal");
+const keyboardTitle = document.getElementById("keyboardTitle");
+const keyboardDisplayInput = document.getElementById("keyboardDisplayInput");
+const keyboardKeys = document.getElementById("keyboardKeys");
+const keyboardCancelBtn = document.getElementById("keyboardCancelBtn");
+const keyboardOkBtn = document.getElementById("keyboardOkBtn");
 const graphModal = document.getElementById("graphModal");
 const graphClose = document.getElementById("graphClose");
 const graphWindowSlider = document.getElementById("graphWindowSlider");
@@ -116,6 +122,17 @@ let maintenanceModalSteps = [];
 let maintenanceModalStepIndex = 0;
 let maintenanceTasksCache = [];
 let wifiConnectInFlight = false;
+let keyboardValue = "";
+let keyboardShift = false;
+let keyboardContext = null;
+
+const KEYBOARD_ROWS = [
+  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "_", "backspace"],
+  ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p", "ü", "+", "@"],
+  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä", "#", "?"],
+  ["shift", "y", "x", "c", "v", "b", "n", "m", ".", ",", ":", "/", "clear"],
+  ["space"]
+];
 
 // -----------------------------
 // Uhr
@@ -248,6 +265,194 @@ function closeGraphModal(){
   graphModal.setAttribute("aria-hidden", "true");
 }
 
+function isKeyboardOpen(){
+  return keyboardModal.classList.contains("is-open");
+}
+
+function isKeyboardLetter(key){
+  return /^[a-zäöü]$/i.test(String(key || ""));
+}
+
+function keyboardKeyLabel(key){
+  switch (key){
+    case "backspace": return "⌫";
+    case "shift": return "Umschalt";
+    case "clear": return "Löschen";
+    case "space": return "Leerzeichen";
+    default: {
+      if (keyboardShift && isKeyboardLetter(key)){
+        return String(key).toLocaleUpperCase("de-DE");
+      }
+      return String(key);
+    }
+  }
+}
+
+function renderKeyboardDisplay(){
+  const masked = !!(keyboardContext && keyboardContext.masked);
+  keyboardDisplayInput.value = masked ? "•".repeat(keyboardValue.length) : keyboardValue;
+}
+
+function renderKeyboard(){
+  keyboardKeys.innerHTML = "";
+  for (const row of KEYBOARD_ROWS){
+    const rowEl = document.createElement("div");
+    rowEl.className = "keyboard__row";
+    for (const key of row){
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "keyboard__key";
+      btn.dataset.key = key;
+      if (key === "space"){
+        btn.classList.add("keyboard__key--space");
+      } else if (key === "shift" || key === "backspace" || key === "clear"){
+        btn.classList.add("keyboard__key--wide");
+      }
+      if (key === "shift" && keyboardShift){
+        btn.classList.add("keyboard__key--active");
+      }
+      btn.textContent = keyboardKeyLabel(key);
+      rowEl.appendChild(btn);
+    }
+    keyboardKeys.appendChild(rowEl);
+  }
+}
+
+function closeKeyboardModalImmediate(){
+  keyboardModal.classList.remove("is-open");
+  keyboardModal.setAttribute("aria-hidden", "true");
+  keyboardShift = false;
+  keyboardValue = "";
+  keyboardContext = null;
+}
+
+function finishKeyboardModal(submitted){
+  const ctx = keyboardContext;
+  const value = keyboardValue;
+  closeKeyboardModalImmediate();
+  if (!ctx) return;
+
+  if (submitted){
+    if (typeof ctx.onSubmit === "function"){
+      ctx.onSubmit(value);
+    }
+  } else if (typeof ctx.onCancel === "function"){
+    ctx.onCancel();
+  }
+
+  if (ctx.sourceWindow && typeof ctx.sourceWindow.postMessage === "function"){
+    ctx.sourceWindow.postMessage({
+      type: "keyboardResult",
+      requestId: ctx.requestId ?? null,
+      value,
+      canceled: !submitted,
+    }, ctx.responseOrigin || location.origin);
+  }
+
+  if (ctx.returnFocusEl && typeof ctx.returnFocusEl.focus === "function"){
+    ctx.returnFocusEl.focus();
+  }
+}
+
+function applyKeyboardCharacter(rawKey){
+  let key = String(rawKey || "");
+  if (!key) return;
+
+  if (isKeyboardLetter(key)){
+    key = keyboardShift ? key.toLocaleUpperCase("de-DE") : key.toLocaleLowerCase("de-DE");
+  }
+
+  const rawMaxLength = keyboardContext ? keyboardContext.maxLength : null;
+  const maxLength = (typeof rawMaxLength === "number" && Number.isFinite(rawMaxLength))
+    ? Math.max(1, Math.floor(rawMaxLength))
+    : null;
+  if (maxLength !== null && keyboardValue.length >= maxLength){
+    return;
+  }
+  keyboardValue += key;
+}
+
+function handleKeyboardKey(rawKey){
+  const key = String(rawKey || "");
+  if (!key) return;
+
+  if (key === "shift"){
+    keyboardShift = !keyboardShift;
+    renderKeyboard();
+    return;
+  }
+  if (key === "backspace"){
+    keyboardValue = keyboardValue.slice(0, -1);
+    renderKeyboardDisplay();
+    return;
+  }
+  if (key === "clear"){
+    keyboardValue = "";
+    renderKeyboardDisplay();
+    return;
+  }
+  if (key === "space"){
+    applyKeyboardCharacter(" ");
+    if (keyboardShift){
+      keyboardShift = false;
+      renderKeyboard();
+    }
+    renderKeyboardDisplay();
+    return;
+  }
+
+  applyKeyboardCharacter(key);
+  if (keyboardShift){
+    keyboardShift = false;
+    renderKeyboard();
+  }
+  renderKeyboardDisplay();
+}
+
+function openKeyboardModal(options = {}){
+  if (isKeyboardOpen()){
+    closeKeyboardModalImmediate();
+  }
+
+  const title = typeof options.title === "string" && options.title.trim() ? options.title.trim() : "Eingabe";
+  const placeholder = typeof options.placeholder === "string" ? options.placeholder : "";
+  keyboardContext = {
+    masked: !!options.masked,
+    maxLength: options.maxLength,
+    onSubmit: options.onSubmit,
+    onCancel: options.onCancel,
+    sourceWindow: options.sourceWindow || null,
+    requestId: options.requestId,
+    responseOrigin: options.responseOrigin || location.origin,
+    returnFocusEl: options.returnFocusEl || null,
+  };
+  keyboardTitle.textContent = title;
+  keyboardDisplayInput.placeholder = placeholder;
+  keyboardValue = String(options.value || "");
+  keyboardShift = false;
+  renderKeyboard();
+  renderKeyboardDisplay();
+
+  keyboardModal.classList.add("is-open");
+  keyboardModal.setAttribute("aria-hidden", "false");
+  keyboardOkBtn.focus();
+}
+
+function openWifiPasswordKeyboard(){
+  if (wifiConnectInFlight || wifiPasswordInput.disabled){
+    return;
+  }
+  openKeyboardModal({
+    title: "WLAN-Passwort",
+    placeholder: "Passwort eingeben",
+    value: wifiPasswordInput.value,
+    onSubmit: (value) => {
+      wifiPasswordInput.value = value;
+    },
+    returnFocusEl: wifiPasswordInput,
+  });
+}
+
 function setWifiConfigMessage(message, type = "info"){
   wifiConfigMsg.textContent = String(message || "");
   wifiConfigMsg.classList.toggle("is-error", type === "error");
@@ -268,6 +473,9 @@ function setWifiConfigControlsDisabled(disabled){
   wifiConnectBtn.disabled = isDisabled;
   wifiDisconnectBtn.disabled = isDisabled;
   wifiModalClose.disabled = isDisabled;
+  if (isDisabled && isKeyboardOpen()){
+    closeKeyboardModalImmediate();
+  }
 }
 
 function openWifiConnectFeedbackLoading(loadingText = "WLAN wird verbunden ..."){
@@ -394,6 +602,9 @@ function openWifiConfigModal(){
 function closeWifiConfigModal(force = false){
   if (wifiConnectInFlight && !force){
     return;
+  }
+  if (isKeyboardOpen()){
+    closeKeyboardModalImmediate();
   }
   wifiConfigModal.classList.remove("is-open");
   wifiConfigModal.setAttribute("aria-hidden", "true");
@@ -1004,10 +1215,26 @@ wifiConfigModal.addEventListener("click", (ev) => {
     closeWifiConfigModal();
   }
 });
+wifiPasswordInput.addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
+  openWifiPasswordKeyboard();
+});
 wifiScanBtn.addEventListener("click", () => loadWifiNetworks(wifiSsidSelect.value));
 wifiSaveBtn.addEventListener("click", saveWifiConfig);
 wifiConnectBtn.addEventListener("click", connectWifi);
 wifiDisconnectBtn.addEventListener("click", disconnectWifi);
+keyboardCancelBtn.addEventListener("click", () => finishKeyboardModal(false));
+keyboardOkBtn.addEventListener("click", () => finishKeyboardModal(true));
+keyboardModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    finishKeyboardModal(false);
+  }
+});
+keyboardKeys.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".keyboard__key");
+  if (!btn) return;
+  handleKeyboardKey(btn.dataset.key);
+});
 graphClose.addEventListener("click", closeGraphModal);
 graphModal.addEventListener("click", (ev) => {
   if (ev.target && ev.target.dataset && ev.target.dataset.close){
@@ -1035,6 +1262,31 @@ maintenanceTaskModal.addEventListener("click", (ev) => {
   }
 });
 window.addEventListener("keydown", (ev) => {
+  if (isKeyboardOpen()){
+    if (ev.key === "Escape"){
+      finishKeyboardModal(false);
+      return;
+    }
+    if (ev.key === "Enter"){
+      finishKeyboardModal(true);
+      return;
+    }
+    if (ev.key === "Backspace"){
+      ev.preventDefault();
+      handleKeyboardKey("backspace");
+      return;
+    }
+    if (ev.key === " "){
+      ev.preventDefault();
+      handleKeyboardKey("space");
+      return;
+    }
+    if (ev.key.length === 1){
+      handleKeyboardKey(ev.key);
+      return;
+    }
+  }
+
   if (ev.key === "Escape" && shutdownModal.classList.contains("is-open")){
     closeShutdownModal();
   }
@@ -1169,6 +1421,18 @@ window.addEventListener("message", (ev) => {
       broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
       break;
     case "openWifiConfigModal": openWifiConfigModal(); break;
+    case "openKeyboard":
+      openKeyboardModal({
+        title: typeof msg.title === "string" ? msg.title : "Eingabe",
+        placeholder: typeof msg.placeholder === "string" ? msg.placeholder : "",
+        value: typeof msg.value === "string" ? msg.value : "",
+        masked: !!msg.masked,
+        maxLength: Number.isFinite(Number(msg.maxLength)) ? Math.max(1, Math.floor(Number(msg.maxLength))) : null,
+        sourceWindow: ev.source && typeof ev.source.postMessage === "function" ? ev.source : null,
+        requestId: msg.requestId ?? null,
+        responseOrigin: ev.origin,
+      });
+      break;
     case "setLight":   setLightOn(!!msg.on); break;
     case "toggleLight":toggleLight(); break;
     case "setFan":     setFanOn(!!msg.on); break;
