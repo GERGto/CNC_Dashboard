@@ -52,6 +52,8 @@ const fanImg = document.getElementById("fanImg");
 const shutdownModal = document.getElementById("shutdownModal");
 const shutdownCancel = document.getElementById("shutdownCancel");
 const shutdownConfirm = document.getElementById("shutdownConfirm");
+const startupNoticeModal = document.getElementById("startupNoticeModal");
+const startupNoticeClose = document.getElementById("startupNoticeClose");
 const lightModal = document.getElementById("lightModal");
 const lightClose = document.getElementById("lightClose");
 const lightSlider = document.getElementById("lightSlider");
@@ -1132,6 +1134,17 @@ function closeShutdownModal(){
   shutdownBtn.focus();
 }
 
+function openStartupNoticeModal(){
+  startupNoticeModal.classList.add("is-open");
+  startupNoticeModal.setAttribute("aria-hidden", "false");
+  startupNoticeClose.focus();
+}
+
+function closeStartupNoticeModal(){
+  startupNoticeModal.classList.remove("is-open");
+  startupNoticeModal.setAttribute("aria-hidden", "true");
+}
+
 function confirmShutdown(){
   fetch(`${API_BASE}/api/shutdown`, { method: "POST" }).catch(() => {});
   closeShutdownModal();
@@ -1222,6 +1235,12 @@ shutdownConfirm.addEventListener("click", confirmShutdown);
 shutdownModal.addEventListener("click", (ev) => {
   if (ev.target && ev.target.dataset && ev.target.dataset.close){
     closeShutdownModal();
+  }
+});
+startupNoticeClose.addEventListener("click", closeStartupNoticeModal);
+startupNoticeModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    closeStartupNoticeModal();
   }
 });
 lightClose.addEventListener("click", closeLightModal);
@@ -1320,6 +1339,9 @@ window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && shutdownModal.classList.contains("is-open")){
     closeShutdownModal();
   }
+  if (ev.key === "Escape" && startupNoticeModal.classList.contains("is-open")){
+    closeStartupNoticeModal();
+  }
   if (ev.key === "Escape" && lightModal.classList.contains("is-open")){
     closeLightModal();
   }
@@ -1400,6 +1422,7 @@ document.querySelector(".nav").addEventListener("click", (ev) => {
 
 createFrames();
 showPage(state.activePage);
+openStartupNoticeModal();
 
 // -----------------------------
 // Kommunikation Shell <-> iFrames (optional)
