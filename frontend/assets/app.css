@@ -235,6 +235,27 @@ body{
   display:block;
 }
 
+.easteregg{
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: block;
+  background: transparent;
+}
+
+.easteregg[hidden]{
+  display: none;
+}
+
+.easteregg__gif{
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 0;
+  background: transparent;
+}
+
 .modal__panel.modal__panel--wifi{
   width: min(760px, 94vw);
   height: 90vh;

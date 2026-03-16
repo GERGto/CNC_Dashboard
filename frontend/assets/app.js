@@ -14,6 +14,9 @@ const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
 const WIFI_CONNECT_TIMEOUT_MS = 15000;
 const WIFI_CONNECT_FEEDBACK_MS = 2000;
+const WIFI_EASTEREGG_TAP_TARGET = 5;
+const WIFI_EASTEREGG_WINDOW_MS = 1600;
+const WIFI_EASTEREGG_DURATION_MS = 12000;
 
 const state = {
   activePage: "home",
@@ -49,6 +52,7 @@ const shutdownBtn = document.getElementById("shutdownBtn");
 const wifiImg = document.getElementById("wifiImg");
 const lightImg = document.getElementById("lightImg");
 const fanImg = document.getElementById("fanImg");
+const wifiEastereggOverlay = document.getElementById("wifiEastereggOverlay");
 const shutdownModal = document.getElementById("shutdownModal");
 const shutdownCancel = document.getElementById("shutdownCancel");
 const shutdownConfirm = document.getElementById("shutdownConfirm");
@@ -124,6 +128,8 @@ let maintenanceModalSteps = [];
 let maintenanceModalStepIndex = 0;
 let maintenanceTasksCache = [];
 let wifiConnectInFlight = false;
+let wifiTapTimestamps = [];
+let wifiEastereggTimer = null;
 let keyboardValue = "";
 let keyboardShift = false;
 let keyboardContext = null;
@@ -288,6 +294,37 @@ function openGraphModal(seconds){
 function closeGraphModal(){
   graphModal.classList.remove("is-open");
   graphModal.setAttribute("aria-hidden", "true");
+}
+
+function showWifiEasteregg(){
+  if (wifiEastereggTimer){
+    clearTimeout(wifiEastereggTimer);
+    wifiEastereggTimer = null;
+  }
+  wifiEastereggOverlay.hidden = false;
+  wifiEastereggOverlay.setAttribute("aria-hidden", "false");
+  wifiEastereggTimer = setTimeout(() => {
+    hideWifiEasteregg();
+  }, WIFI_EASTEREGG_DURATION_MS);
+}
+
+function hideWifiEasteregg(){
+  if (wifiEastereggTimer){
+    clearTimeout(wifiEastereggTimer);
+    wifiEastereggTimer = null;
+  }
+  wifiEastereggOverlay.hidden = true;
+  wifiEastereggOverlay.setAttribute("aria-hidden", "true");
+}
+
+function registerWifiRapidTap(){
+  const now = Date.now();
+  wifiTapTimestamps.push(now);
+  wifiTapTimestamps = wifiTapTimestamps.filter((ts) => (now - ts) <= WIFI_EASTEREGG_WINDOW_MS);
+  if (wifiTapTimestamps.length >= WIFI_EASTEREGG_TAP_TARGET){
+    wifiTapTimestamps = [];
+    showWifiEasteregg();
+  }
 }
 
 function isKeyboardOpen(){
@@ -1177,7 +1214,9 @@ wifiBtn.addEventListener("pointercancel", clearWifiPress);
 wifiBtn.addEventListener("click", () => {
   if (wifiLongPress){
     wifiLongPress = false;
+    return;
   }
+  registerWifiRapidTap();
 });
 
 lightBtn.addEventListener("pointerdown", (ev) => {
@@ -1272,6 +1311,7 @@ wifiScanBtn.addEventListener("click", () => loadWifiNetworks(wifiSsidSelect.valu
 wifiSaveBtn.addEventListener("click", saveWifiConfig);
 wifiConnectBtn.addEventListener("click", connectWifi);
 wifiDisconnectBtn.addEventListener("click", disconnectWifi);
+wifiEastereggOverlay.addEventListener("click", hideWifiEasteregg);
 keyboardCancelBtn.addEventListener("click", () => finishKeyboardModal(false));
 keyboardOkBtn.addEventListener("click", () => finishKeyboardModal(true));
 keyboardModal.addEventListener("click", (ev) => {
@@ -1311,6 +1351,11 @@ maintenanceTaskModal.addEventListener("click", (ev) => {
   }
 });
 window.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !wifiEastereggOverlay.hidden){
+    hideWifiEasteregg();
+    return;
+  }
+
   if (isKeyboardOpen()){
     if (ev.key === "Escape"){
       finishKeyboardModal(false);
