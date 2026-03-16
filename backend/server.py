@@ -585,6 +585,9 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     return json_response(self, 400, {"error": "Invalid autoConnect"})
 
+            # Simuliert eine reale Verbindungsdauer für UI-Feedback-Tests.
+            time.sleep(3)
+
             saved = save_settings({
                 "wifiSsid": ssid,
                 "wifiPassword": password,

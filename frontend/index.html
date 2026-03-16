@@ -151,6 +151,16 @@
       </div>
     </div>
 
+    <div class="modal modal--feedback" id="wifiConnectFeedbackModal" role="status" aria-modal="true" aria-labelledby="wifiConnectFeedbackText" aria-hidden="true">
+      <div class="modal__backdrop"></div>
+      <div class="wifi-feedback" role="document">
+        <div class="wifi-feedback__spinner" id="wifiFeedbackSpinner" aria-hidden="true"></div>
+        <div class="wifi-feedback__icon wifi-feedback__icon--ok" id="wifiFeedbackSuccess" hidden aria-hidden="true">✓</div>
+        <div class="wifi-feedback__icon wifi-feedback__icon--error" id="wifiFeedbackError" hidden aria-hidden="true">✕</div>
+        <div class="wifi-feedback__text" id="wifiConnectFeedbackText">WLAN wird verbunden ...</div>
+      </div>
+    </div>
+
     <div class="modal" id="graphModal" role="dialog" aria-modal="true" aria-labelledby="graphTitle" aria-hidden="true">
       <div class="modal__backdrop" data-close="true"></div>
       <div class="modal__panel" role="document">

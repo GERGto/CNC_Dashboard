@@ -337,3 +337,55 @@ body{
 .modal__panel--wifi .modal__actions{
   margin-top: auto;
 }
+
+.modal--feedback{
+  z-index: 80;
+}
+
+.wifi-feedback{
+  position: relative;
+  z-index: 1;
+  width: min(280px, 84vw);
+  border: 2px solid #000;
+  border-radius: 2px;
+  background: #fff;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 18px 16px;
+  box-sizing: border-box;
+}
+
+.wifi-feedback__spinner{
+  width: 50px;
+  height: 50px;
+  border: 4px solid #c4c4c4;
+  border-top-color: #000;
+  border-radius: 50%;
+  animation: wifi-spinner 0.8s linear infinite;
+}
+
+.wifi-feedback__icon{
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.wifi-feedback__icon--ok{
+  color: #0f8f3a;
+}
+
+.wifi-feedback__icon--error{
+  color: #b61e1e;
+}
+
+.wifi-feedback__text{
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+@keyframes wifi-spinner{
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

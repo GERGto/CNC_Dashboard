@@ -12,6 +12,8 @@ const AXES_INTERVAL_MS = 250;
 const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
+const WIFI_CONNECT_TIMEOUT_MS = 15000;
+const WIFI_CONNECT_FEEDBACK_MS = 2000;
 
 const state = {
   activePage: "home",
@@ -69,6 +71,11 @@ const wifiSaveBtn = document.getElementById("wifiSaveBtn");
 const wifiConnectBtn = document.getElementById("wifiConnectBtn");
 const wifiDisconnectBtn = document.getElementById("wifiDisconnectBtn");
 const wifiConfigMsg = document.getElementById("wifiConfigMsg");
+const wifiConnectFeedbackModal = document.getElementById("wifiConnectFeedbackModal");
+const wifiFeedbackSpinner = document.getElementById("wifiFeedbackSpinner");
+const wifiFeedbackSuccess = document.getElementById("wifiFeedbackSuccess");
+const wifiFeedbackError = document.getElementById("wifiFeedbackError");
+const wifiConnectFeedbackText = document.getElementById("wifiConnectFeedbackText");
 const graphModal = document.getElementById("graphModal");
 const graphClose = document.getElementById("graphClose");
 const graphWindowSlider = document.getElementById("graphWindowSlider");
@@ -108,6 +115,7 @@ let maintenanceModalTab = "overview";
 let maintenanceModalSteps = [];
 let maintenanceModalStepIndex = 0;
 let maintenanceTasksCache = [];
+let wifiConnectInFlight = false;
 
 // -----------------------------
 // Uhr
@@ -246,6 +254,45 @@ function setWifiConfigMessage(message, type = "info"){
   wifiConfigMsg.classList.toggle("is-ok", type === "ok");
 }
 
+function waitFor(ms){
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function setWifiConfigControlsDisabled(disabled){
+  const isDisabled = !!disabled;
+  wifiSsidSelect.disabled = isDisabled;
+  wifiScanBtn.disabled = isDisabled;
+  wifiPasswordInput.disabled = isDisabled;
+  wifiAutoConnectInput.disabled = isDisabled;
+  wifiSaveBtn.disabled = isDisabled;
+  wifiConnectBtn.disabled = isDisabled;
+  wifiDisconnectBtn.disabled = isDisabled;
+  wifiModalClose.disabled = isDisabled;
+}
+
+function openWifiConnectFeedbackLoading(loadingText = "WLAN wird verbunden ..."){
+  wifiConnectFeedbackModal.classList.add("is-open");
+  wifiConnectFeedbackModal.setAttribute("aria-hidden", "false");
+  wifiFeedbackSpinner.hidden = false;
+  wifiFeedbackSuccess.hidden = true;
+  wifiFeedbackError.hidden = true;
+  wifiConnectFeedbackText.textContent = String(loadingText || "");
+}
+
+function closeWifiConnectFeedback(){
+  wifiConnectFeedbackModal.classList.remove("is-open");
+  wifiConnectFeedbackModal.setAttribute("aria-hidden", "true");
+}
+
+async function showWifiConnectFeedbackResult(ok, successText = "WLAN verbunden", errorText = "WLAN-Verbindung fehlgeschlagen"){
+  wifiFeedbackSpinner.hidden = true;
+  wifiFeedbackSuccess.hidden = !ok;
+  wifiFeedbackError.hidden = ok;
+  wifiConnectFeedbackText.textContent = ok ? String(successText || "") : String(errorText || "");
+  await waitFor(WIFI_CONNECT_FEEDBACK_MS);
+  closeWifiConnectFeedback();
+}
+
 function readWifiPayload(){
   return {
     ssid: String(wifiSsidSelect.value || "").trim(),
@@ -344,7 +391,10 @@ function openWifiConfigModal(){
     });
 }
 
-function closeWifiConfigModal(){
+function closeWifiConfigModal(force = false){
+  if (wifiConnectInFlight && !force){
+    return;
+  }
   wifiConfigModal.classList.remove("is-open");
   wifiConfigModal.setAttribute("aria-hidden", "true");
   wifiBtn.focus();
@@ -376,50 +426,93 @@ function saveWifiConfig(){
     });
 }
 
-function connectWifi(){
+async function connectWifi(){
+  if (wifiConnectInFlight){
+    return;
+  }
   const payload = readWifiPayload();
   if (!payload.ssid){
     setWifiConfigMessage("Bitte WLAN auswählen.", "error");
     return;
   }
-  fetch(`${API_BASE}/api/wifi/connect`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  })
-    .then((res) => res.ok ? res.json() : null)
-    .then((data) => {
-      if (!data || !data.ok){
-        setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
-        return;
-      }
-      const connected = !!data.connected;
-      const ssid = String(data.ssid || payload.ssid || "").trim();
-      setWifiConnected(connected, ssid);
-      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-      setWifiConfigMessage("WLAN verbunden.", "ok");
-    })
-    .catch(() => {
-      setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+
+  wifiConnectInFlight = true;
+  setWifiConfigControlsDisabled(true);
+  setWifiConfigMessage("");
+  openWifiConnectFeedbackLoading("WLAN wird verbunden ...");
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), WIFI_CONNECT_TIMEOUT_MS);
+
+  try{
+    const res = await fetch(`${API_BASE}/api/wifi/connect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+    const data = res.ok ? await res.json() : null;
+    if (!data || !data.ok){
+      setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+      await showWifiConnectFeedbackResult(false, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
+      return;
+    }
+
+    const connected = !!data.connected;
+    const ssid = String(data.ssid || payload.ssid || "").trim();
+    setWifiConnected(connected, ssid);
+    broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+    await showWifiConnectFeedbackResult(true, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
+    closeWifiConfigModal(true);
+  } catch (_err){
+    setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+    await showWifiConnectFeedbackResult(false, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
+  } finally {
+    clearTimeout(timeoutId);
+    wifiConnectInFlight = false;
+    setWifiConfigControlsDisabled(false);
+    closeWifiConnectFeedback();
+  }
 }
 
-function disconnectWifi(){
-  fetch(`${API_BASE}/api/wifi/disconnect`, { method: "POST" })
-    .then((res) => res.ok ? res.json() : null)
-    .then((data) => {
-      if (!data || !data.ok){
-        setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
-        return;
-      }
-      const ssid = String(data.ssid || state.wifiSsid || "").trim();
-      setWifiConnected(false, ssid);
-      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-      setWifiConfigMessage("WLAN getrennt.", "ok");
-    })
-    .catch(() => {
-      setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
+async function disconnectWifi(){
+  if (wifiConnectInFlight){
+    return;
+  }
+
+  wifiConnectInFlight = true;
+  setWifiConfigControlsDisabled(true);
+  setWifiConfigMessage("");
+  openWifiConnectFeedbackLoading("WLAN wird getrennt ...");
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), WIFI_CONNECT_TIMEOUT_MS);
+
+  try{
+    const res = await fetch(`${API_BASE}/api/wifi/disconnect`, {
+      method: "POST",
+      signal: controller.signal,
     });
+    const data = res.ok ? await res.json() : null;
+    if (!data || !data.ok){
+      setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
+      await showWifiConnectFeedbackResult(false, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");
+      return;
+    }
+    const ssid = String(data.ssid || state.wifiSsid || "").trim();
+    setWifiConnected(false, ssid);
+    broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+    await showWifiConnectFeedbackResult(true, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");
+    closeWifiConfigModal(true);
+  } catch (_err){
+    setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
+    await showWifiConnectFeedbackResult(false, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");
+  } finally {
+    clearTimeout(timeoutId);
+    wifiConnectInFlight = false;
+    setWifiConfigControlsDisabled(false);
+    closeWifiConnectFeedback();
+  }
 }
 
 function toNumber(value, fallback = 0){
