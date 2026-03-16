@@ -127,12 +127,35 @@ let keyboardShift = false;
 let keyboardContext = null;
 
 const KEYBOARD_ROWS = [
-  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "_", "backspace"],
-  ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p", "ü", "+", "@"],
-  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä", "#", "?"],
-  ["shift", "y", "x", "c", "v", "b", "n", "m", ".", ",", ":", "/", "clear"],
+  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "ß", "acute", "backspace"],
+  ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p", "ü", "plus", "at"],
+  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä", "hash", "lbracket"],
+  ["shift", "y", "x", "c", "v", "b", "n", "m", "comma", "dot", "minus", "rbracket", "clear"],
   ["space"]
 ];
+
+const KEYBOARD_CHAR_PAIRS = {
+  "1": ["1", "!"],
+  "2": ["2", "\""],
+  "3": ["3", "§"],
+  "4": ["4", "$"],
+  "5": ["5", "%"],
+  "6": ["6", "&"],
+  "7": ["7", "/"],
+  "8": ["8", "("],
+  "9": ["9", ")"],
+  "0": ["0", "="],
+  "ß": ["ß", "?"],
+  "acute": ["´", "`"],
+  "plus": ["+", "*"],
+  "hash": ["#", "'"],
+  "comma": [",", ";"],
+  "dot": [".", ":"],
+  "minus": ["-", "_"],
+  "at": ["@", "\\"],
+  "lbracket": ["[", "{"],
+  "rbracket": ["]", "}"],
+};
 
 // -----------------------------
 // Uhr
@@ -280,6 +303,10 @@ function keyboardKeyLabel(key){
     case "clear": return "Löschen";
     case "space": return "Leerzeichen";
     default: {
+      const pair = KEYBOARD_CHAR_PAIRS[key];
+      if (pair){
+        return keyboardShift ? pair[1] : pair[0];
+      }
       if (keyboardShift && isKeyboardLetter(key)){
         return String(key).toLocaleUpperCase("de-DE");
       }
@@ -358,7 +385,10 @@ function applyKeyboardCharacter(rawKey){
   let key = String(rawKey || "");
   if (!key) return;
 
-  if (isKeyboardLetter(key)){
+  const pair = KEYBOARD_CHAR_PAIRS[key];
+  if (pair){
+    key = keyboardShift ? pair[1] : pair[0];
+  } else if (isKeyboardLetter(key)){
     key = keyboardShift ? key.toLocaleUpperCase("de-DE") : key.toLocaleLowerCase("de-DE");
   }
 
