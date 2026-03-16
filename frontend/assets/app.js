@@ -17,6 +17,7 @@ const state = {
   activePage: "home",
   machineStatus: "IDLE", // IDLE | RUNNING | ERROR
   wifiConnected: true,
+  wifiSsid: "",
   lightOn: true,
   lightBrightness: 75,
   fanOn: true,
@@ -58,6 +59,16 @@ const fanClose = document.getElementById("fanClose");
 const fanSlider = document.getElementById("fanSlider");
 const fanValue = document.getElementById("fanValue");
 const fanAutoInput = document.getElementById("fanAuto");
+const wifiConfigModal = document.getElementById("wifiConfigModal");
+const wifiModalClose = document.getElementById("wifiModalClose");
+const wifiSsidSelect = document.getElementById("wifiSsidSelect");
+const wifiScanBtn = document.getElementById("wifiScanBtn");
+const wifiPasswordInput = document.getElementById("wifiPasswordInput");
+const wifiAutoConnectInput = document.getElementById("wifiAutoConnectInput");
+const wifiSaveBtn = document.getElementById("wifiSaveBtn");
+const wifiConnectBtn = document.getElementById("wifiConnectBtn");
+const wifiDisconnectBtn = document.getElementById("wifiDisconnectBtn");
+const wifiConfigMsg = document.getElementById("wifiConfigMsg");
 const graphModal = document.getElementById("graphModal");
 const graphClose = document.getElementById("graphClose");
 const graphWindowSlider = document.getElementById("graphWindowSlider");
@@ -127,8 +138,11 @@ function setMachineStatus(newStatus){
   }
 }
 
-function setWifiConnected(isConnected){
+function setWifiConnected(isConnected, ssid = null){
   state.wifiConnected = !!isConnected;
+  if (typeof ssid === "string"){
+    state.wifiSsid = ssid.trim();
+  }
   wifiImg.src = state.wifiConnected ? ICONS.wifiOn : ICONS.wifiOff;
   wifiBtn.setAttribute("aria-label", state.wifiConnected ? "WLAN verbunden" : "WLAN getrennt");
 }
@@ -224,6 +238,188 @@ function openGraphModal(seconds){
 function closeGraphModal(){
   graphModal.classList.remove("is-open");
   graphModal.setAttribute("aria-hidden", "true");
+}
+
+function setWifiConfigMessage(message, type = "info"){
+  wifiConfigMsg.textContent = String(message || "");
+  wifiConfigMsg.classList.toggle("is-error", type === "error");
+  wifiConfigMsg.classList.toggle("is-ok", type === "ok");
+}
+
+function readWifiPayload(){
+  return {
+    ssid: String(wifiSsidSelect.value || "").trim(),
+    password: String(wifiPasswordInput.value || ""),
+    autoConnect: !!wifiAutoConnectInput.checked,
+  };
+}
+
+function setWifiSsidOptions(networks, preferredSsid = ""){
+  const list = Array.isArray(networks) ? networks : [];
+  const selectedBefore = String(wifiSsidSelect.value || "").trim();
+  const preferred = String(preferredSsid || "").trim();
+  const merged = [];
+
+  for (const raw of list){
+    const ssid = String(raw || "").trim();
+    if (!ssid || merged.includes(ssid)) continue;
+    merged.push(ssid);
+  }
+  if (preferred && !merged.includes(preferred)){
+    merged.push(preferred);
+  }
+
+  wifiSsidSelect.innerHTML = "";
+  if (merged.length === 0){
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = "Keine Netzwerke gefunden";
+    wifiSsidSelect.appendChild(emptyOption);
+    wifiSsidSelect.value = "";
+    return;
+  }
+
+  for (const ssid of merged){
+    const option = document.createElement("option");
+    option.value = ssid;
+    option.textContent = ssid;
+    wifiSsidSelect.appendChild(option);
+  }
+
+  if (preferred && merged.includes(preferred)){
+    wifiSsidSelect.value = preferred;
+  } else if (selectedBefore && merged.includes(selectedBefore)){
+    wifiSsidSelect.value = selectedBefore;
+  } else {
+    wifiSsidSelect.value = merged[0];
+  }
+}
+
+function loadWifiNetworks(preferredSsid = ""){
+  fetch(`${API_BASE}/api/wifi/networks`)
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      const networks = data && Array.isArray(data.networks) ? data.networks : [];
+      setWifiSsidOptions(networks, preferredSsid);
+    })
+    .catch(() => {
+      setWifiSsidOptions([], preferredSsid);
+      setWifiConfigMessage("WLAN-Netzwerke konnten nicht geladen werden.", "error");
+    });
+}
+
+function openWifiConfigModal(){
+  wifiConfigModal.classList.add("is-open");
+  wifiConfigModal.setAttribute("aria-hidden", "false");
+  setWifiConfigMessage("");
+  fetch(`${API_BASE}/api/settings`)
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || typeof data !== "object") return;
+      const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : state.wifiSsid;
+      if (typeof data.wifiPassword === "string"){
+        wifiPasswordInput.value = data.wifiPassword;
+      }
+      if (typeof data.wifiAutoConnect === "boolean"){
+        wifiAutoConnectInput.checked = data.wifiAutoConnect;
+      } else if (typeof data.wifiAutoConnect === "number" && (data.wifiAutoConnect === 0 || data.wifiAutoConnect === 1)){
+        wifiAutoConnectInput.checked = Boolean(data.wifiAutoConnect);
+      }
+      if (typeof data.wifiConnected === "boolean"){
+        setWifiConnected(data.wifiConnected, currentSsid);
+      } else if (typeof data.wifiConnected === "number" && (data.wifiConnected === 0 || data.wifiConnected === 1)){
+        setWifiConnected(Boolean(data.wifiConnected), currentSsid);
+      } else {
+        setWifiConnected(state.wifiConnected, currentSsid);
+      }
+      loadWifiNetworks(currentSsid);
+      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+    })
+    .catch(() => {
+      loadWifiNetworks(state.wifiSsid);
+      setWifiConfigMessage("WLAN-Einstellungen konnten nicht geladen werden.", "error");
+    })
+    .finally(() => {
+      wifiSsidSelect.focus();
+    });
+}
+
+function closeWifiConfigModal(){
+  wifiConfigModal.classList.remove("is-open");
+  wifiConfigModal.setAttribute("aria-hidden", "true");
+  wifiBtn.focus();
+}
+
+function saveWifiConfig(){
+  const payload = readWifiPayload();
+  fetch(`${API_BASE}/api/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      wifiSsid: payload.ssid,
+      wifiPassword: payload.password,
+      wifiAutoConnect: payload.autoConnect,
+    }),
+  })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || typeof data !== "object"){
+        setWifiConfigMessage("WLAN-Einstellungen konnten nicht gespeichert werden.", "error");
+        return;
+      }
+      state.wifiSsid = payload.ssid;
+      setWifiConfigMessage("WLAN-Einstellungen gespeichert.", "ok");
+      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+    })
+    .catch(() => {
+      setWifiConfigMessage("WLAN-Einstellungen konnten nicht gespeichert werden.", "error");
+    });
+}
+
+function connectWifi(){
+  const payload = readWifiPayload();
+  if (!payload.ssid){
+    setWifiConfigMessage("Bitte WLAN auswählen.", "error");
+    return;
+  }
+  fetch(`${API_BASE}/api/wifi/connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || !data.ok){
+        setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+        return;
+      }
+      const connected = !!data.connected;
+      const ssid = String(data.ssid || payload.ssid || "").trim();
+      setWifiConnected(connected, ssid);
+      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+      setWifiConfigMessage("WLAN verbunden.", "ok");
+    })
+    .catch(() => {
+      setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
+    });
+}
+
+function disconnectWifi(){
+  fetch(`${API_BASE}/api/wifi/disconnect`, { method: "POST" })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || !data.ok){
+        setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
+        return;
+      }
+      const ssid = String(data.ssid || state.wifiSsid || "").trim();
+      setWifiConnected(false, ssid);
+      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+      setWifiConfigMessage("WLAN getrennt.", "ok");
+    })
+    .catch(() => {
+      setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
+    });
 }
 
 function toNumber(value, fallback = 0){
@@ -546,12 +742,14 @@ function loadUiSettings(){
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data || typeof data !== "object") return;
+      const wifiSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : state.wifiSsid;
+      state.wifiSsid = String(wifiSsid || "").trim();
       if (typeof data.wifiConnected === "boolean"){
-        setWifiConnected(data.wifiConnected);
-        broadcastToFrames({ type: "wifi", connected: state.wifiConnected });
+        setWifiConnected(data.wifiConnected, wifiSsid);
+        broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
       } else if (typeof data.wifiConnected === "number" && (data.wifiConnected === 0 || data.wifiConnected === 1)){
-        setWifiConnected(Boolean(data.wifiConnected));
-        broadcastToFrames({ type: "wifi", connected: state.wifiConnected });
+        setWifiConnected(Boolean(data.wifiConnected), wifiSsid);
+        broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
       }
       if (typeof data.lightBrightness === "number"){
         const v = Math.max(0, Math.min(100, data.lightBrightness));
@@ -707,6 +905,16 @@ fanModal.addEventListener("click", (ev) => {
 });
 fanSlider.addEventListener("input", (ev) => updateFanSpeed(ev.target.value));
 fanAutoInput.addEventListener("change", (ev) => setFanAuto(ev.target.checked, true));
+wifiModalClose.addEventListener("click", closeWifiConfigModal);
+wifiConfigModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    closeWifiConfigModal();
+  }
+});
+wifiScanBtn.addEventListener("click", () => loadWifiNetworks(wifiSsidSelect.value));
+wifiSaveBtn.addEventListener("click", saveWifiConfig);
+wifiConnectBtn.addEventListener("click", connectWifi);
+wifiDisconnectBtn.addEventListener("click", disconnectWifi);
 graphClose.addEventListener("click", closeGraphModal);
 graphModal.addEventListener("click", (ev) => {
   if (ev.target && ev.target.dataset && ev.target.dataset.close){
@@ -742,6 +950,9 @@ window.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape" && fanModal.classList.contains("is-open")){
     closeFanModal();
+  }
+  if (ev.key === "Escape" && wifiConfigModal.classList.contains("is-open")){
+    closeWifiConfigModal();
   }
   if (ev.key === "Escape" && graphModal.classList.contains("is-open")){
     closeGraphModal();
@@ -798,8 +1009,9 @@ function showPage(pageId){
 }
 
 function openSystemWifiConfig(){
-  const message = { type: "openWifiConfig", openModal: true };
+  const message = { type: "openWifiConfig", openModal: false };
   showPage("system");
+  openWifiConfigModal();
   postToFrame("system", message);
   setTimeout(() => postToFrame("system", message), 150);
   setTimeout(() => postToFrame("system", message), 500);
@@ -860,9 +1072,10 @@ window.addEventListener("message", (ev) => {
   switch (msg.type){
     case "setStatus":  setMachineStatus(msg.status); break;
     case "setWifi":
-      setWifiConnected(!!msg.connected);
-      broadcastToFrames({ type: "wifi", connected: state.wifiConnected });
+      setWifiConnected(!!msg.connected, typeof msg.ssid === "string" ? msg.ssid : state.wifiSsid);
+      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
       break;
+    case "openWifiConfigModal": openWifiConfigModal(); break;
     case "setLight":   setLightOn(!!msg.on); break;
     case "toggleLight":toggleLight(); break;
     case "setFan":     setFanOn(!!msg.on); break;
@@ -882,6 +1095,7 @@ broadcastToFrames({
   type: "init",
   machineStatus: state.machineStatus,
   wifiConnected: state.wifiConnected,
+  wifiSsid: state.wifiSsid,
   lightOn: state.lightOn,
   fanOn: state.fanOn,
   fanSpeed: state.fanSpeed,

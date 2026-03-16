@@ -234,3 +234,106 @@ body{
   height: 22px;
   display:block;
 }
+
+.modal__panel--wifi{
+  width: min(760px, 94vw);
+  height: 90vh;
+  height: 90dvh;
+  max-height: 90vh;
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.wifi-cfg__content{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.wifi-cfg__grid{
+  display: grid;
+  gap: 10px;
+}
+
+.wifi-cfg__field{
+  display: grid;
+  gap: 6px;
+}
+
+.wifi-cfg__ssid-row{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.wifi-cfg__label{
+  font-size: 14px;
+  font-weight: 700;
+  color: #555;
+}
+
+.wifi-cfg__input{
+  width: 100%;
+  border: 2px solid #000;
+  border-radius: 2px;
+  font-size: 16px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  background: #fff;
+  color: #000;
+}
+
+.wifi-cfg__switch{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 2px solid #000;
+  border-radius: 2px;
+  padding: 8px 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.wifi-cfg__check{
+  width: 20px;
+  height: 20px;
+  accent-color: #000;
+}
+
+.wifi-cfg__actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.wifi-cfg__btn--small{
+  padding: 8px 12px;
+}
+
+.wifi-cfg__msg{
+  min-height: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #555;
+}
+
+.wifi-cfg__msg.is-error{
+  color: #b61e1e;
+}
+
+.wifi-cfg__msg.is-ok{
+  color: #0f8f3a;
+}
+
+.modal__panel--wifi .modal__actions{
+  margin-top: auto;
+}

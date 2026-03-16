@@ -116,6 +116,41 @@
       </div>
     </div>
 
+    <div class="modal" id="wifiConfigModal" role="dialog" aria-modal="true" aria-labelledby="wifiConfigTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel modal__panel--wifi" role="document">
+        <h2 class="modal__title" id="wifiConfigTitle">WLAN konfigurieren</h2>
+        <div class="wifi-cfg__content">
+          <div class="wifi-cfg__grid">
+            <label class="wifi-cfg__field" for="wifiSsidSelect">
+              <span class="wifi-cfg__label">Netzwerkname (SSID)</span>
+              <div class="wifi-cfg__ssid-row">
+                <select class="wifi-cfg__input" id="wifiSsidSelect"></select>
+                <button class="btn wifi-cfg__btn--small" id="wifiScanBtn" type="button">Neu laden</button>
+              </div>
+            </label>
+            <label class="wifi-cfg__field" for="wifiPasswordInput">
+              <span class="wifi-cfg__label">Passwort</span>
+              <input class="wifi-cfg__input" id="wifiPasswordInput" type="password" autocomplete="off" />
+            </label>
+            <label class="wifi-cfg__switch" for="wifiAutoConnectInput">
+              <span>Automatisch verbinden</span>
+              <input class="wifi-cfg__check" id="wifiAutoConnectInput" type="checkbox" />
+            </label>
+          </div>
+          <div class="wifi-cfg__actions">
+            <button class="btn" id="wifiSaveBtn" type="button">Speichern</button>
+            <button class="btn btn--danger" id="wifiConnectBtn" type="button">Verbinden</button>
+            <button class="btn" id="wifiDisconnectBtn" type="button">Trennen</button>
+          </div>
+          <div class="wifi-cfg__msg" id="wifiConfigMsg" aria-live="polite"></div>
+        </div>
+        <div class="modal__actions">
+          <button class="btn" id="wifiModalClose" type="button">Schließen</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal" id="graphModal" role="dialog" aria-modal="true" aria-labelledby="graphTitle" aria-hidden="true">
       <div class="modal__backdrop" data-close="true"></div>
       <div class="modal__panel" role="document">
