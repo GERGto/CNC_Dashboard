@@ -116,7 +116,11 @@ body{
 .icon-btn:active{ transform: translateY(1px); }
 
 .icon-btn--status{
-  pointer-events: none;
+  cursor: default;
+}
+
+.icon-btn--status:active{
+  transform: none;
 }
 
 .icon{

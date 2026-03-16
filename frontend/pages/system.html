@@ -604,6 +604,12 @@
       if (msg.type === "wifi" && typeof msg.connected === "boolean"){
         setWifiStatus(msg.connected, wifiSsidSelect.value);
       }
+      if (msg.type === "openWifiConfig"){
+        setActiveTab("config");
+        if (msg.openModal !== false){
+          openWifiModal();
+        }
+      }
     });
 
     tabOverview.addEventListener("click", () => setActiveTab("overview"));

@@ -609,6 +609,31 @@ let lightPressTimer = null;
 let lightLongPress = false;
 let fanPressTimer = null;
 let fanLongPress = false;
+let wifiPressTimer = null;
+let wifiLongPress = false;
+
+wifiBtn.addEventListener("pointerdown", (ev) => {
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  wifiLongPress = false;
+  wifiPressTimer = setTimeout(() => {
+    wifiLongPress = true;
+    openSystemWifiConfig();
+  }, 600);
+});
+
+const clearWifiPress = () => {
+  if (wifiPressTimer) clearTimeout(wifiPressTimer);
+  wifiPressTimer = null;
+};
+
+wifiBtn.addEventListener("pointerup", clearWifiPress);
+wifiBtn.addEventListener("pointerleave", clearWifiPress);
+wifiBtn.addEventListener("pointercancel", clearWifiPress);
+wifiBtn.addEventListener("click", () => {
+  if (wifiLongPress){
+    wifiLongPress = false;
+  }
+});
 
 lightBtn.addEventListener("pointerdown", (ev) => {
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
@@ -770,6 +795,14 @@ function showPage(pageId){
   }
 
   postToFrame(pageId, { type: "pageShown", id: pageId });
+}
+
+function openSystemWifiConfig(){
+  const message = { type: "openWifiConfig", openModal: true };
+  showPage("system");
+  postToFrame("system", message);
+  setTimeout(() => postToFrame("system", message), 150);
+  setTimeout(() => postToFrame("system", message), 500);
 }
 
 document.querySelector(".nav").addEventListener("click", (ev) => {

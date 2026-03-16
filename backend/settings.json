@@ -1,16 +1,16 @@
 {
   "graphWindowSec": 60,
   "lightBrightness": 57,
-  "fanSpeed": 54,
+  "fanSpeed": 59,
   "fanAuto": true,
   "wifiSsid": "coppi_homenet",
   "wifiPassword": "",
-  "wifiAutoConnect": true,
+  "wifiAutoConnect": false,
   "wifiConnected": true,
   "axisVisibility": {
-    "spindle": true,
-    "x": false,
-    "y": false,
-    "z": false
+    "spindle": false,
+    "x": true,
+    "y": true,
+    "z": true
   }
 }
