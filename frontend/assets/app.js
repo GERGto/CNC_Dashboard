@@ -1,3 +1,6 @@
+import { createStatusbarController } from "./modules/statusbar.js";
+import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
+
 // -----------------------------
 // Konfiguration
 // -----------------------------
@@ -14,9 +17,6 @@ const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
 const WIFI_CONNECT_TIMEOUT_MS = 15000;
 const WIFI_CONNECT_FEEDBACK_MS = 2000;
-const WIFI_EASTEREGG_TAP_TARGET = 5;
-const WIFI_EASTEREGG_WINDOW_MS = 1600;
-const WIFI_EASTEREGG_DURATION_MS = 12000;
 
 const state = {
   activePage: "home",
@@ -44,6 +44,7 @@ const ICONS = {
 const mainEl = document.querySelector(".main");
 const clockEl = document.getElementById("clock");
 const statusEl = document.getElementById("machineStatus");
+const statusBarEl = document.querySelector(".statusbar");
 
 const wifiBtn = document.getElementById("wifiBtn");
 const lightBtn = document.getElementById("lightBtn");
@@ -129,11 +130,21 @@ let maintenanceModalSteps = [];
 let maintenanceModalStepIndex = 0;
 let maintenanceTasksCache = [];
 let wifiConnectInFlight = false;
-let wifiTapTimestamps = [];
-let wifiEastereggTimer = null;
 let keyboardValue = "";
 let keyboardShift = false;
 let keyboardContext = null;
+
+const statusbarController = createStatusbarController({
+  state,
+  statusEl,
+  statusBarEl,
+});
+const wifiEastereggController = createWifiEastereggController({
+  overlayEl: wifiEastereggOverlay,
+  tapTarget: 5,
+  tapWindowMs: 1600,
+  durationMs: 12000,
+});
 
 const KEYBOARD_ROWS = [
   ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "ß", "acute", "backspace"],
@@ -182,37 +193,11 @@ setInterval(updateClock, 1000);
 // Status / Icons
 // -----------------------------
 function setMachineStatus(newStatus){
-  const s = String(newStatus || "").toUpperCase();
-  state.machineStatus = s || "IDLE";
-  applyStatusbarState();
-}
-
-function applyStatusbarState(){
-  const isError = state.machineStatus === "ERROR";
-  const isMaintenance = !isError && state.maintenanceDue;
-  const isRunning = !isError && !isMaintenance && state.machineStatus === "RUNNING";
-
-  if (isError){
-    statusEl.textContent = "ERROR";
-    statusEl.style.letterSpacing = "0.8px";
-  } else if (isMaintenance){
-    statusEl.textContent = "WARTUNG FÄLLIG";
-    statusEl.style.letterSpacing = "0.4px";
-  } else {
-    statusEl.textContent = state.machineStatus;
-    statusEl.style.letterSpacing = "0.2px";
-  }
-
-  const statusBar = document.querySelector(".statusbar");
-  if (!statusBar) return;
-  statusBar.classList.toggle("is-running", isRunning);
-  statusBar.classList.toggle("is-error", isError);
-  statusBar.classList.toggle("is-maintenance", isMaintenance);
+  statusbarController.setMachineStatus(newStatus);
 }
 
 function setMaintenanceDue(isDue){
-  state.maintenanceDue = !!isDue;
-  applyStatusbarState();
+  statusbarController.setMaintenanceDue(isDue);
 }
 
 function setWifiConnected(isConnected, ssid = null){
@@ -318,34 +303,15 @@ function closeGraphModal(){
 }
 
 function showWifiEasteregg(){
-  if (wifiEastereggTimer){
-    clearTimeout(wifiEastereggTimer);
-    wifiEastereggTimer = null;
-  }
-  wifiEastereggOverlay.hidden = false;
-  wifiEastereggOverlay.setAttribute("aria-hidden", "false");
-  wifiEastereggTimer = setTimeout(() => {
-    hideWifiEasteregg();
-  }, WIFI_EASTEREGG_DURATION_MS);
+  wifiEastereggController.show();
 }
 
 function hideWifiEasteregg(){
-  if (wifiEastereggTimer){
-    clearTimeout(wifiEastereggTimer);
-    wifiEastereggTimer = null;
-  }
-  wifiEastereggOverlay.hidden = true;
-  wifiEastereggOverlay.setAttribute("aria-hidden", "true");
+  wifiEastereggController.hide();
 }
 
 function registerWifiRapidTap(){
-  const now = Date.now();
-  wifiTapTimestamps.push(now);
-  wifiTapTimestamps = wifiTapTimestamps.filter((ts) => (now - ts) <= WIFI_EASTEREGG_WINDOW_MS);
-  if (wifiTapTimestamps.length >= WIFI_EASTEREGG_TAP_TARGET){
-    wifiTapTimestamps = [];
-    showWifiEasteregg();
-  }
+  wifiEastereggController.registerRapidTap();
 }
 
 function isKeyboardOpen(){
