@@ -1,5 +1,8 @@
 import { createStatusbarController } from "./modules/statusbar.js";
 import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
+import { createKeyboardController } from "./modules/keyboard.js";
+import { createWifiController } from "./modules/wifi.js";
+import { createMaintenanceController } from "./modules/maintenance.js";
 
 // -----------------------------
 // Konfiguration
@@ -15,8 +18,6 @@ const AXES_INTERVAL_MS = 250;
 const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
-const WIFI_CONNECT_TIMEOUT_MS = 15000;
-const WIFI_CONNECT_FEEDBACK_MS = 2000;
 
 const state = {
   activePage: "home",
@@ -124,15 +125,6 @@ let runtimeSaveTimer = null;
 let spindleRuntimeRawSec = 0;
 let lastAxesTimestampMs = null;
 let graphWindowSec = 60;
-let maintenanceModalTaskId = null;
-let maintenanceModalTab = "overview";
-let maintenanceModalSteps = [];
-let maintenanceModalStepIndex = 0;
-let maintenanceTasksCache = [];
-let wifiConnectInFlight = false;
-let keyboardValue = "";
-let keyboardShift = false;
-let keyboardContext = null;
 
 const statusbarController = createStatusbarController({
   state,
@@ -145,37 +137,75 @@ const wifiEastereggController = createWifiEastereggController({
   tapWindowMs: 1600,
   durationMs: 12000,
 });
-
-const KEYBOARD_ROWS = [
-  ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "ß", "acute", "backspace"],
-  ["q", "w", "e", "r", "t", "z", "u", "i", "o", "p", "ü", "plus", "at"],
-  ["a", "s", "d", "f", "g", "h", "j", "k", "l", "ö", "ä", "hash", "lbracket"],
-  ["shift", "y", "x", "c", "v", "b", "n", "m", "comma", "dot", "minus", "rbracket", "clear"],
-  ["space"]
-];
-
-const KEYBOARD_CHAR_PAIRS = {
-  "1": ["1", "!"],
-  "2": ["2", "\""],
-  "3": ["3", "§"],
-  "4": ["4", "$"],
-  "5": ["5", "%"],
-  "6": ["6", "&"],
-  "7": ["7", "/"],
-  "8": ["8", "("],
-  "9": ["9", ")"],
-  "0": ["0", "="],
-  "ß": ["ß", "?"],
-  "acute": ["´", "`"],
-  "plus": ["+", "*"],
-  "hash": ["#", "'"],
-  "comma": [",", ";"],
-  "dot": [".", ":"],
-  "minus": ["-", "_"],
-  "at": ["@", "\\"],
-  "lbracket": ["[", "{"],
-  "rbracket": ["]", "}"],
-};
+const keyboardController = createKeyboardController({
+  modalEl: keyboardModal,
+  titleEl: keyboardTitle,
+  displayInputEl: keyboardDisplayInput,
+  keysEl: keyboardKeys,
+  cancelBtn: keyboardCancelBtn,
+  okBtn: keyboardOkBtn,
+});
+const wifiController = createWifiController({
+  apiBase: API_BASE,
+  state,
+  keyboardController,
+  connectTimeoutMs: 15000,
+  feedbackMs: 2000,
+  onSetWifiConnected: setWifiConnected,
+  onBroadcastWifi: broadcastWifiState,
+  onReturnFocus: () => wifiBtn.focus(),
+  elements: {
+    btn: wifiBtn,
+    configModal: wifiConfigModal,
+    modalClose: wifiModalClose,
+    ssidSelect: wifiSsidSelect,
+    scanBtn: wifiScanBtn,
+    passwordInput: wifiPasswordInput,
+    autoConnectInput: wifiAutoConnectInput,
+    saveBtn: wifiSaveBtn,
+    connectBtn: wifiConnectBtn,
+    disconnectBtn: wifiDisconnectBtn,
+    configMsg: wifiConfigMsg,
+    connectFeedbackModal: wifiConnectFeedbackModal,
+    feedbackSpinner: wifiFeedbackSpinner,
+    feedbackSuccess: wifiFeedbackSuccess,
+    feedbackError: wifiFeedbackError,
+    connectFeedbackText: wifiConnectFeedbackText,
+  },
+});
+const maintenanceController = createMaintenanceController({
+  apiBase: API_BASE,
+  state,
+  onSetMaintenanceDue: setMaintenanceDue,
+  onTaskCompleted: (task) => {
+    broadcastToFrames({ type: "maintenanceTaskCompleted", task });
+  },
+  elements: {
+    taskModal: maintenanceTaskModal,
+    taskTitle: maintenanceTaskTitle,
+    detailInterval: maintenanceDetailInterval,
+    detailEffort: maintenanceDetailEffort,
+    detailStatus: maintenanceDetailStatus,
+    detailLastDone: maintenanceDetailLastDone,
+    detailSinceDone: maintenanceDetailSinceDone,
+    detailDescription: maintenanceDetailDescription,
+    detailGuideInfo: maintenanceDetailGuideInfo,
+    tabOverview: maintenanceTabOverview,
+    tabGuide: maintenanceTabGuide,
+    panelOverview: maintenancePanelOverview,
+    panelGuide: maintenancePanelGuide,
+    guideContent: maintenanceGuideContent,
+    guideEmpty: maintenanceGuideEmpty,
+    guideStepMeta: maintenanceGuideStepMeta,
+    guideStepText: maintenanceGuideStepText,
+    guideStepImage: maintenanceGuideStepImage,
+    taskClose: maintenanceTaskClose,
+    guidePrev: maintenanceGuidePrev,
+    guideNext: maintenanceGuideNext,
+    taskDone: maintenanceTaskDone,
+    dueDot: maintenanceDueDot,
+  },
+});
 
 // -----------------------------
 // Uhr
@@ -207,6 +237,10 @@ function setWifiConnected(isConnected, ssid = null){
   }
   wifiImg.src = state.wifiConnected ? ICONS.wifiOn : ICONS.wifiOff;
   wifiBtn.setAttribute("aria-label", state.wifiConnected ? "WLAN verbunden" : "WLAN getrennt");
+}
+
+function broadcastWifiState(){
+  broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
 }
 
 function setLightOn(isOn){
@@ -314,715 +348,24 @@ function registerWifiRapidTap(){
   wifiEastereggController.registerRapidTap();
 }
 
-function isKeyboardOpen(){
-  return keyboardModal.classList.contains("is-open");
-}
-
-function isKeyboardLetter(key){
-  return /^[a-zäöü]$/i.test(String(key || ""));
-}
-
-function keyboardKeyLabel(key){
-  switch (key){
-    case "backspace": return "⌫";
-    case "shift": return "Umschalt";
-    case "clear": return "Löschen";
-    case "space": return "Leerzeichen";
-    default: {
-      const pair = KEYBOARD_CHAR_PAIRS[key];
-      if (pair){
-        return keyboardShift ? pair[1] : pair[0];
-      }
-      if (keyboardShift && isKeyboardLetter(key)){
-        return String(key).toLocaleUpperCase("de-DE");
-      }
-      return String(key);
-    }
-  }
-}
-
-function renderKeyboardDisplay(){
-  const masked = !!(keyboardContext && keyboardContext.masked);
-  keyboardDisplayInput.value = masked ? "•".repeat(keyboardValue.length) : keyboardValue;
-}
-
-function renderKeyboard(){
-  keyboardKeys.innerHTML = "";
-  for (const row of KEYBOARD_ROWS){
-    const rowEl = document.createElement("div");
-    rowEl.className = "keyboard__row";
-    for (const key of row){
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "keyboard__key";
-      btn.dataset.key = key;
-      if (key === "space"){
-        btn.classList.add("keyboard__key--space");
-      } else if (key === "shift" || key === "backspace" || key === "clear"){
-        btn.classList.add("keyboard__key--wide");
-      }
-      if (key === "shift" && keyboardShift){
-        btn.classList.add("keyboard__key--active");
-      }
-      btn.textContent = keyboardKeyLabel(key);
-      rowEl.appendChild(btn);
-    }
-    keyboardKeys.appendChild(rowEl);
-  }
-}
-
-function closeKeyboardModalImmediate(){
-  keyboardModal.classList.remove("is-open");
-  keyboardModal.setAttribute("aria-hidden", "true");
-  keyboardShift = false;
-  keyboardValue = "";
-  keyboardContext = null;
-}
-
-function finishKeyboardModal(submitted){
-  const ctx = keyboardContext;
-  const value = keyboardValue;
-  closeKeyboardModalImmediate();
-  if (!ctx) return;
-
-  if (submitted){
-    if (typeof ctx.onSubmit === "function"){
-      ctx.onSubmit(value);
-    }
-  } else if (typeof ctx.onCancel === "function"){
-    ctx.onCancel();
-  }
-
-  if (ctx.sourceWindow && typeof ctx.sourceWindow.postMessage === "function"){
-    ctx.sourceWindow.postMessage({
-      type: "keyboardResult",
-      requestId: ctx.requestId ?? null,
-      value,
-      canceled: !submitted,
-    }, ctx.responseOrigin || location.origin);
-  }
-
-  if (ctx.returnFocusEl && typeof ctx.returnFocusEl.focus === "function"){
-    ctx.returnFocusEl.focus();
-  }
-}
-
-function applyKeyboardCharacter(rawKey){
-  let key = String(rawKey || "");
-  if (!key) return;
-
-  const pair = KEYBOARD_CHAR_PAIRS[key];
-  if (pair){
-    key = keyboardShift ? pair[1] : pair[0];
-  } else if (isKeyboardLetter(key)){
-    key = keyboardShift ? key.toLocaleUpperCase("de-DE") : key.toLocaleLowerCase("de-DE");
-  }
-
-  const rawMaxLength = keyboardContext ? keyboardContext.maxLength : null;
-  const maxLength = (typeof rawMaxLength === "number" && Number.isFinite(rawMaxLength))
-    ? Math.max(1, Math.floor(rawMaxLength))
-    : null;
-  if (maxLength !== null && keyboardValue.length >= maxLength){
-    return;
-  }
-  keyboardValue += key;
-}
-
-function handleKeyboardKey(rawKey){
-  const key = String(rawKey || "");
-  if (!key) return;
-
-  if (key === "shift"){
-    keyboardShift = !keyboardShift;
-    renderKeyboard();
-    return;
-  }
-  if (key === "backspace"){
-    keyboardValue = keyboardValue.slice(0, -1);
-    renderKeyboardDisplay();
-    return;
-  }
-  if (key === "clear"){
-    keyboardValue = "";
-    renderKeyboardDisplay();
-    return;
-  }
-  if (key === "space"){
-    applyKeyboardCharacter(" ");
-    if (keyboardShift){
-      keyboardShift = false;
-      renderKeyboard();
-    }
-    renderKeyboardDisplay();
-    return;
-  }
-
-  applyKeyboardCharacter(key);
-  if (keyboardShift){
-    keyboardShift = false;
-    renderKeyboard();
-  }
-  renderKeyboardDisplay();
-}
-
 function openKeyboardModal(options = {}){
-  if (isKeyboardOpen()){
-    closeKeyboardModalImmediate();
-  }
-
-  const title = typeof options.title === "string" && options.title.trim() ? options.title.trim() : "Eingabe";
-  const placeholder = typeof options.placeholder === "string" ? options.placeholder : "";
-  keyboardContext = {
-    masked: !!options.masked,
-    maxLength: options.maxLength,
-    onSubmit: options.onSubmit,
-    onCancel: options.onCancel,
-    sourceWindow: options.sourceWindow || null,
-    requestId: options.requestId,
-    responseOrigin: options.responseOrigin || location.origin,
-    returnFocusEl: options.returnFocusEl || null,
-  };
-  keyboardTitle.textContent = title;
-  keyboardDisplayInput.placeholder = placeholder;
-  keyboardValue = String(options.value || "");
-  keyboardShift = false;
-  renderKeyboard();
-  renderKeyboardDisplay();
-
-  keyboardModal.classList.add("is-open");
-  keyboardModal.setAttribute("aria-hidden", "false");
-  keyboardOkBtn.focus();
-}
-
-function openWifiPasswordKeyboard(){
-  if (wifiConnectInFlight || wifiPasswordInput.disabled){
-    return;
-  }
-  openKeyboardModal({
-    title: "WLAN-Passwort",
-    placeholder: "Passwort eingeben",
-    value: wifiPasswordInput.value,
-    onSubmit: (value) => {
-      wifiPasswordInput.value = value;
-    },
-    returnFocusEl: wifiPasswordInput,
-  });
-}
-
-function setWifiConfigMessage(message, type = "info"){
-  wifiConfigMsg.textContent = String(message || "");
-  wifiConfigMsg.classList.toggle("is-error", type === "error");
-  wifiConfigMsg.classList.toggle("is-ok", type === "ok");
-}
-
-function waitFor(ms){
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function setWifiConfigControlsDisabled(disabled){
-  const isDisabled = !!disabled;
-  wifiSsidSelect.disabled = isDisabled;
-  wifiScanBtn.disabled = isDisabled;
-  wifiPasswordInput.disabled = isDisabled;
-  wifiAutoConnectInput.disabled = isDisabled;
-  wifiSaveBtn.disabled = isDisabled;
-  wifiConnectBtn.disabled = isDisabled;
-  wifiDisconnectBtn.disabled = isDisabled;
-  wifiModalClose.disabled = isDisabled;
-  if (isDisabled && isKeyboardOpen()){
-    closeKeyboardModalImmediate();
-  }
-}
-
-function openWifiConnectFeedbackLoading(loadingText = "WLAN wird verbunden ..."){
-  wifiConnectFeedbackModal.classList.add("is-open");
-  wifiConnectFeedbackModal.setAttribute("aria-hidden", "false");
-  wifiFeedbackSpinner.hidden = false;
-  wifiFeedbackSuccess.hidden = true;
-  wifiFeedbackError.hidden = true;
-  wifiConnectFeedbackText.textContent = String(loadingText || "");
-}
-
-function closeWifiConnectFeedback(){
-  wifiConnectFeedbackModal.classList.remove("is-open");
-  wifiConnectFeedbackModal.setAttribute("aria-hidden", "true");
-}
-
-async function showWifiConnectFeedbackResult(ok, successText = "WLAN verbunden", errorText = "WLAN-Verbindung fehlgeschlagen"){
-  wifiFeedbackSpinner.hidden = true;
-  wifiFeedbackSuccess.hidden = !ok;
-  wifiFeedbackError.hidden = ok;
-  wifiConnectFeedbackText.textContent = ok ? String(successText || "") : String(errorText || "");
-  await waitFor(WIFI_CONNECT_FEEDBACK_MS);
-  closeWifiConnectFeedback();
-}
-
-function readWifiPayload(){
-  return {
-    ssid: String(wifiSsidSelect.value || "").trim(),
-    password: String(wifiPasswordInput.value || ""),
-    autoConnect: !!wifiAutoConnectInput.checked,
-  };
-}
-
-function setWifiSsidOptions(networks, preferredSsid = ""){
-  const list = Array.isArray(networks) ? networks : [];
-  const selectedBefore = String(wifiSsidSelect.value || "").trim();
-  const preferred = String(preferredSsid || "").trim();
-  const merged = [];
-
-  for (const raw of list){
-    const ssid = String(raw || "").trim();
-    if (!ssid || merged.includes(ssid)) continue;
-    merged.push(ssid);
-  }
-  if (preferred && !merged.includes(preferred)){
-    merged.push(preferred);
-  }
-
-  wifiSsidSelect.innerHTML = "";
-  if (merged.length === 0){
-    const emptyOption = document.createElement("option");
-    emptyOption.value = "";
-    emptyOption.textContent = "Keine Netzwerke gefunden";
-    wifiSsidSelect.appendChild(emptyOption);
-    wifiSsidSelect.value = "";
-    return;
-  }
-
-  for (const ssid of merged){
-    const option = document.createElement("option");
-    option.value = ssid;
-    option.textContent = ssid;
-    wifiSsidSelect.appendChild(option);
-  }
-
-  if (preferred && merged.includes(preferred)){
-    wifiSsidSelect.value = preferred;
-  } else if (selectedBefore && merged.includes(selectedBefore)){
-    wifiSsidSelect.value = selectedBefore;
-  } else {
-    wifiSsidSelect.value = merged[0];
-  }
-}
-
-function loadWifiNetworks(preferredSsid = ""){
-  fetch(`${API_BASE}/api/wifi/networks`)
-    .then((res) => res.ok ? res.json() : null)
-    .then((data) => {
-      const networks = data && Array.isArray(data.networks) ? data.networks : [];
-      setWifiSsidOptions(networks, preferredSsid);
-    })
-    .catch(() => {
-      setWifiSsidOptions([], preferredSsid);
-      setWifiConfigMessage("WLAN-Netzwerke konnten nicht geladen werden.", "error");
-    });
+  keyboardController.open(options);
 }
 
 function openWifiConfigModal(){
-  wifiConfigModal.classList.add("is-open");
-  wifiConfigModal.setAttribute("aria-hidden", "false");
-  setWifiConfigMessage("");
-  fetch(`${API_BASE}/api/settings`)
-    .then((res) => res.ok ? res.json() : null)
-    .then((data) => {
-      if (!data || typeof data !== "object") return;
-      const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : state.wifiSsid;
-      if (typeof data.wifiPassword === "string"){
-        wifiPasswordInput.value = data.wifiPassword;
-      }
-      if (typeof data.wifiAutoConnect === "boolean"){
-        wifiAutoConnectInput.checked = data.wifiAutoConnect;
-      } else if (typeof data.wifiAutoConnect === "number" && (data.wifiAutoConnect === 0 || data.wifiAutoConnect === 1)){
-        wifiAutoConnectInput.checked = Boolean(data.wifiAutoConnect);
-      }
-      if (typeof data.wifiConnected === "boolean"){
-        setWifiConnected(data.wifiConnected, currentSsid);
-      } else if (typeof data.wifiConnected === "number" && (data.wifiConnected === 0 || data.wifiConnected === 1)){
-        setWifiConnected(Boolean(data.wifiConnected), currentSsid);
-      } else {
-        setWifiConnected(state.wifiConnected, currentSsid);
-      }
-      loadWifiNetworks(currentSsid);
-      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-    })
-    .catch(() => {
-      loadWifiNetworks(state.wifiSsid);
-      setWifiConfigMessage("WLAN-Einstellungen konnten nicht geladen werden.", "error");
-    })
-    .finally(() => {
-      wifiSsidSelect.focus();
-    });
+  wifiController.openConfigModal();
 }
 
 function closeWifiConfigModal(force = false){
-  if (wifiConnectInFlight && !force){
-    return;
-  }
-  if (isKeyboardOpen()){
-    closeKeyboardModalImmediate();
-  }
-  wifiConfigModal.classList.remove("is-open");
-  wifiConfigModal.setAttribute("aria-hidden", "true");
-  wifiBtn.focus();
-}
-
-function saveWifiConfig(){
-  const payload = readWifiPayload();
-  fetch(`${API_BASE}/api/settings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      wifiSsid: payload.ssid,
-      wifiPassword: payload.password,
-      wifiAutoConnect: payload.autoConnect,
-    }),
-  })
-    .then((res) => res.ok ? res.json() : null)
-    .then((data) => {
-      if (!data || typeof data !== "object"){
-        setWifiConfigMessage("WLAN-Einstellungen konnten nicht gespeichert werden.", "error");
-        return;
-      }
-      state.wifiSsid = payload.ssid;
-      setWifiConfigMessage("WLAN-Einstellungen gespeichert.", "ok");
-      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-    })
-    .catch(() => {
-      setWifiConfigMessage("WLAN-Einstellungen konnten nicht gespeichert werden.", "error");
-    });
-}
-
-async function connectWifi(){
-  if (wifiConnectInFlight){
-    return;
-  }
-  const payload = readWifiPayload();
-  if (!payload.ssid){
-    setWifiConfigMessage("Bitte WLAN auswählen.", "error");
-    return;
-  }
-
-  wifiConnectInFlight = true;
-  setWifiConfigControlsDisabled(true);
-  setWifiConfigMessage("");
-  openWifiConnectFeedbackLoading("WLAN wird verbunden ...");
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), WIFI_CONNECT_TIMEOUT_MS);
-
-  try{
-    const res = await fetch(`${API_BASE}/api/wifi/connect`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const data = res.ok ? await res.json() : null;
-    if (!data || !data.ok){
-      setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
-      await showWifiConnectFeedbackResult(false, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
-      return;
-    }
-
-    const connected = !!data.connected;
-    const ssid = String(data.ssid || payload.ssid || "").trim();
-    setWifiConnected(connected, ssid);
-    broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-    await showWifiConnectFeedbackResult(true, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
-    closeWifiConfigModal(true);
-  } catch (_err){
-    setWifiConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
-    await showWifiConnectFeedbackResult(false, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
-  } finally {
-    clearTimeout(timeoutId);
-    wifiConnectInFlight = false;
-    setWifiConfigControlsDisabled(false);
-    closeWifiConnectFeedback();
-  }
-}
-
-async function disconnectWifi(){
-  if (wifiConnectInFlight){
-    return;
-  }
-
-  wifiConnectInFlight = true;
-  setWifiConfigControlsDisabled(true);
-  setWifiConfigMessage("");
-  openWifiConnectFeedbackLoading("WLAN wird getrennt ...");
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), WIFI_CONNECT_TIMEOUT_MS);
-
-  try{
-    const res = await fetch(`${API_BASE}/api/wifi/disconnect`, {
-      method: "POST",
-      signal: controller.signal,
-    });
-    const data = res.ok ? await res.json() : null;
-    if (!data || !data.ok){
-      setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
-      await showWifiConnectFeedbackResult(false, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");
-      return;
-    }
-    const ssid = String(data.ssid || state.wifiSsid || "").trim();
-    setWifiConnected(false, ssid);
-    broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-    await showWifiConnectFeedbackResult(true, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");
-    closeWifiConfigModal(true);
-  } catch (_err){
-    setWifiConfigMessage("WLAN konnte nicht getrennt werden.", "error");
-    await showWifiConnectFeedbackResult(false, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");
-  } finally {
-    clearTimeout(timeoutId);
-    wifiConnectInFlight = false;
-    setWifiConfigControlsDisabled(false);
-    closeWifiConnectFeedback();
-  }
-}
-
-function toNumber(value, fallback = 0){
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function addMonths(date, months){
-  const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
-  return d;
-}
-
-function normalizeMaintenanceTask(task){
-  if (!task || typeof task !== "object") return null;
-  const id = String(task.id || "").trim();
-  if (!id) return null;
-
-  const rawIntervalType = String(task.intervalType || "").trim();
-  const rawIntervalValue = task.intervalValue;
-  let intervalType = "runtimeHours";
-  if (rawIntervalType === "calendarMonths"){
-    intervalType = "calendarMonths";
-  }
-  if (rawIntervalType === "none" || (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-")){
-    intervalType = "none";
-  }
-
-  return {
-    id,
-    intervalType,
-    intervalValue: intervalType === "none"
-      ? "-"
-      : Math.max(1, Math.floor(toNumber(rawIntervalValue, 1))),
-    lastCompletedAt: task.lastCompletedAt ? String(task.lastCompletedAt) : null,
-    spindleRuntimeSecAtCompletion: Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0))),
-  };
-}
-
-function hasAutomaticInterval(task){
-  if (!task || typeof task !== "object") return false;
-  const intervalType = String(task.intervalType || "").trim();
-  const intervalValue = task.intervalValue;
-  if (intervalType === "none") return false;
-  if (typeof intervalValue === "string" && intervalValue.trim() === "-") return false;
-  return intervalType === "runtimeHours" || intervalType === "calendarMonths";
-}
-
-function isMaintenanceTaskDue(task){
-  if (!task || typeof task !== "object") return false;
-  if (!hasAutomaticInterval(task)) return false;
-  if (!task.lastCompletedAt) return true;
-
-  const intervalType = String(task.intervalType || "");
-  const intervalValue = Math.max(1, Math.floor(toNumber(task.intervalValue, 1)));
-
-  if (intervalType === "runtimeHours"){
-    const lastSec = Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0)));
-    const elapsedSec = Math.max(0, state.spindleRuntimeSec - lastSec);
-    return elapsedSec >= (intervalValue * 3600);
-  }
-
-  if (intervalType === "calendarMonths"){
-    const lastDone = new Date(task.lastCompletedAt);
-    if (Number.isNaN(lastDone.getTime())) return true;
-    return Date.now() >= addMonths(lastDone, intervalValue).getTime();
-  }
-
-  return false;
-}
-
-function updateMaintenanceDueIndicator(){
-  const hasDueTask = maintenanceTasksCache.some((task) => isMaintenanceTaskDue(task));
-  if (maintenanceDueDot){
-    maintenanceDueDot.hidden = !hasDueTask;
-  }
-  setMaintenanceDue(hasDueTask);
-}
-
-function setMaintenanceTasks(tasks){
-  const list = Array.isArray(tasks) ? tasks : [];
-  maintenanceTasksCache = list.map(normalizeMaintenanceTask).filter(Boolean);
-  updateMaintenanceDueIndicator();
-}
-
-function upsertMaintenanceTask(task){
-  const normalized = normalizeMaintenanceTask(task);
-  if (!normalized) return;
-  const idx = maintenanceTasksCache.findIndex((item) => item.id === normalized.id);
-  if (idx >= 0){
-    maintenanceTasksCache[idx] = normalized;
-  } else {
-    maintenanceTasksCache.push(normalized);
-  }
-  updateMaintenanceDueIndicator();
+  wifiController.closeConfigModal(force);
 }
 
 function loadMaintenanceTasks(){
-  fetch(`${API_BASE}/api/maintenance/tasks`)
-    .then((res) => res.ok ? res.json() : null)
-    .then((payload) => {
-      const tasks = payload && Array.isArray(payload.tasks) ? payload.tasks : [];
-      setMaintenanceTasks(tasks);
-    })
-    .catch(() => {});
-}
-
-function normalizeMaintenanceSteps(rawSteps){
-  if (!Array.isArray(rawSteps)){
-    return [];
-  }
-  const steps = [];
-  for (const step of rawSteps){
-    if (!step || typeof step !== "object") continue;
-    const instruction = String(step.instruction || step.text || step.title || "").trim();
-    const image = String(step.image || "").trim();
-    const imageAlt = String(step.imageAlt || "Arbeitsschritt").trim();
-    if (!instruction) continue;
-    steps.push({ instruction, image, imageAlt });
-  }
-  return steps;
-}
-
-function renderMaintenanceGuideStep(){
-  const count = maintenanceModalSteps.length;
-  if (count === 0){
-    maintenanceGuideContent.hidden = true;
-    maintenanceGuideEmpty.hidden = false;
-    maintenanceGuidePrev.disabled = true;
-    maintenanceGuideNext.disabled = true;
-    return;
-  }
-
-  maintenanceGuideContent.hidden = false;
-  maintenanceGuideEmpty.hidden = true;
-
-  if (maintenanceModalStepIndex < 0){
-    maintenanceModalStepIndex = 0;
-  }
-  if (maintenanceModalStepIndex > count - 1){
-    maintenanceModalStepIndex = count - 1;
-  }
-
-  const step = maintenanceModalSteps[maintenanceModalStepIndex];
-  maintenanceGuideStepMeta.textContent = `Schritt ${maintenanceModalStepIndex + 1} / ${count}`;
-  maintenanceGuideStepText.textContent = step.instruction || "-";
-
-  if (step.image){
-    maintenanceGuideStepImage.src = step.image;
-    maintenanceGuideStepImage.alt = step.imageAlt || "Arbeitsschritt";
-    maintenanceGuideStepImage.hidden = false;
-  } else {
-    maintenanceGuideStepImage.src = "";
-    maintenanceGuideStepImage.alt = "";
-    maintenanceGuideStepImage.hidden = true;
-  }
-
-  maintenanceGuidePrev.disabled = maintenanceModalStepIndex <= 0;
-  maintenanceGuideNext.disabled = maintenanceModalStepIndex >= (count - 1);
-}
-
-function setMaintenanceTab(tab){
-  maintenanceModalTab = (tab === "guide") ? "guide" : "overview";
-  const isGuide = maintenanceModalTab === "guide";
-
-  maintenanceTabOverview.classList.toggle("is-active", !isGuide);
-  maintenanceTabOverview.setAttribute("aria-selected", isGuide ? "false" : "true");
-  maintenanceTabOverview.setAttribute("tabindex", isGuide ? "-1" : "0");
-
-  maintenanceTabGuide.classList.toggle("is-active", isGuide);
-  maintenanceTabGuide.setAttribute("aria-selected", isGuide ? "true" : "false");
-  maintenanceTabGuide.setAttribute("tabindex", isGuide ? "0" : "-1");
-
-  maintenancePanelOverview.classList.toggle("is-active", !isGuide);
-  maintenancePanelOverview.setAttribute("aria-hidden", isGuide ? "true" : "false");
-
-  maintenancePanelGuide.classList.toggle("is-active", isGuide);
-  maintenancePanelGuide.setAttribute("aria-hidden", isGuide ? "false" : "true");
-
-  maintenanceGuidePrev.hidden = !isGuide;
-  maintenanceGuideNext.hidden = !isGuide;
-
-  if (isGuide){
-    renderMaintenanceGuideStep();
-    if (!maintenanceGuideNext.disabled){
-      maintenanceGuideNext.focus();
-    } else if (!maintenanceGuidePrev.disabled){
-      maintenanceGuidePrev.focus();
-    } else {
-      maintenanceTaskDone.focus();
-    }
-    return;
-  }
-  maintenanceTaskDone.focus();
+  return maintenanceController.loadTasks();
 }
 
 function openMaintenanceTaskModal(payload){
-  const data = (payload && typeof payload === "object") ? payload : {};
-  maintenanceModalTaskId = data.taskId ? String(data.taskId) : null;
-  maintenanceTaskTitle.textContent = String(data.title || "Wartungsaufgabe");
-  maintenanceDetailInterval.textContent = String(data.intervalText || "-");
-  maintenanceDetailEffort.textContent = String(data.effortText || "-");
-  maintenanceDetailStatus.textContent = String(data.statusText || "-");
-  maintenanceDetailStatus.classList.toggle("is-due", !!data.due);
-  maintenanceDetailLastDone.textContent = String(data.lastDoneText || "-");
-  maintenanceDetailSinceDone.textContent = String(data.sinceDoneText || "-");
-  maintenanceDetailDescription.textContent = String(data.description || "-");
-  maintenanceModalSteps = normalizeMaintenanceSteps(data.steps);
-  maintenanceModalStepIndex = 0;
-  maintenanceDetailGuideInfo.textContent = maintenanceModalSteps.length > 0
-    ? `${maintenanceModalSteps.length} Schritte`
-    : "Keine Anleitung hinterlegt";
-
-  maintenanceTaskDone.disabled = !maintenanceModalTaskId;
-  maintenanceTaskModal.classList.add("is-open");
-  maintenanceTaskModal.setAttribute("aria-hidden", "false");
-  setMaintenanceTab("overview");
-}
-
-function closeMaintenanceTaskModal(){
-  maintenanceModalTaskId = null;
-  maintenanceModalSteps = [];
-  maintenanceModalStepIndex = 0;
-  maintenanceModalTab = "overview";
-  maintenanceTaskModal.classList.remove("is-open");
-  maintenanceTaskModal.setAttribute("aria-hidden", "true");
-}
-
-function completeMaintenanceTask(){
-  if (!maintenanceModalTaskId) return;
-  maintenanceTaskDone.disabled = true;
-  fetch(`${API_BASE}/api/maintenance/tasks/${encodeURIComponent(maintenanceModalTaskId)}/complete`, { method: "POST" })
-    .then((res) => res.ok ? res.json() : null)
-    .then((data) => {
-      if (!data || !data.task) return;
-      upsertMaintenanceTask(data.task);
-      broadcastToFrames({ type: "maintenanceTaskCompleted", task: data.task });
-      closeMaintenanceTaskModal();
-    })
-    .catch(() => {})
-    .finally(() => {
-      maintenanceTaskDone.disabled = false;
-    });
+  maintenanceController.openTaskModal(payload);
 }
 
 function queueUiSettingsSave(){
@@ -1058,7 +401,7 @@ function setSpindleRuntimeSec(value, persist = false){
   spindleRuntimeRawSec = v;
   state.spindleRuntimeSec = v;
   broadcastToFrames({ type: "spindleRuntime", seconds: v });
-  updateMaintenanceDueIndicator();
+  maintenanceController.onSpindleRuntimeChanged();
   if (persist){
     queueRuntimeSave();
   }
@@ -1094,7 +437,7 @@ function updateSpindleRuntimeFromAxes(data){
   if (rounded !== state.spindleRuntimeSec){
     state.spindleRuntimeSec = rounded;
     broadcastToFrames({ type: "spindleRuntime", seconds: rounded });
-    updateMaintenanceDueIndicator();
+    maintenanceController.onSpindleRuntimeChanged();
     queueRuntimeSave();
   }
 }
@@ -1104,15 +447,11 @@ function loadUiSettings(){
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data || typeof data !== "object") return;
-      const wifiSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : state.wifiSsid;
-      state.wifiSsid = String(wifiSsid || "").trim();
-      if (typeof data.wifiConnected === "boolean"){
-        setWifiConnected(data.wifiConnected, wifiSsid);
-        broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-      } else if (typeof data.wifiConnected === "number" && (data.wifiConnected === 0 || data.wifiConnected === 1)){
-        setWifiConnected(Boolean(data.wifiConnected), wifiSsid);
-        broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
-      }
+      wifiController.applySettings(data, {
+        updateForm: false,
+        fallbackConnected: false,
+        broadcast: true,
+      });
       if (typeof data.lightBrightness === "number"){
         const v = Math.max(0, Math.min(100, data.lightBrightness));
         state.lightBrightness = v;
@@ -1286,32 +625,8 @@ fanModal.addEventListener("click", (ev) => {
 });
 fanSlider.addEventListener("input", (ev) => updateFanSpeed(ev.target.value));
 fanAutoInput.addEventListener("change", (ev) => setFanAuto(ev.target.checked, true));
-wifiModalClose.addEventListener("click", closeWifiConfigModal);
-wifiConfigModal.addEventListener("click", (ev) => {
-  if (ev.target && ev.target.dataset && ev.target.dataset.close){
-    closeWifiConfigModal();
-  }
-});
-wifiPasswordInput.addEventListener("pointerdown", (ev) => {
-  ev.preventDefault();
-  openWifiPasswordKeyboard();
-});
-wifiScanBtn.addEventListener("click", () => loadWifiNetworks(wifiSsidSelect.value));
-wifiSaveBtn.addEventListener("click", saveWifiConfig);
-wifiConnectBtn.addEventListener("click", connectWifi);
-wifiDisconnectBtn.addEventListener("click", disconnectWifi);
-keyboardCancelBtn.addEventListener("click", () => finishKeyboardModal(false));
-keyboardOkBtn.addEventListener("click", () => finishKeyboardModal(true));
-keyboardModal.addEventListener("click", (ev) => {
-  if (ev.target && ev.target.dataset && ev.target.dataset.close){
-    finishKeyboardModal(false);
-  }
-});
-keyboardKeys.addEventListener("click", (ev) => {
-  const btn = ev.target.closest(".keyboard__key");
-  if (!btn) return;
-  handleKeyboardKey(btn.dataset.key);
-});
+wifiController.attachEventHandlers();
+keyboardController.attachEventHandlers();
 graphClose.addEventListener("click", closeGraphModal);
 graphModal.addEventListener("click", (ev) => {
   if (ev.target && ev.target.dataset && ev.target.dataset.close){
@@ -1319,49 +634,13 @@ graphModal.addEventListener("click", (ev) => {
   }
 });
 graphWindowSlider.addEventListener("input", (ev) => updateGraphWindowModal(ev.target.value, true));
-maintenanceTaskClose.addEventListener("click", closeMaintenanceTaskModal);
-maintenanceTabOverview.addEventListener("click", () => setMaintenanceTab("overview"));
-maintenanceTabGuide.addEventListener("click", () => setMaintenanceTab("guide"));
-maintenanceGuidePrev.addEventListener("click", () => {
-  if (maintenanceModalStepIndex <= 0) return;
-  maintenanceModalStepIndex -= 1;
-  renderMaintenanceGuideStep();
-});
-maintenanceGuideNext.addEventListener("click", () => {
-  if (maintenanceModalStepIndex >= maintenanceModalSteps.length - 1) return;
-  maintenanceModalStepIndex += 1;
-  renderMaintenanceGuideStep();
-});
-maintenanceTaskDone.addEventListener("click", completeMaintenanceTask);
-maintenanceTaskModal.addEventListener("click", (ev) => {
-  if (ev.target && ev.target.dataset && ev.target.dataset.close){
-    closeMaintenanceTaskModal();
-  }
-});
+maintenanceController.attachEventHandlers();
 window.addEventListener("keydown", (ev) => {
-  if (isKeyboardOpen()){
-    if (ev.key === "Escape"){
-      finishKeyboardModal(false);
-      return;
-    }
-    if (ev.key === "Enter"){
-      finishKeyboardModal(true);
-      return;
-    }
-    if (ev.key === "Backspace"){
-      ev.preventDefault();
-      handleKeyboardKey("backspace");
-      return;
-    }
-    if (ev.key === " "){
-      ev.preventDefault();
-      handleKeyboardKey("space");
-      return;
-    }
-    if (ev.key.length === 1){
-      handleKeyboardKey(ev.key);
-      return;
-    }
+  if (keyboardController.handleDocumentKeydown(ev)){
+    return;
+  }
+  if (maintenanceController.handleDocumentKeydown(ev)){
+    return;
   }
 
   if (ev.key === "Escape" && shutdownModal.classList.contains("is-open")){
@@ -1381,17 +660,6 @@ window.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape" && graphModal.classList.contains("is-open")){
     closeGraphModal();
-  }
-  if (ev.key === "Escape" && maintenanceTaskModal.classList.contains("is-open")){
-    closeMaintenanceTaskModal();
-  }
-  if (maintenanceTaskModal.classList.contains("is-open") && maintenanceModalTab === "guide"){
-    if (ev.key === "ArrowLeft" && !maintenanceGuidePrev.disabled){
-      maintenanceGuidePrev.click();
-    }
-    if (ev.key === "ArrowRight" && !maintenanceGuideNext.disabled){
-      maintenanceGuideNext.click();
-    }
   }
 });
 
@@ -1499,7 +767,7 @@ window.addEventListener("message", (ev) => {
     case "setStatus":  setMachineStatus(msg.status); break;
     case "setWifi":
       setWifiConnected(!!msg.connected, typeof msg.ssid === "string" ? msg.ssid : state.wifiSsid);
-      broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+      broadcastWifiState();
       break;
     case "openWifiConfigModal": openWifiConfigModal(); break;
     case "openKeyboard":
