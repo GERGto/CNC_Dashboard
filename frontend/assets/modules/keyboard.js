@@ -28,6 +28,7 @@ const KEYBOARD_CHAR_PAIRS = {
   "lbracket": ["[", "{"],
   "rbracket": ["]", "}"],
 };
+const BACKSPACE_LONG_PRESS_MS = 550;
 
 export function createKeyboardController({
   modalEl,
@@ -41,6 +42,15 @@ export function createKeyboardController({
   let shift = false;
   let context = null;
   let listenersBound = false;
+  let backspaceHoldTimer = null;
+  let suppressNextBackspaceClick = false;
+
+  function clearBackspaceHoldTimer() {
+    if (backspaceHoldTimer) {
+      clearTimeout(backspaceHoldTimer);
+      backspaceHoldTimer = null;
+    }
+  }
 
   function isOpen() {
     return modalEl.classList.contains("is-open");
@@ -104,6 +114,8 @@ export function createKeyboardController({
   }
 
   function closeImmediate() {
+    clearBackspaceHoldTimer();
+    suppressNextBackspaceClick = false;
     modalEl.classList.remove("is-open");
     modalEl.setAttribute("aria-hidden", "true");
     shift = false;
@@ -271,9 +283,36 @@ export function createKeyboardController({
         finish(false);
       }
     });
+    keysEl.addEventListener("pointerdown", (ev) => {
+      const btn = ev.target.closest(".keyboard__key");
+      if (!btn || btn.dataset.key !== "backspace") return;
+      if (ev.pointerType === "mouse" && ev.button !== 0) return;
+
+      clearBackspaceHoldTimer();
+      suppressNextBackspaceClick = false;
+      backspaceHoldTimer = setTimeout(() => {
+        backspaceHoldTimer = null;
+        suppressNextBackspaceClick = true;
+        handleKey("clear");
+      }, BACKSPACE_LONG_PRESS_MS);
+
+      if (typeof btn.setPointerCapture === "function") {
+        try {
+          btn.setPointerCapture(ev.pointerId);
+        } catch (_err) {
+          // Ignore capture failures for unsupported input types.
+        }
+      }
+    });
+    keysEl.addEventListener("pointerup", clearBackspaceHoldTimer);
+    keysEl.addEventListener("pointercancel", clearBackspaceHoldTimer);
     keysEl.addEventListener("click", (ev) => {
       const btn = ev.target.closest(".keyboard__key");
       if (!btn) return;
+      if (btn.dataset.key === "backspace" && suppressNextBackspaceClick) {
+        suppressNextBackspaceClick = false;
+        return;
+      }
       handleKey(btn.dataset.key);
     });
   }
