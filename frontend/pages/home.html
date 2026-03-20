@@ -127,6 +127,7 @@
     let graphPressTimer = null;
     let settingsSaveTimer = null;
     let axisSaveTimer = null;
+    const axisSuppressClickUntilMs = {};
     const axisLabelLeft = document.getElementById("axisLabelLeft");
     const axisLabelMid = document.getElementById("axisLabelMid");
     const axisLabelRight = document.getElementById("axisLabelRight");
@@ -274,7 +275,20 @@
     document.querySelectorAll(".axis-card").forEach((card) => {
       const axis = card.dataset.axis;
       setAxisEnabled(axis, true, false);
-      card.addEventListener("click", () => setAxisEnabled(axis, !axisState[axis], true));
+      card.addEventListener("pointerdown", (ev) => {
+        if (ev.pointerType === "mouse"){
+          return;
+        }
+        axisSuppressClickUntilMs[axis] = performance.now() + 700;
+        ev.preventDefault();
+        setAxisEnabled(axis, !axisState[axis], true);
+      });
+      card.addEventListener("click", () => {
+        if (performance.now() < (axisSuppressClickUntilMs[axis] || 0)){
+          return;
+        }
+        setAxisEnabled(axis, !axisState[axis], true);
+      });
       card.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" || ev.key === " "){
           ev.preventDefault();

@@ -30,7 +30,8 @@ and streaming axis/spindle load values. For development it serves mock values.
 - POST `/api/maintenance/tasks/<taskId>/complete`
   - Markiert Aufgabe als erledigt (mit aktuellem Datum und aktueller Spindellaufzeit)
 - POST `/api/shutdown`
-  - `{ ok: true, message: "Shutdown scheduled (mock)" }`
+  - When configured for a real device shutdown: `{ ok: true, message: "Shutdown scheduled" }`
+  - Otherwise: `{ ok: false, message: "Real shutdown is disabled" }`
 
 ## Run
 
@@ -43,6 +44,9 @@ Optional:
 ```
 set PORT=8080
 set AXES_INTERVAL_MS=250
+set ENABLE_REAL_SHUTDOWN=1
+set SHUTDOWN_COMMAND=sudo -n /usr/bin/systemctl poweroff
+set SHUTDOWN_DELAY_SEC=1.0
 ```
 
 The server listens on `http://localhost:8080` by default.

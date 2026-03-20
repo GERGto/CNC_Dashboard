@@ -12,6 +12,17 @@
   --transition: 120ms;
 }
 
+html,
+body,
+button,
+input,
+select,
+textarea,
+iframe,
+*{
+  cursor: none !important;
+}
+
 html, body { height: 100%; }
 
 body{

@@ -188,3 +188,140 @@ Die funktionierende Endkonfiguration war erreicht, als folgende Bedingungen glei
 - `HDMI-2` war `primary`
 - Chromium startete mit `--window-size=1024,600`
 - Das Dashboard wurde im Kiosk-Modus vollstaendig angezeigt, ohne schwarzen Balken unten und ohne abgeschnittenen rechten Rand
+
+### Mauszeiger im Touch-Kiosk ausblenden
+
+Auf dem Zielsystem wurde der Mauszeiger im Chromium-Kiosk erfolgreich ausgeblendet, ohne die Touch-Bedienung zu blockieren.
+
+Ausgangsproblem:
+
+- Im Kiosk war trotz Touch-Bedienung weiterhin ein sichtbarer Mauszeiger vorhanden.
+- Eine reine Frontend-Loesung mit `cursor: none` wurde vom Pi zwar ausgeliefert, der sichtbare Zeiger kam jedoch weiterhin aus X/Chromium.
+- Die erste Variante mit `unclutter classic` und `-grab` war fuer diesen Anwendungsfall ungeeignet, weil waehrend der Finger auf dem Display war weiterhin ein Zeiger sichtbar sein konnte und Touch-Klicks gestoert wurden.
+
+#### Erfolgreiche Loesung
+
+Die stabile Loesung bestand darin, auf dem Pi die XFixes-basierte Variante von `unclutter` zu verwenden.
+
+Installierter Helfer:
+
+```bash
+sudo apt-get install -y unclutter-xfixes
+```
+
+Hinweis:
+
+- Danach zeigt `/usr/bin/unclutter` per `update-alternatives` auf `/usr/bin/unclutter-xfixes`.
+
+#### Kiosk-Wrapper erweitern
+
+Datei: `/usr/local/bin/cnc-dashboard-kiosk.sh`
+
+Vor dem Chromium-Start wurde der folgende Block erfolgreich eingefuegt:
+
+```sh
+if command -v unclutter >/dev/null 2>&1; then
+  pkill -x unclutter >/dev/null 2>&1 || true
+  unclutter --timeout 0 --hide-on-touch --start-hidden --fork >/dev/null 2>&1 || true
+fi
+```
+
+Der vollstaendige Wrapper lautet damit:
+
+```sh
+#!/bin/sh
+MODE_NAME='1024x600_60.00'
+
+if command -v xrandr >/dev/null 2>&1; then
+  i=0
+  while [ "$i" -lt 5 ]; do
+    if xrandr --query >/dev/null 2>&1; then
+      xrandr --newmode "$MODE_NAME" 49.00 1024 1072 1168 1312 600 603 613 624 -hsync +vsync 2>/dev/null || true
+      xrandr --addmode HDMI-2 "$MODE_NAME" 2>/dev/null || true
+      xrandr --output HDMI-2 --primary --mode "$MODE_NAME" --output HDMI-1 --off 2>/dev/null && break
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+fi
+
+if command -v unclutter >/dev/null 2>&1; then
+  pkill -x unclutter >/dev/null 2>&1 || true
+  unclutter --timeout 0 --hide-on-touch --start-hidden --fork >/dev/null 2>&1 || true
+fi
+
+exec /usr/bin/chromium "$@"
+```
+
+#### Kiosk-Session neu starten
+
+```bash
+sudo systemctl restart getty@tty1
+```
+
+#### Erfolgreiche Verifikation
+
+Die funktionierende Endkonfiguration war erreicht, als folgende Bedingungen gleichzeitig erfuellt waren:
+
+- `pgrep -af unclutter` zeigte einen laufenden Prozess mit `--hide-on-touch --start-hidden`
+- Chromium startete weiterhin normal im Kiosk-Modus
+- Der Mauszeiger war nicht mehr sichtbar
+- Touch-Klicks funktionierten weiterhin normal
+
+### Google-Translate-Badge in Chromium ausblenden
+
+Auf dem Zielsystem wurde das links oben eingeblendete Google-Translate-Badge im Chromium-Kiosk erfolgreich deaktiviert.
+
+Ausgangsproblem:
+
+- Im Kiosk erschien links oben ein Uebersetzungs-Hinweis beziehungsweise Translate-Badge.
+- Ursache war, dass Chromium mit englischer Browsersprache (`en-US`) lief, waehrend das Dashboard deutsch ist.
+
+#### Erfolgreiche Loesung
+
+Die stabile Loesung bestand aus zwei Teilen:
+
+- Chromium beim Start explizit auf Deutsch setzen
+- die integrierte Translate-Funktion im Profil deaktivieren
+
+#### Schritt 1: Chromium-Startflags erweitern
+
+Datei: `/usr/local/bin/cnc-dashboard-kiosk.sh`
+
+Die Chromium-Startzeile wurde erfolgreich auf folgende Form angepasst:
+
+```sh
+exec /usr/bin/chromium --lang=de-DE --disable-features=Translate "$@"
+```
+
+Damit startet Chromium im Kiosk-Modus direkt mit deutscher UI-Sprache und ohne aktive Translate-Funktion.
+
+#### Schritt 2: Chromium-Profil auf Deutsch und Translate aus setzen
+
+Datei: `/home/dietpi/.config/chromium/Default/Preferences`
+
+Die folgenden Werte wurden erfolgreich gesetzt:
+
+```json
+"intl": {
+  "selected_languages": "de-DE,de"
+},
+"translate": {
+  "enabled": false
+}
+```
+
+#### Schritt 3: Kiosk-Session neu starten
+
+```bash
+sudo systemctl restart getty@tty1
+```
+
+#### Erfolgreiche Verifikation
+
+Die funktionierende Endkonfiguration war erreicht, als folgende Bedingungen gleichzeitig erfuellt waren:
+
+- der laufende Chromium-Prozess enthaelt `--lang=de-DE --disable-features=Translate`
+- in den Chromium-Preferences steht `selected_languages=de-DE,de`
+- in den Chromium-Preferences steht `translate.enabled=false`
+- das Translate-Badge wird im Kiosk nicht mehr angezeigt

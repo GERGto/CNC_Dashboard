@@ -23,7 +23,7 @@ const state = {
   activePage: "home",
   machineStatus: "IDLE", // IDLE | RUNNING | ERROR
   maintenanceDue: false,
-  wifiConnected: true,
+  wifiConnected: false,
   wifiSsid: "",
   lightOn: true,
   lightBrightness: 75,
@@ -43,6 +43,7 @@ const ICONS = {
 };
 
 const mainEl = document.querySelector(".main");
+const navEl = document.querySelector(".nav");
 const clockEl = document.getElementById("clock");
 const statusEl = document.getElementById("machineStatus");
 const statusBarEl = document.querySelector(".statusbar");
@@ -125,6 +126,7 @@ let runtimeSaveTimer = null;
 let spindleRuntimeRawSec = 0;
 let lastAxesTimestampMs = null;
 let graphWindowSec = 60;
+let navSuppressClickUntilMs = 0;
 
 const statusbarController = createStatusbarController({
   state,
@@ -149,7 +151,7 @@ const wifiController = createWifiController({
   apiBase: API_BASE,
   state,
   keyboardController,
-  connectTimeoutMs: 15000,
+  connectTimeoutMs: 30000,
   feedbackMs: 2000,
   onSetWifiConnected: setWifiConnected,
   onBroadcastWifi: broadcastWifiState,
@@ -710,10 +712,29 @@ function openSystemWifiConfig(){
   setTimeout(() => postToFrame("system", message), 500);
 }
 
-document.querySelector(".nav").addEventListener("click", (ev) => {
-  const btn = ev.target.closest(".navbtn");
+function activateNavButton(btn){
   if (!btn) return;
   showPage(btn.dataset.page);
+}
+
+navEl.addEventListener("pointerdown", (ev) => {
+  const btn = ev.target.closest(".navbtn");
+  if (!btn) return;
+  if (ev.pointerType === "mouse"){
+    return;
+  }
+  navSuppressClickUntilMs = performance.now() + 700;
+  ev.preventDefault();
+  activateNavButton(btn);
+});
+
+navEl.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".navbtn");
+  if (!btn) return;
+  if (performance.now() < navSuppressClickUntilMs){
+    return;
+  }
+  activateNavButton(btn);
 });
 
 createFrames();
