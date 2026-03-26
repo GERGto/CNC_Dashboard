@@ -1,0 +1,16 @@
+[Unit]
+Description=CNC Dashboard Frontend
+After=network.target cnc-dashboard-backend.service
+Wants=cnc-dashboard-backend.service
+
+[Service]
+Type=simple
+User=dietpi
+Group=dietpi
+WorkingDirectory=/opt/cnc-dashboard/frontend
+ExecStart=/usr/bin/python3 /opt/cnc-dashboard/frontend/server.py --bind 127.0.0.1 --port 8081 --directory /opt/cnc-dashboard/frontend
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

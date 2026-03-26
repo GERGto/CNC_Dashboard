@@ -19,6 +19,7 @@ const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
 const SHUTDOWN_RECOVERY_MS = 15000;
+const PAGE_LOAD_TOKEN = String(Date.now());
 
 const state = {
   activePage: "home",
@@ -765,7 +766,8 @@ function createFrames(){
     const f = document.createElement("iframe");
     f.className = "viewframe";
     f.dataset.page = p.id;
-    f.src = p.src;
+    const separator = p.src.includes("?") ? "&" : "?";
+    f.src = `${p.src}${separator}v=${encodeURIComponent(PAGE_LOAD_TOKEN)}`;
     f.loading = "eager"; // alles beim Start laden
     f.setAttribute("title", p.title);
     mainEl.appendChild(f);

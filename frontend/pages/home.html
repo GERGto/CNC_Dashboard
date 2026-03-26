@@ -4,25 +4,59 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Home</title>
-  <link rel="stylesheet" href="../assets/ui-common.css" />
-  <link rel="stylesheet" href="../assets/app.css" />
-  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="../assets/ui-common.css?v=20260326-03" />
+  <link rel="stylesheet" href="../assets/app.css?v=20260326-03" />
+  <link rel="stylesheet" href="home.css?v=20260326-07" />
 </head>
 <body class="home">
   <main class="home-layout" role="main">
     <section class="panel spindle-panel" aria-labelledby="spindleTitle">
       <header class="panel-header">
-        <h2 id="spindleTitle">Spindellast</h2>
+        <h2 id="spindleTitle">Spindel</h2>
         <span class="panel-sub" aria-live="polite">live</span>
       </header>
 
-      <div class="spindle-gauge" id="spindleGauge" style="--value:68">
-        <div class="gauge__content">
-          <div class="gauge__value" id="spindleValue">68%</div>
-          <div class="gauge__label">Auslastung</div>
-        </div>
-      </div>
+      <div class="spindle-stack">
+        <article class="gauge-card" aria-labelledby="spindleLoadGaugeTitle">
+          <div class="gauge-card__head">
+            <h3 id="spindleLoadGaugeTitle">Spindellast</h3>
+          </div>
 
+          <div class="arc-gauge" id="spindleGauge" style="--gauge-color:#1a1a1a">
+            <div class="arc-gauge__wrap">
+              <svg class="arc-gauge__svg" viewBox="0 0 360 180" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                <path class="arc-gauge__bg"></path>
+                <path class="arc-gauge__fill"></path>
+              </svg>
+              <div class="arc-gauge__value" id="spindleValue">68%</div>
+            </div>
+            <div class="arc-gauge__markers" aria-hidden="true">
+              <span>0%</span>
+              <span>100%</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="gauge-card" aria-labelledby="spindleTempGaugeTitle">
+          <div class="gauge-card__head">
+            <h3 id="spindleTempGaugeTitle">Spindeltemperatur</h3>
+          </div>
+
+          <div class="arc-gauge arc-gauge--temperature" id="spindleTempGauge" style="--gauge-color:#b66100" data-state="loading">
+            <div class="arc-gauge__wrap">
+              <svg class="arc-gauge__svg" viewBox="0 0 360 180" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                <path class="arc-gauge__bg"></path>
+                <path class="arc-gauge__fill"></path>
+              </svg>
+              <div class="arc-gauge__value" id="spindleTempValue">--.-&deg;C</div>
+            </div>
+            <div class="arc-gauge__markers" aria-hidden="true">
+              <span>20&deg;C</span>
+              <span>55&deg;C</span>
+            </div>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="panel axes-panel" aria-labelledby="axesTitle">
@@ -86,10 +120,17 @@
   <script>
     const API_BASE = "http://localhost:8080";
     const axisKeys = ["spindle", "x", "y", "z"];
+    const SPINDLE_TEMP_MIN_C = 20;
+    const SPINDLE_TEMP_MAX_C = 55;
+    const SPINDLE_TEMP_REFRESH_MS = 2500;
     const axisState = {};
 
     const spindleValueEl = document.getElementById("spindleValue");
     const spindleGauge = document.getElementById("spindleGauge");
+    const spindleGaugeFill = spindleGauge.querySelector(".arc-gauge__fill");
+    const spindleTempGauge = document.getElementById("spindleTempGauge");
+    const spindleTempGaugeFill = spindleTempGauge.querySelector(".arc-gauge__fill");
+    const spindleTempValueEl = document.getElementById("spindleTempValue");
 
     const axisValueEls = {
       spindle: document.getElementById("axis-value-spindle"),
@@ -121,6 +162,10 @@
     };
     let spindleDisplayValue = 0;
     const SPINDLE_SMOOTH = 0.12;
+    let spindleTempTargetC = SPINDLE_TEMP_MIN_C;
+    let spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
+    let spindleTempAvailable = false;
+    const SPINDLE_TEMP_SMOOTH = 0.15;
     let HISTORY_WINDOW_MS = 60000;
     const HISTORY_INTERVAL_MS = 120;
     let lastHistoryTs = 0;
@@ -133,16 +178,113 @@
     const axisLabelRight = document.getElementById("axisLabelRight");
     const axesChart = document.querySelector(".axes-chart");
 
+    const GAUGE_CX = 180;
+    const GAUGE_CY = 180;
+    const GAUGE_R = 140;
+    const GAUGE_STROKE_W = 52;
+    const GAUGE_TOTAL_LEN = Math.PI * GAUGE_R;
+
+    function describeArc(start, end){
+      const x1 = GAUGE_CX + GAUGE_R * Math.cos(start);
+      const y1 = GAUGE_CY + GAUGE_R * Math.sin(start);
+      const x2 = GAUGE_CX + GAUGE_R * Math.cos(end);
+      const y2 = GAUGE_CY + GAUGE_R * Math.sin(end);
+      const sweep = end - start > Math.PI ? 1 : 0;
+      return `M ${x1} ${y1} A ${GAUGE_R} ${GAUGE_R} 0 ${sweep} 1 ${x2} ${y2}`;
+    }
+
+    function setupGaugePaths(gaugeEl){
+      if (!gaugeEl) return;
+      const bgPath = gaugeEl.querySelector(".arc-gauge__bg");
+      const fillPath = gaugeEl.querySelector(".arc-gauge__fill");
+      if (!bgPath || !fillPath) return;
+
+      const arcPath = describeArc(Math.PI, 2 * Math.PI);
+      bgPath.setAttribute("d", arcPath);
+      bgPath.setAttribute("stroke-width", String(GAUGE_STROKE_W));
+      fillPath.setAttribute("d", arcPath);
+      fillPath.setAttribute("stroke-width", String(GAUGE_STROKE_W));
+      fillPath.style.strokeDasharray = GAUGE_TOTAL_LEN.toFixed(2);
+      fillPath.style.strokeDashoffset = GAUGE_TOTAL_LEN.toFixed(2);
+    }
+
     function clampPercent(value){
       const v = Number(value);
       if (Number.isNaN(v)) return 0;
       return Math.max(0, Math.min(100, Math.round(v)));
     }
 
+    function clampSpindleTemperature(value){
+      const v = Number(value);
+      if (!Number.isFinite(v)) return SPINDLE_TEMP_MIN_C;
+      return Math.max(SPINDLE_TEMP_MIN_C, Math.min(SPINDLE_TEMP_MAX_C, v));
+    }
+
+    function temperatureToProgress(value){
+      const clamped = clampSpindleTemperature(value);
+      return ((clamped - SPINDLE_TEMP_MIN_C) / (SPINDLE_TEMP_MAX_C - SPINDLE_TEMP_MIN_C)) * 100;
+    }
+
+    function setGaugeProgress(fillEl, value){
+      if (!fillEl) return;
+      const progress = Math.max(0, Math.min(100, Number(value) || 0));
+      fillEl.style.strokeDashoffset = (GAUGE_TOTAL_LEN * (1 - progress / 100)).toFixed(2);
+    }
+
     function setSpindleValue(value){
       const v = clampPercent(value);
       spindleValueEl.textContent = `${v}%`;
-      spindleGauge.style.setProperty("--value", v);
+      setGaugeProgress(spindleGaugeFill, v);
+    }
+
+    function setSpindleTemperatureValue(value){
+      const clamped = clampSpindleTemperature(value);
+      const progress = temperatureToProgress(clamped);
+      spindleTempValueEl.textContent = `${clamped.toLocaleString("de-DE", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+      })}\u00B0C`;
+      setGaugeProgress(spindleTempGaugeFill, progress);
+    }
+
+    function temperatureColorFor(value){
+      const temp = clampSpindleTemperature(value);
+      const ratio = (temp - SPINDLE_TEMP_MIN_C) / (SPINDLE_TEMP_MAX_C - SPINDLE_TEMP_MIN_C);
+      if (ratio >= 0.85) return "#8c1d18";
+      if (ratio >= 0.6) return "#c56a00";
+      if (ratio >= 0.35) return "#5f7f14";
+      return "#0d5b8a";
+    }
+
+    function applySpindleTemperaturePayload(payload){
+      const available = !!(payload && payload.available);
+      const temperature = Number(payload && payload.temperatureC);
+
+      spindleTempAvailable = available && Number.isFinite(temperature);
+      spindleTempGauge.dataset.state = spindleTempAvailable ? "ok" : "error";
+
+      if (!spindleTempAvailable){
+        spindleTempValueEl.textContent = "--.-\u00B0C";
+        setGaugeProgress(spindleTempGaugeFill, 0);
+        spindleTempGauge.style.setProperty("--gauge-color", "#9b9b9b");
+        spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
+        spindleTempTargetC = SPINDLE_TEMP_MIN_C;
+        return;
+      }
+
+      spindleTempTargetC = clampSpindleTemperature(temperature);
+      spindleTempGauge.style.setProperty("--gauge-color", temperatureColorFor(spindleTempTargetC));
+    }
+
+    function loadSpindleTemperature(){
+      fetch(`${API_BASE}/api/hardware/spindle-temperature?refresh=1`)
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          applySpindleTemperaturePayload(data);
+        })
+        .catch(() => {
+          applySpindleTemperaturePayload(null);
+        });
     }
 
     function setAxisValue(axis, value){
@@ -247,6 +389,11 @@
       spindleDisplayValue += (spindleTarget - spindleDisplayValue) * SPINDLE_SMOOTH;
       setSpindleValue(spindleDisplayValue);
 
+      if (spindleTempAvailable){
+        spindleTempDisplayC += (spindleTempTargetC - spindleTempDisplayC) * SPINDLE_TEMP_SMOOTH;
+        setSpindleTemperatureValue(spindleTempDisplayC);
+      }
+
       if (!lastHistoryTs) lastHistoryTs = now;
       if (now - lastHistoryTs >= HISTORY_INTERVAL_MS){
         pushHistory(now);
@@ -297,11 +444,16 @@
       });
     });
 
+    setupGaugePaths(spindleGauge);
+    setupGaugePaths(spindleTempGauge);
+
     const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
     pushHistory(performance.now());
     updateGraphWindow(60);
     loadSettings();
+    loadSpindleTemperature();
+    setInterval(loadSpindleTemperature, SPINDLE_TEMP_REFRESH_MS);
     requestAnimationFrame(tick);
 
     function applyAxesPayload(payload){
@@ -340,4 +492,3 @@
   </script>
 </body>
 </html>
-

@@ -6,7 +6,7 @@
   "wifiSsid": "coppi_homenet",
   "wifiPassword": "",
   "wifiAutoConnect": false,
-  "wifiConnected": true,
+  "wifiConnected": false,
   "axisVisibility": {
     "spindle": false,
     "x": true,
