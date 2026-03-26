@@ -17,11 +17,11 @@ Es kapselt Buszugriffe und Geraetelogik, damit weder Frontend noch `server.py` d
 
 Die erste Ausbaustufe besteht aus drei Ebenen:
 
-1. `backend/hardware/i2c.py`
+1. `backend/cnc_hardware/i2c.py`
    Linux-I2C-Zugriff ueber `/dev/i2c-*` ohne zusaetzliche Python-Abhaengigkeiten.
-2. `backend/hardware/sensors.py`
+2. `backend/cnc_hardware/sensors.py`
    Geraetetreiber, aktuell fuer den `AHT20` Spindeltemperatur-Sensor.
-3. `backend/hardware/service.py`
+3. `backend/cnc_hardware/service.py`
    Hardware-Fassade mit normalisierter Antwortstruktur und kurzem Messwert-Cache.
 
 ## HTTP-Anbindung
@@ -39,6 +39,7 @@ Der bestehende HTTP-Server bindet das Hardware-Backend als Adapter ein und stell
 - Reale Hardwarezugriffe muessen auf Nicht-Linux-Systemen kontrolliert fehlschlagen koennen
 - Antwortobjekte enthalten immer Metadaten, Status und Fehlertext, damit Frontend und Backend gleich damit arbeiten koennen
 - Polling wird zentral ueber das Hardware-Backend begrenzt, um Sensoren nicht unnoetig oft auszulesen
+- Auf dem Zielsystem muss der Service-User Lese-/Schreibrechte auf `/dev/i2c-*` besitzen; auf dem aktuellen Pi wurde `dietpi` dazu der Gruppe `i2c` hinzugefuegt
 
 ## Naechste Schritte
 

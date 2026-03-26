@@ -6,12 +6,17 @@ import shutil
 import subprocess
 import threading
 import time
+import sys
 from copy import deepcopy
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from hardware import create_hardware_backend
+BACKEND_ROOT = os.path.dirname(os.path.abspath(__file__))
+if BACKEND_ROOT not in sys.path:
+    sys.path.insert(0, BACKEND_ROOT)
+
+from cnc_hardware import create_hardware_backend
 
 
 PORT = int(os.getenv("PORT", "8080"))
