@@ -74,11 +74,14 @@
       <img class="easteregg__gif" id="wifiEastereggGif" src="assets/images/gandalf-sax-gandalf.gif" alt="Gandalf Sax Easteregg" />
     </div>
 
+    <div class="shutdown-screen" id="shutdownScreen" aria-hidden="true"></div>
+
     <div class="modal" id="shutdownModal" role="dialog" aria-modal="true" aria-labelledby="shutdownTitle" aria-hidden="true">
       <div class="modal__backdrop" data-close="true"></div>
       <div class="modal__panel" role="document">
         <h2 class="modal__title" id="shutdownTitle">Herunterfahren bestätigen</h2>
         <p class="modal__text">Möchten Sie die Maschine wirklich herunterfahren?</p>
+        <p class="modal__error" id="shutdownError" hidden aria-live="polite"></p>
         <div class="modal__actions">
           <button class="btn" id="shutdownCancel" type="button">Abbrechen</button>
           <button class="btn btn--danger" id="shutdownConfirm" type="button">Herunterfahren</button>

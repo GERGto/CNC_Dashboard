@@ -18,6 +18,7 @@ const AXES_INTERVAL_MS = 250;
 const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
+const SHUTDOWN_RECOVERY_MS = 15000;
 
 const state = {
   activePage: "home",
@@ -25,6 +26,7 @@ const state = {
   maintenanceDue: false,
   wifiConnected: false,
   wifiSsid: "",
+  wifiIssue: "",
   lightOn: true,
   lightBrightness: 75,
   fanOn: true,
@@ -58,8 +60,11 @@ const lightImg = document.getElementById("lightImg");
 const fanImg = document.getElementById("fanImg");
 const wifiEastereggOverlay = document.getElementById("wifiEastereggOverlay");
 const shutdownModal = document.getElementById("shutdownModal");
+const shutdownMessage = shutdownModal.querySelector(".modal__text");
+const shutdownError = document.getElementById("shutdownError");
 const shutdownCancel = document.getElementById("shutdownCancel");
 const shutdownConfirm = document.getElementById("shutdownConfirm");
+const shutdownScreen = document.getElementById("shutdownScreen");
 const startupNoticeModal = document.getElementById("startupNoticeModal");
 const startupNoticeClose = document.getElementById("startupNoticeClose");
 const lightModal = document.getElementById("lightModal");
@@ -127,6 +132,8 @@ let spindleRuntimeRawSec = 0;
 let lastAxesTimestampMs = null;
 let graphWindowSec = 60;
 let navSuppressClickUntilMs = 0;
+let shutdownRecoveryTimer = null;
+let shutdownInProgress = false;
 
 const statusbarController = createStatusbarController({
   state,
@@ -242,7 +249,7 @@ function setWifiConnected(isConnected, ssid = null){
 }
 
 function broadcastWifiState(){
-  broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid });
+  broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid, issue: state.wifiIssue });
 }
 
 function setLightOn(isOn){
@@ -489,16 +496,87 @@ function closeFanModal(){
   fanBtn.focus();
 }
 
-function openShutdownModal(){
+function setShutdownError(message = ""){
+  const hasMessage = Boolean(message);
+  shutdownError.textContent = hasMessage ? message : "";
+  shutdownError.hidden = !hasMessage;
+  shutdownMessage.hidden = false;
+}
+
+function showShutdownScreen(){
+  document.body.classList.add("is-shutting-down");
+  shutdownScreen.classList.add("is-active");
+}
+
+function hideShutdownScreen(){
+  shutdownScreen.classList.remove("is-active");
+  document.body.classList.remove("is-shutting-down");
+}
+
+function clearShutdownRecoveryTimer(){
+  if (shutdownRecoveryTimer !== null){
+    clearTimeout(shutdownRecoveryTimer);
+    shutdownRecoveryTimer = null;
+  }
+}
+
+function scheduleShutdownRecovery(){
+  clearShutdownRecoveryTimer();
+  shutdownRecoveryTimer = window.setTimeout(() => {
+    shutdownInProgress = false;
+    hideShutdownScreen();
+    setShutdownError("Herunterfahren wurde angefordert, aber das System ist noch aktiv.");
+    openShutdownModal({ preserveError: true });
+  }, SHUTDOWN_RECOVERY_MS);
+}
+
+function queueShutdownRequest(){
+  requestAnimationFrame(() => {
+    window.setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/shutdown`, {
+          method: "POST",
+          keepalive: true,
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok || payload?.ok === false){
+          const detail = payload?.message ? `: ${payload.message}` : "";
+          throw new Error(`Herunterfahren konnte nicht gestartet werden${detail}`);
+        }
+
+        scheduleShutdownRecovery();
+      } catch (error){
+        shutdownInProgress = false;
+        hideShutdownScreen();
+        setShutdownError(
+          error instanceof Error && error.message
+            ? error.message
+            : "Herunterfahren konnte nicht gestartet werden."
+        );
+        openShutdownModal({ preserveError: true });
+      }
+    }, 0);
+  });
+}
+
+function openShutdownModal({ preserveError = false } = {}){
+  if (shutdownInProgress) return;
+  if (!preserveError){
+    setShutdownError("");
+  }
   shutdownModal.classList.add("is-open");
   shutdownModal.setAttribute("aria-hidden", "false");
   shutdownConfirm.focus();
 }
 
-function closeShutdownModal(){
+function closeShutdownModal({ restoreFocus = true } = {}){
   shutdownModal.classList.remove("is-open");
   shutdownModal.setAttribute("aria-hidden", "true");
-  shutdownBtn.focus();
+  if (restoreFocus){
+    shutdownBtn.focus();
+  }
 }
 
 function openStartupNoticeModal(){
@@ -513,8 +591,15 @@ function closeStartupNoticeModal(){
 }
 
 function confirmShutdown(){
-  fetch(`${API_BASE}/api/shutdown`, { method: "POST" }).catch(() => {});
-  closeShutdownModal();
+  if (shutdownInProgress) return;
+
+  shutdownInProgress = true;
+  clearShutdownRecoveryTimer();
+  setShutdownError("");
+  closeShutdownModal({ restoreFocus: false });
+  showShutdownScreen();
+  shutdownScreen.getBoundingClientRect();
+  queueShutdownRequest();
 }
 
 let lightPressTimer = null;
@@ -823,6 +908,7 @@ broadcastToFrames({
   machineStatus: state.machineStatus,
   wifiConnected: state.wifiConnected,
   wifiSsid: state.wifiSsid,
+  wifiIssue: state.wifiIssue,
   lightOn: state.lightOn,
   fanOn: state.fanOn,
   fanSpeed: state.fanSpeed,

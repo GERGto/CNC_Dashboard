@@ -158,9 +158,11 @@ export function createWifiController({
     const updateForm = !!options.updateForm;
     const fallbackConnected = !!options.fallbackConnected;
     const broadcast = options.broadcast !== false;
+    const showIssue = options.showIssue === true;
 
     const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : state.wifiSsid;
     state.wifiSsid = String(currentSsid || "").trim();
+    state.wifiIssue = typeof data.wifiIssue === "string" ? data.wifiIssue.trim() : "";
 
     if (updateForm) {
       if (typeof data.wifiPassword === "string") {
@@ -179,8 +181,19 @@ export function createWifiController({
       onSetWifiConnected(state.wifiConnected, currentSsid);
     }
 
+    if (connected) {
+      state.wifiIssue = "";
+    }
+
     if (broadcast) {
       onBroadcastWifi();
+    }
+
+    if (showIssue) {
+      const issue = typeof data.wifiIssue === "string" ? data.wifiIssue.trim() : "";
+      if (issue && connected === false) {
+        setConfigMessage(issue, "error");
+      }
     }
 
     return String(currentSsid || "").trim();
@@ -212,6 +225,7 @@ export function createWifiController({
           updateForm: true,
           fallbackConnected: true,
           broadcast: true,
+          showIssue: true,
         });
         return loadNetworks(currentSsid);
       })
@@ -295,13 +309,17 @@ export function createWifiController({
       });
       const data = res.ok ? await res.json() : null;
       if (!data || !data.ok) {
-        setConfigMessage("WLAN-Verbindung fehlgeschlagen.", "error");
-        await showConnectFeedbackResult(false, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
+        const errorMessage = data && typeof data.message === "string" && data.message.trim()
+          ? data.message.trim()
+          : "WLAN-Verbindung fehlgeschlagen.";
+        setConfigMessage(errorMessage, "error");
+        await showConnectFeedbackResult(false, "WLAN verbunden", errorMessage);
         return;
       }
 
       const connected = !!data.connected;
       const ssid = String(data.ssid || payload.ssid || "").trim();
+      state.wifiIssue = "";
       onSetWifiConnected(connected, ssid);
       onBroadcastWifi();
       await showConnectFeedbackResult(true, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
@@ -343,6 +361,7 @@ export function createWifiController({
       }
 
       const ssid = String(data.ssid || state.wifiSsid || "").trim();
+      state.wifiIssue = "";
       onSetWifiConnected(false, ssid);
       onBroadcastWifi();
       await showConnectFeedbackResult(true, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");

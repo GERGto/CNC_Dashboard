@@ -36,10 +36,23 @@ body{
   user-select: none;
 }
 
+body.is-shutting-down{
+  background: #000;
+  overflow: hidden;
+}
+
 .app{
   height: 100%;
   display: grid;
   grid-template-rows: var(--status-h) 1fr var(--nav-h);
+  opacity: 1;
+  transition: opacity 180ms ease-out;
+  will-change: opacity;
+}
+
+body.is-shutting-down .app{
+  opacity: 0;
+  pointer-events: none;
 }
 
 .statusbar{
@@ -284,6 +297,25 @@ body{
   object-fit: cover;
   border: 0;
   background: transparent;
+}
+
+.shutdown-screen{
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: #000;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 0s linear 180ms;
+  will-change: opacity;
+}
+
+.shutdown-screen.is-active{
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 180ms ease-out;
 }
 
 .modal__panel.modal__panel--wifi{

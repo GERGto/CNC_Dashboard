@@ -225,6 +225,7 @@
     let spindleRuntimeSec = 0;
     let wifiConnected = false;
     let wifiSsid = "";
+    let wifiIssue = "";
 
     function setActiveTab(name){
       const overview = name === "overview";
@@ -247,10 +248,13 @@
       window.parent.postMessage({ type: "openWifiConfigModal" }, location.origin);
     }
 
-    function setWifiStatus(connected, ssid = ""){
+    function setWifiStatus(connected, ssid = "", issue = ""){
       wifiConnected = !!connected;
       if (typeof ssid === "string"){
         wifiSsid = ssid.trim();
+      }
+      if (typeof issue === "string"){
+        wifiIssue = issue.trim();
       }
       wifiStateDot.classList.toggle("is-on", wifiConnected);
       wifiStateDot.classList.toggle("is-off", !wifiConnected);
@@ -258,7 +262,7 @@
       if (wifiConnected){
         wifiStateText.textContent = networkName ? `Status: Verbunden mit ${networkName}` : "Status: Verbunden";
       } else {
-        wifiStateText.textContent = "Status: Nicht verbunden";
+        wifiStateText.textContent = wifiIssue ? `Status: ${wifiIssue}` : "Status: Nicht verbunden";
       }
     }
 
@@ -282,7 +286,8 @@
           }
           const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : "";
           const connected = toBool(data.wifiConnected);
-          setWifiStatus(connected === null ? false : connected, currentSsid);
+          const issue = typeof data.wifiIssue === "string" ? data.wifiIssue : "";
+          setWifiStatus(connected === null ? false : connected, currentSsid, issue);
         });
     }
 
@@ -300,15 +305,17 @@
       if (msg.type === "init"){
         const connected = toBool(msg.wifiConnected);
         const ssid = typeof msg.wifiSsid === "string" ? msg.wifiSsid : wifiSsid;
+        const issue = typeof msg.wifiIssue === "string" ? msg.wifiIssue : wifiIssue;
         if (connected !== null){
-          setWifiStatus(connected, ssid);
+          setWifiStatus(connected, ssid, issue);
         }
       }
       if (msg.type === "wifi"){
         const connected = toBool(msg.connected);
         const ssid = typeof msg.ssid === "string" ? msg.ssid : wifiSsid;
+        const issue = typeof msg.issue === "string" ? msg.issue : wifiIssue;
         if (connected !== null){
-          setWifiStatus(connected, ssid);
+          setWifiStatus(connected, ssid, issue);
         }
       }
       if (msg.type === "openWifiConfig"){

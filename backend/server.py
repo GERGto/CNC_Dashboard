@@ -19,6 +19,8 @@ TASKS_PATH = os.path.join(os.path.dirname(__file__), "tasks.json")
 MACHINE_STATS_PATH = os.path.join(os.path.dirname(__file__), "machine_stats.json")
 ENABLE_REAL_SHUTDOWN = str(os.getenv("ENABLE_REAL_SHUTDOWN", "")).strip().lower() in {"1", "true", "yes", "on"}
 SHUTDOWN_COMMAND = str(os.getenv("SHUTDOWN_COMMAND", "")).strip()
+KIOSK_DISPLAY = str(os.getenv("KIOSK_DISPLAY", ":0")).strip() or ":0"
+KIOSK_XAUTHORITY = str(os.getenv("KIOSK_XAUTHORITY", os.path.join(os.path.expanduser("~"), ".Xauthority"))).strip()
 WIFI_INTERFACE_NAME = str(os.getenv("WIFI_INTERFACE", "")).strip()
 WPA_SUPPLICANT_CONF_PATH = str(os.getenv("WPA_SUPPLICANT_CONF_PATH", "/etc/wpa_supplicant/wpa_supplicant.conf")).strip()
 NETWORK_INTERFACES_PATH = str(os.getenv("NETWORK_INTERFACES_PATH", "/etc/network/interfaces")).strip()
@@ -33,9 +35,23 @@ def _read_non_negative_float_env(name, default_value):
         return float(default_value)
 
 
+def _read_non_negative_int_env(name, default_value):
+    raw_value = str(os.getenv(name, str(default_value))).strip()
+    try:
+        return max(0, int(float(raw_value)))
+    except ValueError:
+        return int(default_value)
+
+
 SHUTDOWN_DELAY_SEC = _read_non_negative_float_env("SHUTDOWN_DELAY_SEC", 1.0)
 WIFI_CONNECT_TIMEOUT_SEC = _read_non_negative_float_env("WIFI_CONNECT_TIMEOUT_SEC", 12.0)
 WIFI_SCAN_TIMEOUT_SEC = _read_non_negative_float_env("WIFI_SCAN_TIMEOUT_SEC", 8.0)
+WIFI_AUTOCONNECT_STARTUP_DELAY_SEC = _read_non_negative_float_env("WIFI_AUTOCONNECT_STARTUP_DELAY_SEC", 6.0)
+WIFI_AUTOCONNECT_RETRY_DELAY_SEC = _read_non_negative_float_env("WIFI_AUTOCONNECT_RETRY_DELAY_SEC", 8.0)
+WIFI_AUTOCONNECT_MAX_ATTEMPTS = _read_non_negative_int_env("WIFI_AUTOCONNECT_MAX_ATTEMPTS", 4)
+
+
+WIFI_OPERATION_LOCK = threading.Lock()
 
 
 def iso_now_utc():
@@ -353,7 +369,7 @@ def _read_text_file(path):
         return ""
 
 
-def _run_command(command, timeout=5, allow_sudo=False, input_text=None, prefer_sudo=False, sudo_only=False):
+def _run_command(command, timeout=5, allow_sudo=False, input_text=None, prefer_sudo=False, sudo_only=False, env=None):
     resolved = _resolve_command(command)
     if not resolved:
         return None
@@ -371,6 +387,10 @@ def _run_command(command, timeout=5, allow_sudo=False, input_text=None, prefer_s
     last_result = None
     for candidate in attempts:
         try:
+            run_env = None
+            if env:
+                run_env = os.environ.copy()
+                run_env.update({str(key): str(value) for key, value in env.items() if value is not None})
             result = subprocess.run(
                 candidate,
                 input=input_text,
@@ -378,6 +398,7 @@ def _run_command(command, timeout=5, allow_sudo=False, input_text=None, prefer_s
                 text=True,
                 check=False,
                 timeout=timeout,
+                env=run_env,
             )
         except (OSError, subprocess.SubprocessError):
             continue
@@ -404,6 +425,41 @@ def _parse_key_value_lines(text):
         key, value = raw_line.split("=", 1)
         data[key.strip()] = value.strip()
     return data
+
+
+def _parse_wpa_network_lines(text):
+    networks = []
+    for index, raw_line in enumerate(str(text or "").splitlines()):
+        line = raw_line.strip()
+        if not line or index == 0:
+            continue
+        parts = raw_line.split("\t")
+        if len(parts) < 4:
+            continue
+        networks.append({
+            "id": parts[0].strip(),
+            "ssid": parts[1].strip(),
+            "bssid": parts[2].strip(),
+            "flags": parts[3].strip(),
+        })
+    return networks
+
+
+def _get_wpa_network_entry(interface, target_ssid=""):
+    if not interface:
+        return None
+
+    result = _run_command(["wpa_cli", "-i", interface, "list_networks"], timeout=4, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+    if not result or result.returncode != 0:
+        return None
+
+    networks = _parse_wpa_network_lines(result.stdout)
+    wanted_ssid = str(target_ssid or "").strip()
+    if wanted_ssid:
+        for network in networks:
+            if network.get("ssid", "") == wanted_ssid:
+                return network
+    return networks[0] if networks else None
 
 
 def _discover_wifi_interfaces():
@@ -458,19 +514,31 @@ def get_wifi_runtime_status(saved_settings=None):
         "interface": interface,
         "connected": False,
         "ssid": str(saved.get("wifiSsid", "")).strip(),
+        "ipAddress": "",
+        "state": "",
+        "issueCode": "",
+        "issue": "",
     }
     if not interface:
         return status
 
-    result = _run_command(["wpa_cli", "-i", interface, "status"], timeout=4)
+    result = _run_command(["wpa_cli", "-i", interface, "status"], timeout=4, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+    supplicant_completed = False
     if result and result.returncode == 0:
         data = _parse_key_value_lines(result.stdout)
-        if data.get("wpa_state") == "COMPLETED":
-            status["connected"] = True
-            status["ssid"] = str(data.get("ssid", "")).strip() or status["ssid"]
-            return status
+        status["state"] = str(data.get("wpa_state", "")).strip()
+        supplicant_completed = data.get("wpa_state") == "COMPLETED"
+        status["ssid"] = str(data.get("ssid", "")).strip() or status["ssid"]
+        status["ipAddress"] = str(data.get("ip_address", "")).strip()
 
-    result = _run_command(["iw", "dev", interface, "link"], timeout=4)
+    network_entry = _get_wpa_network_entry(interface, status["ssid"] or str(saved.get("wifiSsid", "")).strip())
+    if network_entry:
+        flags = str(network_entry.get("flags", "")).strip()
+        if "TEMP-DISABLED" in flags:
+            status["issueCode"] = "TEMP_DISABLED"
+            status["issue"] = "Gespeicherte WLAN-Zugangsdaten wurden vom Access Point abgelehnt. Passwort oder Sicherheitsmodus prüfen."
+
+    result = _run_command(["iw", "dev", interface, "link"], timeout=4, allow_sudo=True, prefer_sudo=True, sudo_only=True)
     if result and result.returncode == 0:
         text = str(result.stdout or "")
         if "Connected to " in text:
@@ -480,6 +548,10 @@ def get_wifi_runtime_status(saved_settings=None):
                     status["ssid"] = line.split(":", 1)[1].strip() or status["ssid"]
                     break
             status["connected"] = True
+            return status
+
+    if supplicant_completed:
+        status["connected"] = True
     return status
 
 
@@ -753,77 +825,135 @@ def scan_wifi_networks():
 
 
 def connect_wifi():
-    saved_settings = load_ui_settings()
-    interface = _get_wifi_config_interface()
-    wpa_service_name = build_wpa_supplicant_service_name(interface)
-    ssid = str(saved_settings.get("wifiSsid", "")).strip()
-    if not ssid:
-        return False, "SSID is required", get_wifi_runtime_status(saved_settings)
+    with WIFI_OPERATION_LOCK:
+        saved_settings = load_ui_settings()
+        interface = _get_wifi_config_interface()
+        ssid = str(saved_settings.get("wifiSsid", "")).strip()
+        if not ssid:
+            return False, "SSID is required", get_wifi_runtime_status(saved_settings)
 
-    if os.name != "posix":
-        status = get_wifi_runtime_status(saved_settings)
-        status["connected"] = False
-        return False, "Real Wi-Fi control is only supported on Linux", status
+        if os.name != "posix":
+            status = get_wifi_runtime_status(saved_settings)
+            status["connected"] = False
+            return False, "Real Wi-Fi control is only supported on Linux", status
 
-    apply_ok, apply_error = apply_saved_wifi_configuration(saved_settings)
-    if not apply_ok:
-        return False, apply_error, get_wifi_runtime_status(saved_settings)
+        apply_ok, apply_error = apply_saved_wifi_configuration(saved_settings)
+        if not apply_ok:
+            return False, apply_error, get_wifi_runtime_status(saved_settings)
 
-    _run_command(["rfkill", "unblock", "wifi"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    _run_command(["ip", "link", "set", interface, "up"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        _run_command(["rfkill", "unblock", "wifi"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        _run_command(["ip", "link", "set", interface, "up"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
 
-    result = _run_command(["systemctl", "restart", wpa_service_name], timeout=10, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    if not result or result.returncode != 0:
-        return False, _format_command_failure(result, "Failed to start Wi-Fi supplicant"), get_wifi_runtime_status(saved_settings)
+        status_result = _run_command(["wpa_cli", "-i", interface, "status"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        if status_result and status_result.returncode == 0:
+            _run_command(["wpa_cli", "-i", interface, "reconfigure"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+            _run_command(["wpa_cli", "-i", interface, "reconnect"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        else:
+            _run_command(["ifdown", "--force", interface], timeout=15, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+            result = _run_command(["ifup", interface], timeout=20, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+            if not result or result.returncode != 0:
+                return False, _format_command_failure(result, "Failed to raise Wi-Fi interface"), get_wifi_runtime_status(saved_settings)
 
-    _run_command(["wpa_cli", "-i", interface, "reconfigure"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    _run_command(["wpa_cli", "-i", interface, "reconnect"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-
-    last_status = get_wifi_runtime_status(saved_settings)
-    deadline = time.time() + max(1.0, WIFI_CONNECT_TIMEOUT_SEC)
-    while time.time() < deadline:
-        if last_status.get("connected") and last_status.get("ssid", "") == ssid:
-            _run_command(["dhclient", "-nw", interface], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-            return True, "Wi-Fi connected", last_status
-        time.sleep(1)
         last_status = get_wifi_runtime_status(saved_settings)
+        deadline = time.time() + max(1.0, WIFI_CONNECT_TIMEOUT_SEC)
+        connected_since = None
+        while time.time() < deadline:
+            if last_status.get("issueCode") == "TEMP_DISABLED":
+                return False, str(last_status.get("issue", "")).strip() or "Gespeicherte WLAN-Zugangsdaten wurden vom Access Point abgelehnt.", last_status
+            if last_status.get("connected") and last_status.get("ssid", "") == ssid:
+                if connected_since is None:
+                    connected_since = time.time()
+                stable_for_sec = time.time() - connected_since
+                if last_status.get("ipAddress") or stable_for_sec >= 2.0:
+                    return True, "Wi-Fi connected", last_status
+            else:
+                connected_since = None
+            time.sleep(1)
+            last_status = get_wifi_runtime_status(saved_settings)
 
-    status_result = _run_command(["wpa_cli", "-i", interface, "status"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    return False, _format_command_failure(status_result, "Wi-Fi connection failed"), last_status
+        if last_status.get("issueCode") == "TEMP_DISABLED":
+            return False, str(last_status.get("issue", "")).strip() or "Gespeicherte WLAN-Zugangsdaten wurden vom Access Point abgelehnt.", last_status
+
+        status_result = _run_command(["wpa_cli", "-i", interface, "status"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        return False, _format_command_failure(status_result, "Wi-Fi connection failed"), last_status
 
 
 def disconnect_wifi():
-    saved_settings = load_ui_settings()
-    interface = _get_wifi_config_interface()
-    wpa_service_name = build_wpa_supplicant_service_name(interface)
+    with WIFI_OPERATION_LOCK:
+        saved_settings = load_ui_settings()
+        interface = _get_wifi_config_interface()
 
-    if os.name != "posix":
+        if os.name != "posix":
+            status = get_wifi_runtime_status(saved_settings)
+            status["connected"] = False
+            return False, "Real Wi-Fi control is only supported on Linux", status
+
+        _run_command(["wpa_cli", "-i", interface, "disconnect"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        _run_command(["ifdown", "--force", interface], timeout=15, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        _run_command(["ip", "link", "set", interface, "down"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
+        time.sleep(1)
+
         status = get_wifi_runtime_status(saved_settings)
-        status["connected"] = False
-        return False, "Real Wi-Fi control is only supported on Linux", status
+        if not status.get("connected"):
+            status["ssid"] = str(saved_settings.get("wifiSsid", "")).strip()
+            return True, "Wi-Fi disconnected", status
+        return False, "Wi-Fi disconnect failed", status
 
-    _run_command(["dhclient", "-r", interface], timeout=10, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    _run_command(["wpa_cli", "-i", interface, "disconnect"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    _run_command(["systemctl", "stop", wpa_service_name], timeout=10, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    _run_command(["ip", "link", "set", interface, "down"], timeout=5, allow_sudo=True, prefer_sudo=True, sudo_only=True)
-    time.sleep(1)
 
-    status = get_wifi_runtime_status(saved_settings)
-    if not status.get("connected"):
-        status["ssid"] = str(saved_settings.get("wifiSsid", "")).strip()
-        return True, "Wi-Fi disconnected", status
-    return False, "Wi-Fi disconnect failed", status
+def autoconnect_wifi_on_startup():
+    if os.name != "posix":
+        return
+
+    settings = load_ui_settings()
+    target_ssid = str(settings.get("wifiSsid", "")).strip()
+    if not settings.get("wifiAutoConnect") or not target_ssid:
+        return
+
+    if WIFI_AUTOCONNECT_STARTUP_DELAY_SEC > 0:
+        time.sleep(WIFI_AUTOCONNECT_STARTUP_DELAY_SEC)
+
+    attempts = max(1, WIFI_AUTOCONNECT_MAX_ATTEMPTS)
+    for attempt in range(1, attempts + 1):
+        current_settings = load_ui_settings()
+        target_ssid = str(current_settings.get("wifiSsid", "")).strip()
+        if not current_settings.get("wifiAutoConnect") or not target_ssid:
+            print("Wi-Fi autoconnect skipped: auto-connect disabled or SSID missing.", flush=True)
+            return
+
+        current_status = get_wifi_runtime_status(current_settings)
+        if current_status.get("connected") and current_status.get("ssid", "") == target_ssid:
+            print(f"Wi-Fi autoconnect skipped: already connected to {target_ssid}.", flush=True)
+            return
+
+        print(f"Wi-Fi autoconnect attempt {attempt}/{attempts} for {target_ssid}.", flush=True)
+        ok, message, status = connect_wifi()
+        if ok and status.get("connected") and status.get("ssid", "") == target_ssid:
+            time.sleep(3)
+            confirmed_status = get_wifi_runtime_status(current_settings)
+            if confirmed_status.get("connected") and confirmed_status.get("ssid", "") == target_ssid:
+                print(f"Wi-Fi autoconnect succeeded on attempt {attempt}: {target_ssid}.", flush=True)
+                return
+            message = "Wi-Fi connection was not stable after initial connect."
+
+        print(f"Wi-Fi autoconnect attempt {attempt}/{attempts} failed: {message}", flush=True)
+        if attempt < attempts and WIFI_AUTOCONNECT_RETRY_DELAY_SEC > 0:
+            time.sleep(WIFI_AUTOCONNECT_RETRY_DELAY_SEC)
+
+    print("Wi-Fi autoconnect exhausted all startup attempts.", flush=True)
 
 
 def merge_wifi_runtime_settings(ui_settings):
     runtime = get_wifi_runtime_status(ui_settings)
     saved = normalize_ui_settings(ui_settings)
-    merged = {
+    merged = normalize_ui_settings({
         **saved,
         "wifiConnected": bool(runtime.get("connected", False)),
         "wifiSsid": str(runtime.get("ssid", "")).strip() or str(saved.get("wifiSsid", "")).strip(),
-    }
-    return normalize_ui_settings(merged)
+    })
+    merged["wifiState"] = str(runtime.get("state", "")).strip()
+    merged["wifiIssueCode"] = str(runtime.get("issueCode", "")).strip()
+    merged["wifiIssue"] = str(runtime.get("issue", "")).strip()
+    return merged
 
 
 def build_shutdown_commands():
@@ -851,7 +981,38 @@ def build_shutdown_commands():
     return commands
 
 
+def blackout_display_for_shutdown():
+    if os.name != "posix":
+        return False
+
+    display_env = {"DISPLAY": KIOSK_DISPLAY}
+    if KIOSK_XAUTHORITY:
+        display_env["XAUTHORITY"] = KIOSK_XAUTHORITY
+
+    xset_result = None
+    if KIOSK_DISPLAY:
+        _run_command(["xset", "-display", KIOSK_DISPLAY, "+dpms"], timeout=2, env=display_env)
+        xset_result = _run_command(
+            ["xset", "-display", KIOSK_DISPLAY, "dpms", "force", "off"],
+            timeout=2,
+            env=display_env,
+        )
+        if xset_result and xset_result.returncode == 0:
+            return True
+
+    if _is_posix_root():
+        vcgencmd_result = _run_command(["vcgencmd", "display_power", "0"], timeout=2)
+        if vcgencmd_result and vcgencmd_result.returncode == 0:
+            return True
+
+    detail = _format_command_failure(xset_result, "Display blackout command failed")
+    print(detail, flush=True)
+    return False
+
+
 def _execute_shutdown_request():
+    blackout_display_for_shutdown()
+
     if SHUTDOWN_DELAY_SEC > 0:
         time.sleep(SHUTDOWN_DELAY_SEC)
 
@@ -921,7 +1082,7 @@ def normalize_ui_settings(raw_data):
         "wifiSsid": wifi_ssid,
         "wifiPassword": wifi_password,
         "wifiAutoConnect": bool(data.get("wifiAutoConnect", defaults["wifiAutoConnect"])),
-        "wifiConnected": bool(data.get("wifiConnected", defaults["wifiConnected"])),
+        "wifiConnected": False,
         "axisVisibility": normalize_axis_visibility(data.get("axisVisibility")),
     }
     return normalized
@@ -996,7 +1157,6 @@ def save_settings(patch):
         "wifiSsid",
         "wifiPassword",
         "wifiAutoConnect",
-        "wifiConnected",
         "axisVisibility",
     }
     ui_patch = {k: payload[k] for k in ui_keys if k in payload}
@@ -1277,6 +1437,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     ensure_split_storage()
+    threading.Thread(target=autoconnect_wifi_on_startup, daemon=True).start()
     server = ThreadingHTTPServer(("", PORT), Handler)
     print(f"Hardware API listening on http://localhost:{PORT}")
     server.serve_forever()

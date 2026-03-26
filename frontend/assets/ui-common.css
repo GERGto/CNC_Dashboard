@@ -49,6 +49,13 @@
   font-size: 16px;
 }
 
+.modal__error{
+  margin: -6px 0 16px 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #b61e1e;
+}
+
 .modal__actions{
   display: flex;
   gap: 10px;
