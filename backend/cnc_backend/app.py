@@ -1,0 +1,150 @@
+from __future__ import annotations
+
+import threading
+import time
+
+from cnc_hardware import create_hardware_backend
+
+from .common import iso_now_utc
+from .config import load_app_config
+from .settings_store import SettingsStore
+from .system_service import ShutdownService, mock_axes_load
+from .wifi_service import WiFiService
+
+
+class BackendApp:
+    def __init__(self, config, store, wifi_service, shutdown_service, hardware_backend):
+        self.config = config
+        self.store = store
+        self.wifi_service = wifi_service
+        self.shutdown_service = shutdown_service
+        self.hardware_backend = hardware_backend
+
+    def ensure_storage(self):
+        self.store.ensure_split_storage()
+
+    def start_background_tasks(self):
+        threading.Thread(target=self.wifi_service.autoconnect_wifi_on_startup, daemon=True).start()
+
+    def get_health(self):
+        return {"status": "ok", "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+    def get_axes(self, timestamp_ms=None):
+        timestamp = int(timestamp_ms if timestamp_ms is not None else time.time() * 1000)
+        return {
+            "timestamp": timestamp,
+            "axes": mock_axes_load(timestamp),
+        }
+
+    def get_hardware_snapshot(self, force_refresh=False):
+        return self.hardware_backend.get_snapshot(force_refresh=force_refresh)
+
+    def get_spindle_temperature(self, force_refresh=False):
+        return self.hardware_backend.get_spindle_temperature(force_refresh=force_refresh)
+
+    def get_settings(self):
+        legacy = self.store.load_legacy_settings()
+        ui_settings = self.wifi_service.merge_wifi_runtime_settings(self.store.load_ui_settings())
+        machine_stats = self.store.load_machine_stats(legacy)
+        maintenance_tasks = self.store.load_maintenance_tasks(legacy)
+        return {
+            **ui_settings,
+            **machine_stats,
+            "maintenanceTasks": maintenance_tasks,
+        }
+
+    def save_settings(self, patch):
+        payload = patch if isinstance(patch, dict) else {}
+
+        ui_keys = {
+            "graphWindowSec",
+            "lightBrightness",
+            "fanSpeed",
+            "fanAuto",
+            "wifiSsid",
+            "wifiPassword",
+            "wifiAutoConnect",
+            "axisVisibility",
+        }
+        ui_patch = {key: payload[key] for key in ui_keys if key in payload}
+        if ui_patch:
+            self.store.save_ui_settings(ui_patch)
+
+        if "spindleRuntimeSec" in payload:
+            self.store.save_machine_stats({"spindleRuntimeSec": payload.get("spindleRuntimeSec")})
+
+        if "maintenanceTasks" in payload:
+            self.store.save_maintenance_tasks(payload.get("maintenanceTasks"))
+
+        saved = self.get_settings()
+        if any(key in payload for key in ("wifiSsid", "wifiPassword", "wifiAutoConnect")):
+            ok, message = self.wifi_service.apply_saved_wifi_configuration(self.store.load_ui_settings())
+            saved = self.get_settings()
+            if not ok:
+                return saved, message
+        return saved, ""
+
+    def get_maintenance_tasks(self):
+        return self.get_settings().get("maintenanceTasks", [])
+
+    def complete_maintenance_task(self, task_id):
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return None
+
+        settings = self.get_settings()
+        tasks = settings.get("maintenanceTasks", [])
+        spindle_runtime_sec = max(0, int(settings.get("spindleRuntimeSec", 0) or 0))
+        now_iso = iso_now_utc()
+
+        updated_task = None
+        for task in tasks:
+            if str(task.get("id", "")).strip() != task_id:
+                continue
+            task["lastCompletedAt"] = now_iso
+            task["spindleRuntimeSecAtCompletion"] = spindle_runtime_sec
+            updated_task = task
+            break
+
+        if updated_task is None:
+            return None
+
+        self.save_settings({"maintenanceTasks": tasks})
+        return updated_task
+
+    def request_system_shutdown(self):
+        return self.shutdown_service.request_system_shutdown()
+
+    def connect_wifi(self, ssid, password, auto_connect):
+        self.store.save_ui_settings(
+            {
+                "wifiSsid": ssid,
+                "wifiPassword": password,
+                "wifiAutoConnect": auto_connect,
+            }
+        )
+        return self.wifi_service.connect_wifi()
+
+    def disconnect_wifi(self):
+        return self.wifi_service.disconnect_wifi()
+
+    def scan_wifi_networks(self):
+        return self.wifi_service.scan_wifi_networks()
+
+    def get_wifi_autoconnect(self):
+        return bool(self.store.load_ui_settings().get("wifiAutoConnect", False))
+
+
+def create_backend_app():
+    config = load_app_config()
+    store = SettingsStore(config)
+    wifi_service = WiFiService(config, store)
+    shutdown_service = ShutdownService(config)
+    hardware_backend = create_hardware_backend()
+    return BackendApp(
+        config=config,
+        store=store,
+        wifi_service=wifi_service,
+        shutdown_service=shutdown_service,
+        hardware_backend=hardware_backend,
+    )
