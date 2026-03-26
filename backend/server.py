@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from hardware import create_hardware_backend
+
 
 PORT = int(os.getenv("PORT", "8080"))
 DEFAULT_INTERVAL_MS = int(os.getenv("AXES_INTERVAL_MS", "250"))
@@ -52,6 +54,7 @@ WIFI_AUTOCONNECT_MAX_ATTEMPTS = _read_non_negative_int_env("WIFI_AUTOCONNECT_MAX
 
 
 WIFI_OPERATION_LOCK = threading.Lock()
+HARDWARE_BACKEND = create_hardware_backend()
 
 
 def iso_now_utc():
@@ -315,6 +318,14 @@ def send_sse(handler, event, data):
     handler.wfile.write(f"event: {event}\n".encode("utf-8"))
     handler.wfile.write(f"data: {json.dumps(data)}\n\n".encode("utf-8"))
     handler.wfile.flush()
+
+
+def _parse_bool_query_flag(params, name):
+    raw_values = params.get(name)
+    if not raw_values:
+        return False
+    raw_value = str(raw_values[0]).strip().lower()
+    return raw_value in {"1", "true", "yes", "on"}
 
 
 def _dedupe_strings(values):
@@ -1211,6 +1222,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        params = parse_qs(parsed.query or "")
 
         if path == "/api/health":
             return json_response(self, 200, {"status": "ok", "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
@@ -1218,8 +1230,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/axes":
             return json_response(self, 200, {"timestamp": int(time.time() * 1000), "axes": mock_axes_load(int(time.time() * 1000))})
 
+        if path == "/api/hardware":
+            force_refresh = _parse_bool_query_flag(params, "refresh")
+            return json_response(self, 200, HARDWARE_BACKEND.get_snapshot(force_refresh=force_refresh))
+
+        if path == "/api/hardware/spindle-temperature":
+            force_refresh = _parse_bool_query_flag(params, "refresh")
+            return json_response(self, 200, HARDWARE_BACKEND.get_spindle_temperature(force_refresh=force_refresh))
+
         if path == "/api/axes/stream":
-            params = parse_qs(parsed.query or "")
             interval_ms = DEFAULT_INTERVAL_MS
             if "intervalMs" in params:
                 try:

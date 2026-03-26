@@ -12,6 +12,12 @@ and streaming axis/spindle load values. For development it serves mock values.
 - GET `/api/axes/stream` (SSE)
   - `event: axes` with `{ timestamp, axes: { spindle,x,y,z } }` every ~250ms
   - Optional query: `?intervalMs=250`
+- GET `/api/hardware`
+  - `{ time, transport: { primary, i2c }, sensors: { spindleTemperature } }`
+  - Optional query: `?refresh=1`
+- GET `/api/hardware/spindle-temperature`
+  - `{ sensorId, sensorType, available, temperatureC, humidityPercent, measuredAt, ... }`
+  - Optional query: `?refresh=1`
 - GET `/api/settings`
   - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - POST `/api/settings`
@@ -47,6 +53,9 @@ set AXES_INTERVAL_MS=250
 set ENABLE_REAL_SHUTDOWN=1
 set SHUTDOWN_COMMAND=sudo -n /usr/bin/systemctl poweroff
 set SHUTDOWN_DELAY_SEC=1.0
+set HARDWARE_PRIMARY_I2C_BUS=1
+set SPINDLE_TEMP_SENSOR_I2C_ADDRESS=0x38
+set HARDWARE_SENSOR_CACHE_TTL_SEC=2.0
 ```
 
 The server listens on `http://localhost:8080` by default.

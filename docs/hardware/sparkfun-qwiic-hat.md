@@ -29,12 +29,12 @@
 - Relevanter Bus fuer den aktuellen Qwiic-HAT-Scan: `/dev/i2c-1`
 - Adapter auf `/dev/i2c-1`: `bcm2835 (i2c@7e804000)`
 - Gefundene Adresse auf `/dev/i2c-1`: `0x38`
+- Zuordnung: `0x38` ist der `Adafruit AHT20` fuer die Spindeltemperatur
 - Rohscan-Hinweis: In der `30:`-Zeile wurde die Adresse `38` erkannt.
 - Zusatzadapter: `/dev/i2c-20` (`fef04500.i2c`) und `/dev/i2c-21` (`fef09500.i2c`) antworteten auf sehr viele Adressen; diese Busse sind fuer die Qwiic-Inventarisierung aktuell nicht die primaere Referenz.
 
 ## Offene Punkte
 
-- Die gefundene Adresse `0x38` einem konkreten Qwiic-Modul zuordnen
 - Exakte Qwiic-Module und deren erwartete Default-Adressen erfassen
 - Physische Verdrahtung und Stromversorgung des HAT dokumentieren
 - Weitere Maschinen-Hardware schrittweise in `docs/hardware/` aufnehmen
