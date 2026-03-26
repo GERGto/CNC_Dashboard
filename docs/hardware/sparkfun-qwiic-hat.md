@@ -25,7 +25,7 @@
 ## Letzte Verifikation
 
 - Datum: `2026-03-26`
-- System: Raspberry Pi via `root@192.168.137.25`
+- System: Raspberry Pi via `root@192.168.137.116`
 - Relevanter Bus fuer den aktuellen Qwiic-HAT-Scan: `/dev/i2c-1`
 - Adapter auf `/dev/i2c-1`: `bcm2835 (i2c@7e804000)`
 - Gefundene Adresse auf `/dev/i2c-1`: `0x38`

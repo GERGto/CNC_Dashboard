@@ -20,7 +20,7 @@
 - Datum: `2026-03-26`
 - Aussage des Projekts: Die Adresse `0x38` ist der AHT20 fuer die Spindeltemperatur
 - I2C-Scan auf dem Pi: `0x38` wurde auf `/dev/i2c-1` gefunden
-- Live-Backend-Test auf `root@192.168.137.25`: `GET /api/hardware/spindle-temperature` liefert Temperatur- und Luftfeuchtewerte vom Sensor
+- Live-Backend-Test auf `root@192.168.137.116`: `GET /api/hardware/spindle-temperature` liefert Temperatur- und Luftfeuchtewerte vom Sensor
 
 ## Backend-Anbindung
 

@@ -42,6 +42,12 @@ class BackendApp:
     def get_spindle_temperature(self, force_refresh=False):
         return self.hardware_backend.get_spindle_temperature(force_refresh=force_refresh)
 
+    def get_relay_board(self):
+        return self.hardware_backend.get_relay_board()
+
+    def set_relay_output(self, output_id, enabled):
+        return self.hardware_backend.set_relay_output(output_id, enabled)
+
     def get_settings(self):
         legacy = self.store.load_legacy_settings()
         ui_settings = self.wifi_service.merge_wifi_runtime_settings(self.store.load_ui_settings())

@@ -122,7 +122,6 @@ body.home{
   stroke-dasharray: 439.82;
   stroke-dashoffset: 439.82;
   transition:
-    stroke-dashoffset 0.7s cubic-bezier(0.4, 0, 0.2, 1),
     stroke 180ms ease,
     opacity 120ms ease;
 }

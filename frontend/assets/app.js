@@ -135,6 +135,8 @@ let graphWindowSec = 60;
 let navSuppressClickUntilMs = 0;
 let shutdownRecoveryTimer = null;
 let shutdownInProgress = false;
+let lightRequestInFlight = false;
+let fanRequestInFlight = false;
 
 const statusbarController = createStatusbarController({
   state,
@@ -253,16 +255,17 @@ function broadcastWifiState(){
   broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid, issue: state.wifiIssue });
 }
 
-function setLightOn(isOn){
+function setLightOn(isOn, broadcast = false){
   state.lightOn = !!isOn;
   lightImg.src = state.lightOn ? ICONS.bulbOn : ICONS.bulbOff;
   lightBtn.setAttribute("aria-label", state.lightOn ? "Maschinenlicht an" : "Maschinenlicht aus");
+  if (broadcast){
+    broadcastToFrames({ type: "light", on: state.lightOn });
+  }
 }
 
 function toggleLight(){
-  // Hier: echtes Kommando ans Backend (fetch/WebSocket) einbauen
-  setLightOn(!state.lightOn);
-  broadcastToFrames({ type: "light", on: state.lightOn });
+  void setLightPower(!state.lightOn);
 }
 
 function updateLightBrightness(value){
@@ -274,15 +277,17 @@ function updateLightBrightness(value){
   queueUiSettingsSave();
 }
 
-function setFanOn(isOn){
+function setFanOn(isOn, broadcast = false){
   state.fanOn = !!isOn;
   fanImg.src = state.fanOn ? ICONS.fanOn : ICONS.fanOff;
-  fanBtn.setAttribute("aria-label", state.fanOn ? "Lüfter an" : "Lüfter aus");
+  fanBtn.setAttribute("aria-label", state.fanOn ? "Luefter an" : "Luefter aus");
+  if (broadcast){
+    broadcastToFrames({ type: "fan", on: state.fanOn });
+  }
 }
 
 function toggleFan(){
-  setFanOn(!state.fanOn);
-  broadcastToFrames({ type: "fan", on: state.fanOn });
+  void setFanPower(!state.fanOn);
 }
 
 function updateFanSpeed(value){
@@ -406,6 +411,72 @@ function persistUiSettings(){
   }).catch(() => {});
 }
 
+function applyRelayBoardSnapshot(relayBoard){
+  const channels = relayBoard && typeof relayBoard === "object" ? relayBoard.channels : null;
+  if (!channels || typeof channels !== "object") return;
+
+  if (channels.light && typeof channels.light.on === "boolean"){
+    setLightOn(channels.light.on, true);
+  }
+  if (channels.fan && typeof channels.fan.on === "boolean"){
+    setFanOn(channels.fan.on, true);
+  }
+}
+
+function applyHardwareSnapshot(data){
+  const relayBoard = data && data.actuators && data.actuators.relayBoard;
+  if (relayBoard && typeof relayBoard === "object" && (relayBoard.available || relayBoard.status === "ok")){
+    applyRelayBoardSnapshot(relayBoard);
+  }
+}
+
+async function postRelayOutput(endpoint, payload){
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false){
+    throw new Error(typeof data?.error === "string" ? data.error : `Hardware request failed (${response.status})`);
+  }
+  return data;
+}
+
+async function setLightPower(isOn){
+  if (lightRequestInFlight) return;
+  lightRequestInFlight = true;
+  try {
+    const data = await postRelayOutput("/api/hardware/light", { on: !!isOn });
+    if (data && data.relayBoard){
+      applyRelayBoardSnapshot(data.relayBoard);
+    } else if (data && data.channel && typeof data.channel.on === "boolean"){
+      setLightOn(data.channel.on, true);
+    }
+  } catch (error){
+    console.error("Light relay request failed:", error);
+  } finally {
+    lightRequestInFlight = false;
+  }
+}
+
+async function setFanPower(isOn){
+  if (fanRequestInFlight) return;
+  fanRequestInFlight = true;
+  try {
+    const data = await postRelayOutput("/api/hardware/fan", { on: !!isOn });
+    if (data && data.relayBoard){
+      applyRelayBoardSnapshot(data.relayBoard);
+    } else if (data && data.channel && typeof data.channel.on === "boolean"){
+      setFanOn(data.channel.on, true);
+    }
+  } catch (error){
+    console.error("Fan relay request failed:", error);
+  } finally {
+    fanRequestInFlight = false;
+  }
+}
+
 function setSpindleRuntimeSec(value, persist = false){
   const v = Math.max(0, Math.floor(Number(value) || 0));
   spindleRuntimeRawSec = v;
@@ -487,6 +558,16 @@ function loadUiSettings(){
       if (typeof data.graphWindowSec === "number"){
         updateGraphWindowModal(data.graphWindowSec, false);
       }
+    })
+    .catch(() => {});
+}
+
+function loadHardwareState(){
+  fetch(`${API_BASE}/api/hardware`)
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || typeof data !== "object") return;
+      applyHardwareSnapshot(data);
     })
     .catch(() => {});
 }
@@ -890,9 +971,9 @@ window.addEventListener("message", (ev) => {
         responseOrigin: ev.origin,
       });
       break;
-    case "setLight":   setLightOn(!!msg.on); break;
+    case "setLight":   void setLightPower(!!msg.on); break;
     case "toggleLight":toggleLight(); break;
-    case "setFan":     setFanOn(!!msg.on); break;
+    case "setFan":     void setFanPower(!!msg.on); break;
     case "toggleFan":  toggleFan(); break;
     case "setFanSpeed":updateFanSpeed(msg.value); break;
     case "setFanAuto": setFanAuto(!!msg.enabled); break;
@@ -919,6 +1000,7 @@ broadcastToFrames({
 });
 
 loadUiSettings();
+loadHardwareState();
 loadMaintenanceTasks();
 setInterval(loadMaintenanceTasks, MAINTENANCE_REFRESH_MS);
 startAxesStream();

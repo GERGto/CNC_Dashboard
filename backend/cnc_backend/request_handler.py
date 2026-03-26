@@ -5,6 +5,8 @@ import time
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
+from cnc_hardware.sensors import HardwareError
+
 from .common import clamp, json_response, parse_bool_query_flag, send_sse
 
 
@@ -41,6 +43,9 @@ def create_request_handler(app):
             if path == "/api/hardware/spindle-temperature":
                 force_refresh = parse_bool_query_flag(params, "refresh")
                 return json_response(self, 200, app.get_spindle_temperature(force_refresh=force_refresh))
+
+            if path == "/api/hardware/relays":
+                return json_response(self, 200, app.get_relay_board())
 
             if path == "/api/axes/stream":
                 interval_ms = app.config.default_interval_ms
@@ -218,6 +223,16 @@ def create_request_handler(app):
                     )
                 return json_response(self, 200, saved)
 
+            relay_path_map = {
+                "/api/hardware/light": ("light", ("on",)),
+                "/api/hardware/fan": ("fan", ("on",)),
+                "/api/hardware/e-stop": ("eStop", ("engaged", "on")),
+                "/api/hardware/relay-4": ("relay4", ("on",)),
+            }
+            if parsed.path in relay_path_map:
+                output_id, bool_keys = relay_path_map[parsed.path]
+                return self._handle_relay_output_post(output_id, bool_keys)
+
             maintenance_complete_prefix = "/api/maintenance/tasks/"
             maintenance_complete_suffix = "/complete"
             if parsed.path.startswith(maintenance_complete_prefix) and parsed.path.endswith(maintenance_complete_suffix):
@@ -247,5 +262,41 @@ def create_request_handler(app):
                 return payload, ""
             except (ValueError, json.JSONDecodeError):
                 return None, "Invalid payload"
+
+        def _read_bool_payload_field(self, payload, keys):
+            for key in keys:
+                if key not in payload:
+                    continue
+                value = payload[key]
+                if isinstance(value, bool):
+                    return value, ""
+                if isinstance(value, (int, float)) and value in (0, 1):
+                    return bool(value), ""
+                return None, f"Invalid {key}"
+            return None, f"Missing {' or '.join(keys)}"
+
+        def _handle_relay_output_post(self, output_id, bool_keys):
+            payload, error = self._read_json_payload()
+            if error:
+                return json_response(self, 400, {"error": error})
+
+            enabled, value_error = self._read_bool_payload_field(payload, bool_keys)
+            if value_error:
+                return json_response(self, 400, {"error": value_error})
+
+            try:
+                result = app.set_relay_output(output_id, enabled)
+            except HardwareError as exc:
+                return json_response(
+                    self,
+                    503,
+                    {
+                        "ok": False,
+                        "error": str(exc),
+                        "relayBoard": app.get_relay_board(),
+                    },
+                )
+
+            return json_response(self, 200, {"ok": True, **result})
 
     return Handler

@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+import threading
+import time
+from datetime import datetime, timezone
+
+from .i2c import I2CError, LinuxI2CDevice
+from .sensors import HardwareError
+
+
+def iso_now_utc():
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+class RelayUnavailableError(HardwareError):
+    pass
+
+
+class RelayCommandError(HardwareError):
+    pass
+
+
+class DuelinkI2CEngine:
+    DEFAULT_ADDRESS = 0x52
+    DEFAULT_DEVICE_INDEX = 1
+    FLUSH_READ_SIZE = 64
+    READ_CHUNK_SIZE = 32
+    POLL_INTERVAL_SEC = 0.01
+
+    def __init__(
+        self,
+        bus_number=1,
+        address=DEFAULT_ADDRESS,
+        device_index=DEFAULT_DEVICE_INDEX,
+        response_timeout_sec=1.0,
+        read_chunk_size=READ_CHUNK_SIZE,
+    ):
+        self.bus_number = int(bus_number)
+        self.address = int(address)
+        self.device_index = int(device_index)
+        self.response_timeout_sec = max(0.05, float(response_timeout_sec))
+        self.read_chunk_size = max(1, int(read_chunk_size))
+        self.device = LinuxI2CDevice(self.bus_number, self.address)
+        self._lock = threading.Lock()
+
+    @property
+    def device_path(self):
+        return self.device.path
+
+    def describe(self):
+        return {
+            "interface": "i2c",
+            "protocol": "duelink-daisylink",
+            "bus": self.bus_number,
+            "devicePath": self.device_path,
+            "address": self.address,
+            "addressHex": f"0x{self.address:02x}",
+            "deviceIndex": self.device_index,
+        }
+
+    def is_supported(self):
+        return self.device.is_supported()
+
+    def is_bus_available(self):
+        return self.device.is_available()
+
+    def execute_command(self, command, select_device=True):
+        with self._lock:
+            return self._execute_command_locked(str(command or "").strip(), select_device=select_device)
+
+    def _execute_command_locked(self, command, select_device=True):
+        self._ensure_ready()
+        if not command:
+            raise RelayCommandError("Leerer Relaisbefehl ist nicht erlaubt.")
+
+        if select_device:
+            self._write_command_locked(f"sel({self.device_index})")
+            self._read_response_locked()
+
+        self._write_command_locked(command)
+        return self._read_response_locked()
+
+    def _ensure_ready(self):
+        if not self.device.is_supported():
+            raise RelayUnavailableError("Linux-I2C ist in dieser Umgebung nicht verfuegbar.")
+        if not self.device.is_available():
+            raise RelayUnavailableError(f"I2C-Bus {self.device_path} ist nicht verfuegbar.")
+
+    def _write_command_locked(self, command):
+        try:
+            self.device.read(self.FLUSH_READ_SIZE)
+            self.device.write(command.encode("utf-8") + b"\n")
+        except I2CError as exc:
+            raise RelayCommandError(str(exc)) from exc
+
+    def _read_response_locked(self):
+        deadline = time.monotonic() + self.response_timeout_sec
+        response = bytearray()
+
+        while time.monotonic() <= deadline:
+            try:
+                chunk = self.device.read(self.read_chunk_size)
+            except I2CError as exc:
+                raise RelayCommandError(str(exc)) from exc
+
+            if chunk:
+                for byte in chunk:
+                    if byte != 0xFF:
+                        response.append(byte)
+
+                if self._ends_with_prompt(response):
+                    payload = bytes(response[:-3]).decode("utf-8", errors="replace").strip()
+                    return payload
+
+            time.sleep(self.POLL_INTERVAL_SEC)
+
+        raise RelayCommandError(
+            f"Zeitueberschreitung beim Warten auf eine Antwort von {self.device_path} "
+            f"an Adresse 0x{self.address:02x}."
+        )
+
+    @staticmethod
+    def _ends_with_prompt(response):
+        if len(response) < 3:
+            return False
+        return response[-3] == 13 and response[-2] == 10 and response[-1] in {36, 62}
+
+
+class DuelinkRelayP4Controller:
+    CONTROLLER_ID = "gdl-acrelayp4-c"
+    DISPLAY_NAME = "4-Kanal-Relais"
+    DEFAULT_ADDRESS = DuelinkI2CEngine.DEFAULT_ADDRESS
+    CHANNELS = {
+        "light": {
+            "channel": 1,
+            "label": "Maschinenlicht",
+            "endpoint": "/api/hardware/light",
+        },
+        "fan": {
+            "channel": 2,
+            "label": "Spindelluefter",
+            "endpoint": "/api/hardware/fan",
+        },
+        "eStop": {
+            "channel": 3,
+            "label": "E-Stop",
+            "endpoint": "/api/hardware/e-stop",
+        },
+        "relay4": {
+            "channel": 4,
+            "label": "Relais 4",
+            "endpoint": "/api/hardware/relay-4",
+        },
+    }
+
+    def __init__(
+        self,
+        bus_number=1,
+        address=DuelinkI2CEngine.DEFAULT_ADDRESS,
+        device_index=1,
+        response_timeout_sec=1.0,
+        enabled=True,
+    ):
+        self.enabled = bool(enabled)
+        self.engine = DuelinkI2CEngine(
+            bus_number=bus_number,
+            address=address,
+            device_index=device_index,
+            response_timeout_sec=response_timeout_sec,
+        )
+        self._lock = threading.Lock()
+        self._states = {channel_id: False for channel_id in self.CHANNELS}
+        self._last_command_at = None
+        self._last_success_at = None
+        self._last_error = ""
+
+    def get_snapshot(self):
+        with self._lock:
+            states = dict(self._states)
+            last_command_at = self._last_command_at
+            last_success_at = self._last_success_at
+            last_error = self._last_error
+
+        if not self.enabled:
+            available = False
+            status = "disabled"
+            error = "Relaisboard ist per RELAY_BOARD_ENABLED deaktiviert."
+        elif not self.engine.is_supported():
+            available = False
+            status = "unavailable"
+            error = "Linux-I2C ist in dieser Umgebung nicht verfuegbar."
+        elif not self.engine.is_bus_available():
+            available = False
+            status = "unavailable"
+            error = f"I2C-Bus {self.engine.device_path} ist nicht verfuegbar."
+        elif last_success_at:
+            available = True
+            status = "ok"
+            error = ""
+        elif last_error:
+            available = False
+            status = "error"
+            error = last_error
+        else:
+            available = False
+            status = "unknown"
+            error = ""
+
+        return {
+            "controllerId": self.CONTROLLER_ID,
+            "displayName": self.DISPLAY_NAME,
+            "available": available,
+            "status": status,
+            "error": error,
+            "lastCommandAt": last_command_at,
+            "lastSuccessAt": last_success_at,
+            **self.engine.describe(),
+            "channels": {
+                channel_id: self._build_channel_snapshot(channel_id, states[channel_id], available)
+                for channel_id in self.CHANNELS
+            },
+        }
+
+    def set_output(self, output_id, enabled):
+        output_id = self._normalize_output_id(output_id)
+        if not self.enabled:
+            raise RelayUnavailableError("Relaisboard ist per RELAY_BOARD_ENABLED deaktiviert.")
+        channel_number = self.CHANNELS[output_id]["channel"]
+        command = f"Set({channel_number},{1 if enabled else 0})"
+
+        command_at = iso_now_utc()
+        try:
+            self.engine.execute_command(command)
+        except HardwareError as exc:
+            with self._lock:
+                self._last_command_at = command_at
+                self._last_error = str(exc)
+            raise
+
+        with self._lock:
+            self._states[output_id] = bool(enabled)
+            self._last_command_at = command_at
+            self._last_success_at = command_at
+            self._last_error = ""
+
+        return self.get_channel_snapshot(output_id)
+
+    def get_channel_snapshot(self, output_id):
+        output_id = self._normalize_output_id(output_id)
+        snapshot = self.get_snapshot()
+        return dict(snapshot["channels"][output_id])
+
+    def _normalize_output_id(self, output_id):
+        key = str(output_id or "").strip()
+        aliases = {
+            "light": "light",
+            "fan": "fan",
+            "estop": "eStop",
+            "e-stop": "eStop",
+            "relay4": "relay4",
+            "relay-4": "relay4",
+            "channel4": "relay4",
+            "channel-4": "relay4",
+        }
+        normalized = aliases.get(key)
+        if normalized is None:
+            raise RelayCommandError(f"Unbekannter Relaiskanal: {key or '<leer>'}")
+        return normalized
+
+    def _build_channel_snapshot(self, output_id, is_on, board_available):
+        channel = self.CHANNELS[output_id]
+        payload = {
+            "id": output_id,
+            "channel": channel["channel"],
+            "label": channel["label"],
+            "endpoint": channel["endpoint"],
+            "on": bool(is_on),
+            "available": bool(board_available),
+        }
+        if output_id == "eStop":
+            payload["engaged"] = bool(is_on)
+        return payload

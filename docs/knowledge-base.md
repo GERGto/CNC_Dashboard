@@ -35,8 +35,21 @@ UI-Grundsatz:
 ### Aktueller Zugriff
 
 - Der aktuelle SSH-Login auf dem Entwicklungssystem erfolgt ueber `ssh cncpi`
+- Die aktuell bekannte direkte IP des Raspberry Pi ist `192.168.137.116`
 
 Hinweis: Das wirkt wie ein lokal konfigurierter SSH-Alias und kann daher von der SSH-Konfiguration des jeweiligen Rechners abhaengen.
+
+## Aktuell bekannte I2C-Hardware
+
+- `Adafruit AHT20` fuer die Spindeltemperatur auf `0x38`
+- `GHI GDL-ACRELAYP4-C` 4-Kanal-Relais auf `0x52` (`82` dezimal)
+
+Aktuelle Relaisbelegung im Dashboard:
+
+- Kanal 1: Maschinenlicht
+- Kanal 2: Spindelluefter
+- Kanal 3: E-Stop
+- Kanal 4: Reserve
 
 ## Getesteter Systemzustand auf DietPi
 
