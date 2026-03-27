@@ -26,6 +26,9 @@ class DuelinkI2CEngine:
     FLUSH_READ_SIZE = 64
     READ_CHUNK_SIZE = 32
     POLL_INTERVAL_SEC = 0.01
+    INITIALIZATION_RETRY_WINDOW_SEC = 1.5
+    INITIALIZATION_RETRY_INTERVAL_SEC = 0.05
+    INITIALIZATION_RESPONSE_TIMEOUT_SEC = 0.15
 
     def __init__(
         self,
@@ -34,14 +37,21 @@ class DuelinkI2CEngine:
         device_index=DEFAULT_DEVICE_INDEX,
         response_timeout_sec=1.0,
         read_chunk_size=READ_CHUNK_SIZE,
+        initialization_retry_window_sec=INITIALIZATION_RETRY_WINDOW_SEC,
+        initialization_retry_interval_sec=INITIALIZATION_RETRY_INTERVAL_SEC,
+        initialization_response_timeout_sec=INITIALIZATION_RESPONSE_TIMEOUT_SEC,
     ):
         self.bus_number = int(bus_number)
         self.address = int(address)
         self.device_index = int(device_index)
         self.response_timeout_sec = max(0.05, float(response_timeout_sec))
         self.read_chunk_size = max(1, int(read_chunk_size))
+        self.initialization_retry_window_sec = max(0.0, float(initialization_retry_window_sec))
+        self.initialization_retry_interval_sec = max(0.0, float(initialization_retry_interval_sec))
+        self.initialization_response_timeout_sec = max(0.01, float(initialization_response_timeout_sec))
         self.device = LinuxI2CDevice(self.bus_number, self.address)
         self._lock = threading.Lock()
+        self._initialized = False
 
     @property
     def device_path(self):
@@ -66,19 +76,54 @@ class DuelinkI2CEngine:
 
     def execute_command(self, command, select_device=True):
         with self._lock:
-            return self._execute_command_locked(str(command or "").strip(), select_device=select_device)
+            return self._execute_command_with_recovery_locked(str(command or "").strip(), select_device=select_device)
 
-    def _execute_command_locked(self, command, select_device=True):
+    def initialize(self):
+        with self._lock:
+            return self._initialize_locked()
+
+    def _initialize_locked(self):
+        self._ensure_ready()
+        deadline = time.monotonic() + self.initialization_retry_window_sec
+
+        while True:
+            try:
+                self._prime_interface_locked(deadline)
+                if self.device_index > 0:
+                    self._exchange_command_locked(f"sel({self.device_index})")
+                driver_version = self._exchange_command_locked("DVer()")
+                self._initialized = True
+                return driver_version
+            except RelayCommandError:
+                self._initialized = False
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(self.initialization_retry_interval_sec)
+
+    def _execute_command_with_recovery_locked(self, command, select_device=True):
         self._ensure_ready()
         if not command:
             raise RelayCommandError("Leerer Relaisbefehl ist nicht erlaubt.")
 
-        if select_device:
-            self._write_command_locked(f"sel({self.device_index})")
-            self._read_response_locked()
+        deadline = time.monotonic() + self.initialization_retry_window_sec
+        while True:
+            try:
+                if not self._initialized:
+                    self._prime_interface_locked(deadline)
+                return self._execute_command_locked(command, select_device=select_device)
+            except RelayCommandError:
+                self._initialized = False
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(self.initialization_retry_interval_sec)
 
-        self._write_command_locked(command)
-        return self._read_response_locked()
+    def _execute_command_locked(self, command, select_device=True):
+        if select_device:
+            self._exchange_command_locked(f"sel({self.device_index})")
+
+        response = self._exchange_command_locked(command)
+        self._initialized = True
+        return response
 
     def _ensure_ready(self):
         if not self.device.is_supported():
@@ -86,15 +131,47 @@ class DuelinkI2CEngine:
         if not self.device.is_available():
             raise RelayUnavailableError(f"I2C-Bus {self.device_path} ist nicht verfuegbar.")
 
+    def _prime_interface_locked(self, deadline):
+        last_error = None
+
+        while True:
+            try:
+                self._exchange_command_locked("", response_timeout_sec=self.initialization_response_timeout_sec)
+                self._initialized = True
+                return
+            except RelayCommandError as exc:
+                last_error = exc
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(self.initialization_retry_interval_sec)
+
+        if last_error is None:
+            last_error = RelayCommandError("Unbekannter DUELink-Initialisierungsfehler.")
+        raise RelayCommandError(
+            f"DUELink-Initialisierung auf {self.device_path} an Adresse 0x{self.address:02x} fehlgeschlagen: "
+            f"{last_error}"
+        ) from last_error
+
+    def _exchange_command_locked(self, command, response_timeout_sec=None):
+        self._write_command_locked(command)
+        return self._read_response_locked(response_timeout_sec=response_timeout_sec)
+
     def _write_command_locked(self, command):
         try:
-            self.device.read(self.FLUSH_READ_SIZE)
+            try:
+                self.device.read(self.FLUSH_READ_SIZE)
+            except I2CError:
+                # On a cold boot the board may not have buffered response bytes yet.
+                # Treat the pre-write flush as best-effort so the actual command can
+                # still be sent.
+                pass
             self.device.write(command.encode("utf-8") + b"\n")
         except I2CError as exc:
             raise RelayCommandError(str(exc)) from exc
 
-    def _read_response_locked(self):
-        deadline = time.monotonic() + self.response_timeout_sec
+    def _read_response_locked(self, response_timeout_sec=None):
+        timeout_sec = self.response_timeout_sec if response_timeout_sec is None else max(0.01, float(response_timeout_sec))
+        deadline = time.monotonic() + timeout_sec
         response = bytearray()
 
         while time.monotonic() <= deadline:
@@ -160,6 +237,9 @@ class DuelinkRelayP4Controller:
         device_index=1,
         response_timeout_sec=1.0,
         enabled=True,
+        initialization_retry_window_sec=DuelinkI2CEngine.INITIALIZATION_RETRY_WINDOW_SEC,
+        initialization_retry_interval_sec=DuelinkI2CEngine.INITIALIZATION_RETRY_INTERVAL_SEC,
+        initialization_response_timeout_sec=DuelinkI2CEngine.INITIALIZATION_RESPONSE_TIMEOUT_SEC,
     ):
         self.enabled = bool(enabled)
         self.engine = DuelinkI2CEngine(
@@ -167,6 +247,9 @@ class DuelinkRelayP4Controller:
             address=address,
             device_index=device_index,
             response_timeout_sec=response_timeout_sec,
+            initialization_retry_window_sec=initialization_retry_window_sec,
+            initialization_retry_interval_sec=initialization_retry_interval_sec,
+            initialization_response_timeout_sec=initialization_response_timeout_sec,
         )
         self._lock = threading.Lock()
         self._states = {channel_id: False for channel_id in self.CHANNELS}
@@ -219,6 +302,29 @@ class DuelinkRelayP4Controller:
                 channel_id: self._build_channel_snapshot(channel_id, states[channel_id], available)
                 for channel_id in self.CHANNELS
             },
+        }
+
+    def initialize(self):
+        if not self.enabled:
+            raise RelayUnavailableError("Relaisboard ist per RELAY_BOARD_ENABLED deaktiviert.")
+
+        command_at = iso_now_utc()
+        try:
+            driver_version = self.engine.initialize()
+        except HardwareError as exc:
+            with self._lock:
+                self._last_command_at = command_at
+                self._last_error = str(exc)
+            raise
+
+        with self._lock:
+            self._last_command_at = command_at
+            self._last_success_at = command_at
+            self._last_error = ""
+
+        return {
+            "driverVersion": driver_version,
+            "relayBoard": self.get_snapshot(),
         }
 
     def set_output(self, output_id, enabled):

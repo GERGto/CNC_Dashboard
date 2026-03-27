@@ -23,6 +23,7 @@ Vom Hersteller bestaetigte Kommandostruktur:
 - Geraet waehlen: `sel(1)`
 - Relais schalten: `Set(<kanal>, <0|1>)`
 - Treiberversion lesen: `DVer()`
+- Initialisierungs-Trigger nach Power-up: leeres Kommando / leere Zeile
 
 ## Hersteller-Referenzen
 
@@ -60,6 +61,30 @@ Konfigurierbare Umgebungsvariablen:
 - `RELAY_BOARD_I2C_ADDRESS` (Default: `0x52`)
 - `RELAY_BOARD_DEVICE_INDEX` (Default: `1`)
 - `RELAY_BOARD_RESPONSE_TIMEOUT_SEC` (Default: `0.75`)
+- `RELAY_BOARD_INITIALIZATION_RETRY_WINDOW_SEC` (Default: `1.5`)
+- `RELAY_BOARD_INITIALIZATION_RETRY_INTERVAL_SEC` (Default: `0.05`)
+- `RELAY_BOARD_INITIALIZATION_RESPONSE_TIMEOUT_SEC` (Default: `0.15`)
+- `RELAY_BOARD_STARTUP_INITIALIZATION_ENABLED` (Default: `true`)
+- `RELAY_BOARD_STARTUP_INITIALIZATION_DELAY_SEC` (Default: `1.0`)
+- `RELAY_BOARD_STARTUP_INITIALIZATION_ATTEMPTS` (Default: `0`, bedeutet unbegrenzt bis Erfolg)
+- `RELAY_BOARD_STARTUP_INITIALIZATION_INTERVAL_SEC` (Default: `1.0`)
+- `RELAY_BOARD_LIGHT_ON_AFTER_STARTUP` (Default: `true`)
+- `RELAY_BOARD_POWER_CONTROL_ENABLED` (Default: `false`)
+- `RELAY_BOARD_POWER_GPIO_CHIP` (Default: `/dev/gpiochip0`)
+- `RELAY_BOARD_POWER_GPIO_LINE_OFFSET` (Default: `17`)
+- `RELAY_BOARD_POWER_ACTIVE_HIGH` (Default: `true`)
+- `RELAY_BOARD_POWER_OFF_DELAY_SEC` (Default: `0.25`)
+- `RELAY_BOARD_POWER_ON_DELAY_SEC` (Default: `1.0`)
+
+Initialisierung im Backend:
+
+- Beim Start des Backend-Dienstes laeuft automatisch ein Relais-Warmup im Hintergrund.
+- Optional kann dieser Warmup die 3.3V-Logikversorgung des Relaisboards vor jedem Init-Versuch ueber einen GPIO-Ausgang power-cyclen.
+- Dieser Warmup versucht das Board nach einem kurzen Delay mehrfach zu initialisieren, noch bevor das Frontend den ersten Schaltbefehl sendet.
+- Nach erfolgreicher Initialisierung kann das Backend standardmaessig das Maschinenlicht auf Kanal 1 direkt einschalten.
+- Vor dem ersten echten Relaiskommando sendet das Backend ein leeres DUELink-Kommando.
+- Wenn das Board nach dem Anstecken noch nicht sauber enumeriert ist, wird diese Initialisierung fuer ein kurzes Zeitfenster wiederholt.
+- Erst danach wird `sel(1)` und der eigentliche `Set(...)`-Befehl ausgefuehrt.
 
 ## API-Endpunkte
 

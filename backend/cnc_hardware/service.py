@@ -5,7 +5,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .duelink_relay import DuelinkRelayP4Controller
+from .duelink_relay import DuelinkI2CEngine, DuelinkRelayP4Controller
+from .gpio_power import LinuxGPIOChipLineOutput
 from .sensors import AHT20Sensor, HardwareError
 
 
@@ -34,15 +35,45 @@ def _read_bool_env(name, default_value):
     return raw_value in {"1", "true", "yes", "on"}
 
 
+def _read_str_env(name, default_value):
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return str(default_value)
+    return str(raw_value).strip()
+
+
 class HardwareBackend:
-    def __init__(self, primary_i2c_bus=1, spindle_temperature_sensor=None, relay_controller=None, cache_ttl_sec=2.0):
+    def __init__(
+        self,
+        primary_i2c_bus=1,
+        spindle_temperature_sensor=None,
+        relay_controller=None,
+        relay_power_controller=None,
+        cache_ttl_sec=2.0,
+        relay_startup_initialization_enabled=True,
+        relay_startup_initialization_delay_sec=1.0,
+        relay_startup_initialization_attempts=0,
+        relay_startup_initialization_interval_sec=1.0,
+        relay_light_on_after_startup=True,
+        relay_power_off_delay_sec=0.25,
+        relay_power_on_delay_sec=1.0,
+    ):
         self.primary_i2c_bus = int(primary_i2c_bus)
         self.spindle_temperature_sensor = spindle_temperature_sensor or AHT20Sensor(
             bus_number=self.primary_i2c_bus
         )
         self.relay_controller = relay_controller or DuelinkRelayP4Controller(bus_number=self.primary_i2c_bus)
+        self.relay_power_controller = relay_power_controller
         self.cache_ttl_sec = max(0.0, float(cache_ttl_sec))
+        self.relay_startup_initialization_enabled = bool(relay_startup_initialization_enabled)
+        self.relay_startup_initialization_delay_sec = max(0.0, float(relay_startup_initialization_delay_sec))
+        self.relay_startup_initialization_attempts = max(0, int(relay_startup_initialization_attempts))
+        self.relay_startup_initialization_interval_sec = max(0.0, float(relay_startup_initialization_interval_sec))
+        self.relay_light_on_after_startup = bool(relay_light_on_after_startup)
+        self.relay_power_off_delay_sec = max(0.0, float(relay_power_off_delay_sec))
+        self.relay_power_on_delay_sec = max(0.0, float(relay_power_on_delay_sec))
         self._lock = threading.Lock()
+        self._relay_operation_lock = threading.Lock()
         self._spindle_temperature_cache = None
         self._spindle_temperature_cache_until = 0.0
 
@@ -123,11 +154,62 @@ class HardwareBackend:
         return self.relay_controller.get_snapshot()
 
     def set_relay_output(self, output_id, enabled):
-        channel = self.relay_controller.set_output(output_id, enabled)
+        with self._relay_operation_lock:
+            channel = self.relay_controller.set_output(output_id, enabled)
         return {
             "channel": channel,
             "relayBoard": self.relay_controller.get_snapshot(),
         }
+
+    def initialize_relay_board(self):
+        with self._relay_operation_lock:
+            return self.relay_controller.initialize()
+
+    def initialize_relay_board_on_startup(self):
+        if not self.relay_startup_initialization_enabled:
+            print("Relay startup initialization skipped: disabled.")
+            return False
+
+        if self.relay_startup_initialization_delay_sec > 0:
+            time.sleep(self.relay_startup_initialization_delay_sec)
+
+        attempt_limit = self.relay_startup_initialization_attempts if self.relay_startup_initialization_attempts > 0 else None
+        attempt = 0
+
+        while True:
+            attempt += 1
+            attempt_label = (
+                f"{attempt}/{attempt_limit}"
+                if attempt_limit is not None
+                else f"{attempt}/unbegrenzt"
+            )
+            try:
+                with self._relay_operation_lock:
+                    if self.relay_power_controller is not None:
+                        self.relay_power_controller.power_cycle(
+                            off_delay_sec=self.relay_power_off_delay_sec,
+                            on_delay_sec=self.relay_power_on_delay_sec,
+                        )
+                    result = self.relay_controller.initialize()
+                    if self.relay_light_on_after_startup:
+                        light_channel = self.relay_controller.set_output("light", True)
+                        result["lightChannel"] = light_channel
+                print(
+                    "Relay startup initialization succeeded "
+                    f"(attempt {attempt_label}, "
+                    f"driver {result.get('driverVersion', '<unbekannt>')})."
+                )
+                if self.relay_light_on_after_startup:
+                    print("Relay startup default applied: machine light on.")
+                return True
+            except HardwareError as exc:
+                print(
+                    "Relay startup initialization failed "
+                    f"(attempt {attempt_label}): {exc}"
+                )
+                if attempt_limit is not None and attempt >= attempt_limit:
+                    return False
+                time.sleep(self.relay_startup_initialization_interval_sec)
 
 
 def create_hardware_backend():
@@ -137,6 +219,35 @@ def create_hardware_backend():
     relay_address = _read_int_env("RELAY_BOARD_I2C_ADDRESS", DuelinkRelayP4Controller.DEFAULT_ADDRESS)
     relay_device_index = _read_int_env("RELAY_BOARD_DEVICE_INDEX", 1)
     relay_response_timeout_sec = _read_non_negative_float_env("RELAY_BOARD_RESPONSE_TIMEOUT_SEC", 0.75)
+    relay_initialization_retry_window_sec = _read_non_negative_float_env(
+        "RELAY_BOARD_INITIALIZATION_RETRY_WINDOW_SEC",
+        DuelinkI2CEngine.INITIALIZATION_RETRY_WINDOW_SEC,
+    )
+    relay_initialization_retry_interval_sec = _read_non_negative_float_env(
+        "RELAY_BOARD_INITIALIZATION_RETRY_INTERVAL_SEC",
+        DuelinkI2CEngine.INITIALIZATION_RETRY_INTERVAL_SEC,
+    )
+    relay_initialization_response_timeout_sec = _read_non_negative_float_env(
+        "RELAY_BOARD_INITIALIZATION_RESPONSE_TIMEOUT_SEC",
+        DuelinkI2CEngine.INITIALIZATION_RESPONSE_TIMEOUT_SEC,
+    )
+    relay_startup_initialization_enabled = _read_bool_env("RELAY_BOARD_STARTUP_INITIALIZATION_ENABLED", True)
+    relay_startup_initialization_delay_sec = _read_non_negative_float_env(
+        "RELAY_BOARD_STARTUP_INITIALIZATION_DELAY_SEC",
+        1.0,
+    )
+    relay_startup_initialization_attempts = max(0, _read_int_env("RELAY_BOARD_STARTUP_INITIALIZATION_ATTEMPTS", 0))
+    relay_startup_initialization_interval_sec = _read_non_negative_float_env(
+        "RELAY_BOARD_STARTUP_INITIALIZATION_INTERVAL_SEC",
+        1.0,
+    )
+    relay_light_on_after_startup = _read_bool_env("RELAY_BOARD_LIGHT_ON_AFTER_STARTUP", True)
+    relay_power_control_enabled = _read_bool_env("RELAY_BOARD_POWER_CONTROL_ENABLED", False)
+    relay_power_gpio_chip = _read_str_env("RELAY_BOARD_POWER_GPIO_CHIP", "/dev/gpiochip0")
+    relay_power_gpio_line_offset = _read_int_env("RELAY_BOARD_POWER_GPIO_LINE_OFFSET", 17)
+    relay_power_active_high = _read_bool_env("RELAY_BOARD_POWER_ACTIVE_HIGH", True)
+    relay_power_off_delay_sec = _read_non_negative_float_env("RELAY_BOARD_POWER_OFF_DELAY_SEC", 0.25)
+    relay_power_on_delay_sec = _read_non_negative_float_env("RELAY_BOARD_POWER_ON_DELAY_SEC", 1.0)
     cache_ttl_sec = _read_non_negative_float_env("HARDWARE_SENSOR_CACHE_TTL_SEC", 2.0)
     spindle_temperature_sensor = AHT20Sensor(
         bus_number=primary_i2c_bus,
@@ -148,10 +259,28 @@ def create_hardware_backend():
         device_index=relay_device_index,
         response_timeout_sec=relay_response_timeout_sec,
         enabled=relay_enabled,
+        initialization_retry_window_sec=relay_initialization_retry_window_sec,
+        initialization_retry_interval_sec=relay_initialization_retry_interval_sec,
+        initialization_response_timeout_sec=relay_initialization_response_timeout_sec,
     )
+    relay_power_controller = None
+    if relay_power_control_enabled:
+        relay_power_controller = LinuxGPIOChipLineOutput(
+            chip_path=relay_power_gpio_chip,
+            line_offset=relay_power_gpio_line_offset,
+            active_high=relay_power_active_high,
+        )
     return HardwareBackend(
         primary_i2c_bus=primary_i2c_bus,
         spindle_temperature_sensor=spindle_temperature_sensor,
         relay_controller=relay_controller,
+        relay_power_controller=relay_power_controller,
         cache_ttl_sec=cache_ttl_sec,
+        relay_startup_initialization_enabled=relay_startup_initialization_enabled,
+        relay_startup_initialization_delay_sec=relay_startup_initialization_delay_sec,
+        relay_startup_initialization_attempts=relay_startup_initialization_attempts,
+        relay_startup_initialization_interval_sec=relay_startup_initialization_interval_sec,
+        relay_light_on_after_startup=relay_light_on_after_startup,
+        relay_power_off_delay_sec=relay_power_off_delay_sec,
+        relay_power_on_delay_sec=relay_power_on_delay_sec,
     )

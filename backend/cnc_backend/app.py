@@ -25,6 +25,7 @@ class BackendApp:
 
     def start_background_tasks(self):
         threading.Thread(target=self.wifi_service.autoconnect_wifi_on_startup, daemon=True).start()
+        threading.Thread(target=self.hardware_backend.initialize_relay_board_on_startup, daemon=True).start()
 
     def get_health(self):
         return {"status": "ok", "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}

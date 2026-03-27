@@ -60,6 +60,10 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
 - Official I2C address: `0x52` (`82` decimal)
 - Protocol: `DUELink DaisyLink` over I2C
 - Default device index: `1`
+- On first contact after board power-up, the backend sends an empty DUELink command and retries briefly before the real relay command.
+- On backend startup, a background warmup initializes the relay board before the first frontend action.
+- Optional: the backend can power-cycle the relay board on startup through a GPIO-controlled 3.3V feed.
+- After a successful startup initialization, the backend can automatically switch the machine light on.
 - Channel mapping:
   - `1`: machine light
   - `2`: spindle fan
@@ -87,6 +91,20 @@ set RELAY_BOARD_ENABLED=1
 set RELAY_BOARD_I2C_ADDRESS=0x52
 set RELAY_BOARD_DEVICE_INDEX=1
 set RELAY_BOARD_RESPONSE_TIMEOUT_SEC=0.75
+set RELAY_BOARD_INITIALIZATION_RETRY_WINDOW_SEC=1.5
+set RELAY_BOARD_INITIALIZATION_RETRY_INTERVAL_SEC=0.05
+set RELAY_BOARD_INITIALIZATION_RESPONSE_TIMEOUT_SEC=0.15
+set RELAY_BOARD_STARTUP_INITIALIZATION_ENABLED=1
+set RELAY_BOARD_STARTUP_INITIALIZATION_DELAY_SEC=1.0
+set RELAY_BOARD_STARTUP_INITIALIZATION_ATTEMPTS=0
+set RELAY_BOARD_STARTUP_INITIALIZATION_INTERVAL_SEC=1.0
+set RELAY_BOARD_LIGHT_ON_AFTER_STARTUP=1
+set RELAY_BOARD_POWER_CONTROL_ENABLED=0
+set RELAY_BOARD_POWER_GPIO_CHIP=/dev/gpiochip0
+set RELAY_BOARD_POWER_GPIO_LINE_OFFSET=17
+set RELAY_BOARD_POWER_ACTIVE_HIGH=1
+set RELAY_BOARD_POWER_OFF_DELAY_SEC=0.25
+set RELAY_BOARD_POWER_ON_DELAY_SEC=1.0
 ```
 
 The server listens on `http://localhost:8080` by default.
