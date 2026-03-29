@@ -44,6 +44,10 @@ def create_request_handler(app):
                 force_refresh = parse_bool_query_flag(params, "refresh")
                 return json_response(self, 200, app.get_spindle_temperature(force_refresh=force_refresh))
 
+            if path == "/api/hardware/axis-loads":
+                force_refresh = parse_bool_query_flag(params, "refresh")
+                return json_response(self, 200, app.get_axis_loads(force_refresh=force_refresh))
+
             if path == "/api/hardware/relays":
                 return json_response(self, 200, app.get_relay_board())
 
@@ -77,6 +81,9 @@ def create_request_handler(app):
 
             if path == "/api/wifi/networks":
                 return json_response(self, 200, {"networks": app.scan_wifi_networks()})
+
+            if path == "/api/wifi/status":
+                return json_response(self, 200, app.get_wifi_status())
 
             if path == "/api/maintenance/tasks":
                 return json_response(self, 200, {"tasks": app.get_maintenance_tasks()})

@@ -154,6 +154,7 @@
     };
 
     const axisValues = { spindle: 0, x: 0, y: 0, z: 0 };
+    const axisAvailability = { spindle: true, x: false, y: false, z: false };
     const history = {
       spindle: [],
       x: [],
@@ -290,7 +291,13 @@
     function setAxisValue(axis, value){
       const v = clampPercent(value);
       axisValues[axis] = v;
-      if (axisValueEls[axis]) axisValueEls[axis].textContent = `${v}%`;
+      if (axisValueEls[axis]){
+        if (axis === "spindle" || axisAvailability[axis]){
+          axisValueEls[axis].textContent = `${v}%`;
+        } else {
+          axisValueEls[axis].textContent = "--";
+        }
+      }
       if (axis === "spindle") setSpindleValue(v);
     }
 
@@ -298,6 +305,10 @@
       axisKeys.forEach((axis) => {
         const line = lineEls[axis];
         if (!line) return;
+        if (axis !== "spindle" && !axisAvailability[axis]){
+          line.setAttribute("points", "");
+          return;
+        }
         const data = history[axis];
         if (!data.length){
           line.setAttribute("points", "");
@@ -323,11 +334,13 @@
       axisLabelRight.textContent = "0s";
     }
 
-    function updateGraphWindow(seconds){
+    function updateGraphWindow(seconds, persist = false){
       const s = Math.max(10, Math.min(120, Number(seconds) || 60));
       HISTORY_WINDOW_MS = s * 1000;
       updateAxisLabels(HISTORY_WINDOW_MS);
-      scheduleSettingsSave(s);
+      if (persist){
+        scheduleSettingsSave(s);
+      }
     }
 
     function scheduleSettingsSave(seconds){
@@ -347,7 +360,7 @@
         .then((data) => {
           if (!data || typeof data !== "object") return;
           if (typeof data.graphWindowSec === "number"){
-            updateGraphWindow(data.graphWindowSec);
+            updateGraphWindow(data.graphWindowSec, false);
           }
           if (data.axisVisibility && typeof data.axisVisibility === "object"){
             axisKeys.forEach((axis) => {
@@ -419,6 +432,27 @@
       if (persist) scheduleAxisVisibilitySave();
     }
 
+    function setAxisAvailability(axis, available){
+      if (axis === "spindle") return;
+      const isAvailable = !!available;
+      axisAvailability[axis] = isAvailable;
+      if (cardEls[axis]) cardEls[axis].classList.toggle("is-unavailable", !isAvailable);
+      if (!isAvailable && axisValueEls[axis]){
+        axisValueEls[axis].textContent = "--";
+      }
+      if (isAvailable && axisValueEls[axis]){
+        axisValueEls[axis].textContent = `${clampPercent(axisValues[axis])}%`;
+      }
+    }
+
+    function applyAxisSensorPayload(sensorPayloads){
+      axisKeys.forEach((axis) => {
+        if (axis === "spindle") return;
+        const payload = sensorPayloads && typeof sensorPayloads === "object" ? sensorPayloads[axis] : null;
+        setAxisAvailability(axis, !!(payload && payload.available));
+      });
+    }
+
     document.querySelectorAll(".axis-card").forEach((card) => {
       const axis = card.dataset.axis;
       setAxisEnabled(axis, true, false);
@@ -449,8 +483,9 @@
 
     const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
+    applyAxisSensorPayload({});
     pushHistory(performance.now());
-    updateGraphWindow(60);
+    updateGraphWindow(60, false);
     loadSettings();
     loadSpindleTemperature();
     setInterval(loadSpindleTemperature, SPINDLE_TEMP_REFRESH_MS);
@@ -470,9 +505,12 @@
       if (msg.type === "axes"){
         const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
         applyAxesPayload(payload);
+        if (msg.axisLoadSensors && typeof msg.axisLoadSensors === "object"){
+          applyAxisSensorPayload(msg.axisLoadSensors);
+        }
       }
       if (msg.type === "setGraphWindow"){
-        updateGraphWindow(msg.seconds);
+        updateGraphWindow(msg.seconds, true);
       }
     });
 

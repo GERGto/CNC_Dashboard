@@ -18,6 +18,7 @@ const AXES_INTERVAL_MS = 250;
 const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
+const WIFI_STATUS_REFRESH_MS = 5000;
 const SHUTDOWN_RECOVERY_MS = 15000;
 const PAGE_LOAD_TOKEN = String(Date.now());
 
@@ -562,6 +563,20 @@ function loadUiSettings(){
     .catch(() => {});
 }
 
+function loadWifiStatus(){
+  fetch(`${API_BASE}/api/wifi/status`)
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || typeof data !== "object") return;
+      wifiController.applySettings(data, {
+        updateForm: false,
+        fallbackConnected: true,
+        broadcast: true,
+      });
+    })
+    .catch(() => {});
+}
+
 function loadHardwareState(){
   fetch(`${API_BASE}/api/hardware`)
     .then((res) => res.ok ? res.json() : null)
@@ -1000,7 +1015,9 @@ broadcastToFrames({
 });
 
 loadUiSettings();
+loadWifiStatus();
 loadHardwareState();
 loadMaintenanceTasks();
+setInterval(loadWifiStatus, WIFI_STATUS_REFRESH_MS);
 setInterval(loadMaintenanceTasks, MAINTENANCE_REFRESH_MS);
 startAxesStream();

@@ -1,0 +1,18 @@
+[Unit]
+Description=CNC Dashboard Backend
+
+[Service]
+Type=simple
+User=dietpi
+Group=dietpi
+WorkingDirectory=/opt/cnc-dashboard/backend
+Environment=PORT=8080
+Environment=AXES_INTERVAL_MS=250
+ExecStart=/usr/bin/python3 /opt/cnc-dashboard/backend/server.py
+Restart=always
+RestartSec=2
+Environment=ENABLE_REAL_SHUTDOWN=1
+Environment=SHUTDOWN_DELAY_SEC=0.0
+
+[Install]
+WantedBy=multi-user.target

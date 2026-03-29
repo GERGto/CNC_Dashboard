@@ -35,14 +35,20 @@ UI-Grundsatz:
 ### Aktueller Zugriff
 
 - Der aktuelle SSH-Login auf dem Entwicklungssystem erfolgt ueber `ssh cncpi`
-- Die aktuell bekannte direkte IP des Raspberry Pi ist `192.168.137.116`
+- Die aktuell bekannte direkte IP des Raspberry Pi ist `192.168.178.61`
 
 Hinweis: Das wirkt wie ein lokal konfigurierter SSH-Alias und kann daher von der SSH-Konfiguration des jeweiligen Rechners abhaengen.
 
 ## Aktuell bekannte I2C-Hardware
 
 - `Adafruit AHT20` fuer die Spindeltemperatur auf `0x38`
+- `Adafruit INA228` fuer die `X`-Achslast auf `0x40`
 - `GHI GDL-ACRELAYP4-C` 4-Kanal-Relais auf `0x52` (`82` dezimal)
+
+Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
+
+- `Y`-Achse: `INA228` auf `0x41`
+- `Z`-Achse: `INA228` auf `0x44`
 
 Aktuelle Relaisbelegung im Dashboard:
 

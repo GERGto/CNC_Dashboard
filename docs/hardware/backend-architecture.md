@@ -21,7 +21,7 @@ Die aktuelle Ausbaustufe besteht aus vier Ebenen:
 1. `backend/cnc_hardware/i2c.py`
    - Linux-I2C-Zugriff ueber `/dev/i2c-*` ohne zusaetzliche Python-Abhaengigkeiten
 2. `backend/cnc_hardware/sensors.py`
-   - Sensortreiber, aktuell fuer den `AHT20` der Spindeltemperatur
+   - Sensortreiber fuer den `AHT20` der Spindeltemperatur und die `INA228`-Achslastsensoren
 3. `backend/cnc_hardware/duelink_relay.py`
    - Aktortreiber fuer das `GHI GDL-ACRELAYP4-C` Relaisboard auf `0x52`
 4. `backend/cnc_hardware/service.py`
@@ -36,8 +36,14 @@ aktuell folgende Hardware-Endpunkte bereit:
   - Gesamtuebersicht ueber Sensoren, Aktoren und I2C-Metadaten
 - `GET /api/hardware/spindle-temperature`
   - Direkter Zugriff auf den AHT20-Messwert der Spindeltemperatur
+- `GET /api/hardware/axis-loads`
+  - Direkter Zugriff auf die INA228-Messwerte fuer `X`, `Y` und `Z`
 - `GET /api/hardware/relays`
   - Snapshot des 4-Kanal-Relaisboards
+- `GET /api/axes`
+  - Liefert die Frontend-Achswerte; `X/Y/Z` kommen aus den INA228-Sensoren, `Spindel` aktuell noch aus dem bestehenden Last-Mock
+- `GET /api/axes/stream`
+  - SSE-Stream fuer die Frontend-Achsenanzeige mit eingebetteten `axisLoadSensors`
 - `POST /api/hardware/light`
   - Schaltet Relaiskanal 1 fuer das Maschinenlicht
 - `POST /api/hardware/fan`
@@ -87,6 +93,26 @@ Konfigurierbare Umgebungsvariablen:
 - `RELAY_BOARD_I2C_ADDRESS`
 - `RELAY_BOARD_DEVICE_INDEX`
 - `RELAY_BOARD_RESPONSE_TIMEOUT_SEC`
+
+## INA228-Konfiguration
+
+Die Achslastsensoren sind aktuell so vorgesehen:
+
+- Bus: `/dev/i2c-1`
+- `X`: `0x40` live verifiziert
+- `Y`: Backend-Default `0x41`
+- `Z`: Backend-Default `0x44`
+
+Konfigurierbare Umgebungsvariablen:
+
+- `AXIS_LOAD_SENSOR_CACHE_TTL_SEC`
+- `AXIS_LOAD_X_SENSOR_ENABLED`
+- `AXIS_LOAD_X_SENSOR_I2C_ADDRESS`
+- `AXIS_LOAD_X_SHUNT_RESISTANCE_OHMS`
+- `AXIS_LOAD_X_CALIBRATION_MAX_CURRENT_A`
+- `AXIS_LOAD_X_REFERENCE_CURRENT_A`
+
+Dieselbe Struktur gilt analog fuer `Y` und `Z`.
 
 ## Leitlinien
 

@@ -390,6 +390,8 @@ class WiFiService:
                 "wifiSsid": str(runtime.get("ssid", "")).strip() or str(saved.get("wifiSsid", "")).strip(),
             }
         )
+        merged["wifiConnected"] = bool(runtime.get("connected", False))
+        merged["wifiSsid"] = str(runtime.get("ssid", "")).strip() or str(saved.get("wifiSsid", "")).strip()
         merged["wifiState"] = str(runtime.get("state", "")).strip()
         merged["wifiIssueCode"] = str(runtime.get("issueCode", "")).strip()
         merged["wifiIssue"] = str(runtime.get("issue", "")).strip()

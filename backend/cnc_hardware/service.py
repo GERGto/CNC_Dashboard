@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from .duelink_relay import DuelinkI2CEngine, DuelinkRelayP4Controller
 from .gpio_power import LinuxGPIOChipLineOutput
-from .sensors import AHT20Sensor, HardwareError
+from .sensors import AHT20Sensor, HardwareError, INA228Sensor
 
 
 def iso_now_utc():
@@ -47,9 +47,11 @@ class HardwareBackend:
         self,
         primary_i2c_bus=1,
         spindle_temperature_sensor=None,
+        axis_load_sensors=None,
         relay_controller=None,
         relay_power_controller=None,
         cache_ttl_sec=2.0,
+        axis_load_cache_ttl_sec=0.25,
         relay_startup_initialization_enabled=True,
         relay_startup_initialization_delay_sec=1.0,
         relay_startup_initialization_attempts=0,
@@ -62,9 +64,14 @@ class HardwareBackend:
         self.spindle_temperature_sensor = spindle_temperature_sensor or AHT20Sensor(
             bus_number=self.primary_i2c_bus
         )
+        self.axis_load_sensors = {
+            axis: axis_load_sensors.get(axis)
+            for axis in ("x", "y", "z")
+        } if isinstance(axis_load_sensors, dict) else {}
         self.relay_controller = relay_controller or DuelinkRelayP4Controller(bus_number=self.primary_i2c_bus)
         self.relay_power_controller = relay_power_controller
         self.cache_ttl_sec = max(0.0, float(cache_ttl_sec))
+        self.axis_load_cache_ttl_sec = max(0.0, float(axis_load_cache_ttl_sec))
         self.relay_startup_initialization_enabled = bool(relay_startup_initialization_enabled)
         self.relay_startup_initialization_delay_sec = max(0.0, float(relay_startup_initialization_delay_sec))
         self.relay_startup_initialization_attempts = max(0, int(relay_startup_initialization_attempts))
@@ -76,9 +83,12 @@ class HardwareBackend:
         self._relay_operation_lock = threading.Lock()
         self._spindle_temperature_cache = None
         self._spindle_temperature_cache_until = 0.0
+        self._axis_load_cache = None
+        self._axis_load_cache_until = 0.0
 
     def get_snapshot(self, force_refresh=False):
         spindle_temperature = self.get_spindle_temperature(force_refresh=force_refresh)
+        axis_loads = self.get_axis_loads(force_refresh=force_refresh)
         relay_board = self.get_relay_board()
         return {
             "time": iso_now_utc(),
@@ -93,6 +103,7 @@ class HardwareBackend:
             },
             "sensors": {
                 "spindleTemperature": spindle_temperature,
+                "axisLoads": axis_loads,
             },
             "actuators": {
                 "relayBoard": relay_board,
@@ -152,6 +163,80 @@ class HardwareBackend:
 
     def get_relay_board(self):
         return self.relay_controller.get_snapshot()
+
+    def get_axis_loads(self, force_refresh=False):
+        with self._lock:
+            if (
+                not force_refresh
+                and self._axis_load_cache is not None
+                and time.monotonic() < self._axis_load_cache_until
+            ):
+                return dict(self._axis_load_cache)
+
+        reading = self._read_axis_loads()
+
+        with self._lock:
+            self._axis_load_cache = dict(reading)
+            self._axis_load_cache_until = time.monotonic() + self.axis_load_cache_ttl_sec
+
+        return dict(reading)
+
+    def _read_axis_loads(self):
+        axis_payloads = {}
+        any_available = False
+
+        for axis in ("x", "y", "z"):
+            sensor = self.axis_load_sensors.get(axis)
+            payload = {
+                "sensorId": f"axis-load-{axis}",
+                "displayName": f"{axis.upper()}-Achslast",
+                "role": "axisLoad",
+                "axis": axis,
+                "available": False,
+                "status": "unavailable",
+                "error": "",
+                "loadPercent": None,
+                "currentA": None,
+                "powerW": None,
+                "busVoltageV": None,
+                "shuntVoltageMv": None,
+                "dieTemperatureC": None,
+                "measuredAt": iso_now_utc(),
+                "cacheTtlMs": int(round(self.axis_load_cache_ttl_sec * 1000)),
+            }
+
+            if sensor is None:
+                payload["error"] = f"INA228 fuer Achse {axis.upper()} ist nicht konfiguriert."
+                axis_payloads[axis] = payload
+                continue
+
+            payload.update(sensor.describe())
+            try:
+                measurement = sensor.read_measurement()
+            except HardwareError as exc:
+                payload["error"] = str(exc)
+                axis_payloads[axis] = payload
+                continue
+            except Exception as exc:  # pragma: no cover - unexpected hardware edge case
+                payload["error"] = f"Unerwarteter Hardwarefehler: {exc}"
+                axis_payloads[axis] = payload
+                continue
+
+            payload.update(measurement)
+            payload["available"] = True
+            payload["status"] = "ok"
+            payload["error"] = ""
+            axis_payloads[axis] = payload
+            any_available = True
+
+        return {
+            "sensorGroupId": "axis-loads",
+            "displayName": "Achslasten",
+            "available": any_available,
+            "status": "ok" if any_available else "unavailable",
+            "cacheTtlMs": int(round(self.axis_load_cache_ttl_sec * 1000)),
+            "axes": axis_payloads,
+        }
 
     def set_relay_output(self, output_id, enabled):
         with self._relay_operation_lock:
@@ -215,6 +300,12 @@ class HardwareBackend:
 def create_hardware_backend():
     primary_i2c_bus = _read_int_env("HARDWARE_PRIMARY_I2C_BUS", 1)
     spindle_sensor_address = _read_int_env("SPINDLE_TEMP_SENSOR_I2C_ADDRESS", AHT20Sensor.DEFAULT_ADDRESS)
+    axis_load_cache_ttl_sec = _read_non_negative_float_env("AXIS_LOAD_SENSOR_CACHE_TTL_SEC", 0.25)
+    axis_load_sensor_defaults = {
+        "x": {"address": 0x40},
+        "y": {"address": 0x41},
+        "z": {"address": 0x44},
+    }
     relay_enabled = _read_bool_env("RELAY_BOARD_ENABLED", True)
     relay_address = _read_int_env("RELAY_BOARD_I2C_ADDRESS", DuelinkRelayP4Controller.DEFAULT_ADDRESS)
     relay_device_index = _read_int_env("RELAY_BOARD_DEVICE_INDEX", 1)
@@ -253,6 +344,35 @@ def create_hardware_backend():
         bus_number=primary_i2c_bus,
         address=spindle_sensor_address,
     )
+    axis_load_sensors = {}
+    for axis, defaults in axis_load_sensor_defaults.items():
+        axis_upper = axis.upper()
+        sensor_enabled = _read_bool_env(f"AXIS_LOAD_{axis_upper}_SENSOR_ENABLED", True)
+        sensor_address = _read_int_env(
+            f"AXIS_LOAD_{axis_upper}_SENSOR_I2C_ADDRESS",
+            defaults["address"],
+        )
+        shunt_resistance_ohms = _read_non_negative_float_env(
+            f"AXIS_LOAD_{axis_upper}_SHUNT_RESISTANCE_OHMS",
+            INA228Sensor.DEFAULT_SHUNT_RESISTANCE_OHMS,
+        )
+        calibration_max_current_a = _read_non_negative_float_env(
+            f"AXIS_LOAD_{axis_upper}_CALIBRATION_MAX_CURRENT_A",
+            INA228Sensor.DEFAULT_CALIBRATION_MAX_CURRENT_A,
+        )
+        load_reference_current_a = _read_non_negative_float_env(
+            f"AXIS_LOAD_{axis_upper}_REFERENCE_CURRENT_A",
+            calibration_max_current_a,
+        )
+        axis_load_sensors[axis] = INA228Sensor(
+            bus_number=primary_i2c_bus,
+            address=sensor_address,
+            axis=axis,
+            shunt_resistance_ohms=shunt_resistance_ohms,
+            calibration_max_current_a=calibration_max_current_a,
+            load_reference_current_a=load_reference_current_a,
+            enabled=sensor_enabled,
+        )
     relay_controller = DuelinkRelayP4Controller(
         bus_number=primary_i2c_bus,
         address=relay_address,
@@ -273,9 +393,11 @@ def create_hardware_backend():
     return HardwareBackend(
         primary_i2c_bus=primary_i2c_bus,
         spindle_temperature_sensor=spindle_temperature_sensor,
+        axis_load_sensors=axis_load_sensors,
         relay_controller=relay_controller,
         relay_power_controller=relay_power_controller,
         cache_ttl_sec=cache_ttl_sec,
+        axis_load_cache_ttl_sec=axis_load_cache_ttl_sec,
         relay_startup_initialization_enabled=relay_startup_initialization_enabled,
         relay_startup_initialization_delay_sec=relay_startup_initialization_delay_sec,
         relay_startup_initialization_attempts=relay_startup_initialization_attempts,

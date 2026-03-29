@@ -32,9 +32,21 @@ class BackendApp:
 
     def get_axes(self, timestamp_ms=None):
         timestamp = int(timestamp_ms if timestamp_ms is not None else time.time() * 1000)
+        axes = mock_axes_load(timestamp)
+        axis_loads = self.hardware_backend.get_axis_loads()
+        axis_sensor_payloads = axis_loads.get("axes", {}) if isinstance(axis_loads, dict) else {}
+
+        for axis in ("x", "y", "z"):
+            sensor_payload = axis_sensor_payloads.get(axis, {})
+            if sensor_payload.get("available") and sensor_payload.get("loadPercent") is not None:
+                axes[axis] = float(sensor_payload.get("loadPercent"))
+            else:
+                axes[axis] = 0.0
+
         return {
             "timestamp": timestamp,
-            "axes": mock_axes_load(timestamp),
+            "axes": axes,
+            "axisLoadSensors": axis_sensor_payloads,
         }
 
     def get_hardware_snapshot(self, force_refresh=False):
@@ -42,6 +54,9 @@ class BackendApp:
 
     def get_spindle_temperature(self, force_refresh=False):
         return self.hardware_backend.get_spindle_temperature(force_refresh=force_refresh)
+
+    def get_axis_loads(self, force_refresh=False):
+        return self.hardware_backend.get_axis_loads(force_refresh=force_refresh)
 
     def get_relay_board(self):
         return self.hardware_backend.get_relay_board()
@@ -58,6 +73,21 @@ class BackendApp:
             **ui_settings,
             **machine_stats,
             "maintenanceTasks": maintenance_tasks,
+        }
+
+    def get_wifi_status(self):
+        saved = self.store.load_ui_settings()
+        runtime = self.wifi_service.get_wifi_runtime_status(saved)
+        return {
+            "wifiAvailable": bool(runtime.get("available", False)),
+            "wifiInterface": str(runtime.get("interface", "")).strip(),
+            "wifiConnected": bool(runtime.get("connected", False)),
+            "wifiSsid": str(runtime.get("ssid", "")).strip() or str(saved.get("wifiSsid", "")).strip(),
+            "wifiIpAddress": str(runtime.get("ipAddress", "")).strip(),
+            "wifiState": str(runtime.get("state", "")).strip(),
+            "wifiIssueCode": str(runtime.get("issueCode", "")).strip(),
+            "wifiIssue": str(runtime.get("issue", "")).strip(),
+            "wifiAutoConnect": bool(saved.get("wifiAutoConnect", False)),
         }
 
     def save_settings(self, patch):

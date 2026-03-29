@@ -1,6 +1,6 @@
 [Unit]
 Description=CNC Dashboard Frontend
-After=network.target cnc-dashboard-backend.service
+After=cnc-dashboard-backend.service
 Wants=cnc-dashboard-backend.service
 
 [Service]
