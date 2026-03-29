@@ -84,6 +84,11 @@ class SettingsStore:
                 "y": True,
                 "z": True,
             },
+            "axisLoadCalibration": {
+                "x": {"minA": 0.0, "maxA": 10.0},
+                "y": {"minA": 0.0, "maxA": 10.0},
+                "z": {"minA": 0.0, "maxA": 10.0},
+            },
         }
 
     def default_machine_stats(self):
@@ -102,6 +107,36 @@ class SettingsStore:
                 normalized[axis] = bool(raw_value[axis])
             else:
                 normalized[axis] = defaults[axis]
+        return normalized
+
+    def normalize_axis_load_calibration(self, raw_value):
+        defaults = self.default_ui_settings()["axisLoadCalibration"]
+        if not isinstance(raw_value, dict):
+            return deepcopy(defaults)
+
+        normalized = {}
+        for axis, axis_defaults in defaults.items():
+            axis_value = raw_value.get(axis, {})
+            if not isinstance(axis_value, dict):
+                axis_value = {}
+            try:
+                min_a = float(axis_value.get("minA", axis_defaults["minA"]))
+            except (ValueError, TypeError):
+                min_a = float(axis_defaults["minA"])
+            try:
+                max_a = float(axis_value.get("maxA", axis_defaults["maxA"]))
+            except (ValueError, TypeError):
+                max_a = float(axis_defaults["maxA"])
+
+            min_a = max(0.0, min(10.0, min_a))
+            max_a = max(0.0, min(10.0, max_a))
+            if max_a < min_a:
+                max_a = min_a
+
+            normalized[axis] = {
+                "minA": round(min_a, 2),
+                "maxA": round(max_a, 2),
+            }
         return normalized
 
     def sanitize_spindle_runtime_sec(self, raw_value):
@@ -253,6 +288,7 @@ class SettingsStore:
             "wifiAutoConnect": bool(data.get("wifiAutoConnect", defaults["wifiAutoConnect"])),
             "wifiConnected": False,
             "axisVisibility": self.normalize_axis_visibility(data.get("axisVisibility")),
+            "axisLoadCalibration": self.normalize_axis_load_calibration(data.get("axisLoadCalibration")),
         }
         return normalized
 

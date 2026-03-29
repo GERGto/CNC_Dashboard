@@ -6,7 +6,7 @@
   <title>Home</title>
   <link rel="stylesheet" href="../assets/ui-common.css?v=20260326-03" />
   <link rel="stylesheet" href="../assets/app.css?v=20260326-03" />
-  <link rel="stylesheet" href="home.css?v=20260326-07" />
+  <link rel="stylesheet" href="home.css?v=20260329-02" />
 </head>
 <body class="home">
   <main class="home-layout" role="main">
@@ -117,9 +117,126 @@
     </section>
   </main>
 
+  <div class="modal" id="axisCalibrationModalX" role="dialog" aria-modal="true" aria-labelledby="axisCalibrationTitleX" aria-hidden="true">
+    <div class="modal__backdrop" data-close-axis-calibration="x"></div>
+    <div class="modal__panel modal__panel--axis-calibration" role="document">
+      <h2 class="modal__title" id="axisCalibrationTitleX">X Achse kalibrieren</h2>
+      <p class="modal__text">Ampere-Spanne für die Prozentanzeige festlegen.</p>
+      <div class="axis-calibration__meta">
+        <div class="axis-calibration__meta-row">
+          <span>Aktueller Strom</span>
+          <strong id="axisCalibrationCurrentX">-- A</strong>
+        </div>
+        <div class="axis-calibration__meta-row">
+          <span>Aktuelle Anzeige</span>
+          <strong id="axisCalibrationPercentX">-- %</strong>
+        </div>
+      </div>
+      <p class="modal__error axis-calibration__error" id="axisCalibrationErrorX" hidden></p>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMinSliderX">0%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMinSliderX" type="range" min="0" max="10" step="0.1" value="0" />
+        <div class="slider__value" id="axisCalibrationMinValueX">0,0 A</div>
+      </div>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMaxSliderX">100%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMaxSliderX" type="range" min="0" max="10" step="0.1" value="10" />
+        <div class="slider__value" id="axisCalibrationMaxValueX">10,0 A</div>
+      </div>
+      <p class="axis-calibration__hint" id="axisCalibrationHintX">0,0 A entsprechen 0%, 10,0 A entsprechen 100%.</p>
+      <div class="modal__actions">
+        <button class="btn" id="axisCalibrationCloseX" type="button">Abbrechen</button>
+        <button class="btn btn--danger" id="axisCalibrationSaveX" type="button">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="axisCalibrationModalY" role="dialog" aria-modal="true" aria-labelledby="axisCalibrationTitleY" aria-hidden="true">
+    <div class="modal__backdrop" data-close-axis-calibration="y"></div>
+    <div class="modal__panel modal__panel--axis-calibration" role="document">
+      <h2 class="modal__title" id="axisCalibrationTitleY">Y Achse kalibrieren</h2>
+      <p class="modal__text">Ampere-Spanne für die Prozentanzeige festlegen.</p>
+      <div class="axis-calibration__meta">
+        <div class="axis-calibration__meta-row">
+          <span>Aktueller Strom</span>
+          <strong id="axisCalibrationCurrentY">-- A</strong>
+        </div>
+        <div class="axis-calibration__meta-row">
+          <span>Aktuelle Anzeige</span>
+          <strong id="axisCalibrationPercentY">-- %</strong>
+        </div>
+      </div>
+      <p class="modal__error axis-calibration__error" id="axisCalibrationErrorY" hidden></p>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMinSliderY">0%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMinSliderY" type="range" min="0" max="10" step="0.1" value="0" />
+        <div class="slider__value" id="axisCalibrationMinValueY">0,0 A</div>
+      </div>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMaxSliderY">100%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMaxSliderY" type="range" min="0" max="10" step="0.1" value="10" />
+        <div class="slider__value" id="axisCalibrationMaxValueY">10,0 A</div>
+      </div>
+      <p class="axis-calibration__hint" id="axisCalibrationHintY">0,0 A entsprechen 0%, 10,0 A entsprechen 100%.</p>
+      <div class="modal__actions">
+        <button class="btn" id="axisCalibrationCloseY" type="button">Abbrechen</button>
+        <button class="btn btn--danger" id="axisCalibrationSaveY" type="button">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="axisCalibrationModalZ" role="dialog" aria-modal="true" aria-labelledby="axisCalibrationTitleZ" aria-hidden="true">
+    <div class="modal__backdrop" data-close-axis-calibration="z"></div>
+    <div class="modal__panel modal__panel--axis-calibration" role="document">
+      <h2 class="modal__title" id="axisCalibrationTitleZ">Z Achse kalibrieren</h2>
+      <p class="modal__text">Ampere-Spanne für die Prozentanzeige festlegen.</p>
+      <div class="axis-calibration__meta">
+        <div class="axis-calibration__meta-row">
+          <span>Aktueller Strom</span>
+          <strong id="axisCalibrationCurrentZ">-- A</strong>
+        </div>
+        <div class="axis-calibration__meta-row">
+          <span>Aktuelle Anzeige</span>
+          <strong id="axisCalibrationPercentZ">-- %</strong>
+        </div>
+      </div>
+      <p class="modal__error axis-calibration__error" id="axisCalibrationErrorZ" hidden></p>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMinSliderZ">0%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMinSliderZ" type="range" min="0" max="10" step="0.1" value="0" />
+        <div class="slider__value" id="axisCalibrationMinValueZ">0,0 A</div>
+      </div>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMaxSliderZ">100%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMaxSliderZ" type="range" min="0" max="10" step="0.1" value="10" />
+        <div class="slider__value" id="axisCalibrationMaxValueZ">10,0 A</div>
+      </div>
+      <p class="axis-calibration__hint" id="axisCalibrationHintZ">0,0 A entsprechen 0%, 10,0 A entsprechen 100%.</p>
+      <div class="modal__actions">
+        <button class="btn" id="axisCalibrationCloseZ" type="button">Abbrechen</button>
+        <button class="btn btn--danger" id="axisCalibrationSaveZ" type="button">Speichern</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = "http://localhost:8080";
     const axisKeys = ["spindle", "x", "y", "z"];
+    const sensorAxisKeys = ["x", "y", "z"];
+    const axisDisplayNames = {
+      spindle: "Spindel",
+      x: "X Achse",
+      y: "Y Achse",
+      z: "Z Achse"
+    };
+    const AXIS_CALIBRATION_MIN_A = 0;
+    const AXIS_CALIBRATION_MAX_A = 10;
+    const AXIS_CALIBRATION_LONG_PRESS_MS = 650;
+    const AXIS_CALIBRATION_DEFAULTS = {
+      x: { minA: 0, maxA: 10 },
+      y: { minA: 0, maxA: 10 },
+      z: { minA: 0, maxA: 10 }
+    };
     const SPINDLE_TEMP_MIN_C = 20;
     const SPINDLE_TEMP_MAX_C = 55;
     const SPINDLE_TEMP_REFRESH_MS = 2500;
@@ -154,7 +271,9 @@
     };
 
     const axisValues = { spindle: 0, x: 0, y: 0, z: 0 };
+    const axisCurrentAmps = { x: null, y: null, z: null };
     const axisAvailability = { spindle: true, x: false, y: false, z: false };
+    const axisLoadCalibration = cloneAxisCalibrationMap(AXIS_CALIBRATION_DEFAULTS);
     const history = {
       spindle: [],
       x: [],
@@ -173,17 +292,120 @@
     let graphPressTimer = null;
     let settingsSaveTimer = null;
     let axisSaveTimer = null;
+    let activeAxisCalibrationModalAxis = null;
+    const axisPressTimers = {};
+    const axisLongPressActive = {};
     const axisSuppressClickUntilMs = {};
     const axisLabelLeft = document.getElementById("axisLabelLeft");
     const axisLabelMid = document.getElementById("axisLabelMid");
     const axisLabelRight = document.getElementById("axisLabelRight");
     const axesChart = document.querySelector(".axes-chart");
+    const axisCalibrationUi = {
+      x: {
+        modal: document.getElementById("axisCalibrationModalX"),
+        current: document.getElementById("axisCalibrationCurrentX"),
+        percent: document.getElementById("axisCalibrationPercentX"),
+        error: document.getElementById("axisCalibrationErrorX"),
+        minSlider: document.getElementById("axisCalibrationMinSliderX"),
+        maxSlider: document.getElementById("axisCalibrationMaxSliderX"),
+        minValue: document.getElementById("axisCalibrationMinValueX"),
+        maxValue: document.getElementById("axisCalibrationMaxValueX"),
+        hint: document.getElementById("axisCalibrationHintX"),
+        close: document.getElementById("axisCalibrationCloseX"),
+        save: document.getElementById("axisCalibrationSaveX")
+      },
+      y: {
+        modal: document.getElementById("axisCalibrationModalY"),
+        current: document.getElementById("axisCalibrationCurrentY"),
+        percent: document.getElementById("axisCalibrationPercentY"),
+        error: document.getElementById("axisCalibrationErrorY"),
+        minSlider: document.getElementById("axisCalibrationMinSliderY"),
+        maxSlider: document.getElementById("axisCalibrationMaxSliderY"),
+        minValue: document.getElementById("axisCalibrationMinValueY"),
+        maxValue: document.getElementById("axisCalibrationMaxValueY"),
+        hint: document.getElementById("axisCalibrationHintY"),
+        close: document.getElementById("axisCalibrationCloseY"),
+        save: document.getElementById("axisCalibrationSaveY")
+      },
+      z: {
+        modal: document.getElementById("axisCalibrationModalZ"),
+        current: document.getElementById("axisCalibrationCurrentZ"),
+        percent: document.getElementById("axisCalibrationPercentZ"),
+        error: document.getElementById("axisCalibrationErrorZ"),
+        minSlider: document.getElementById("axisCalibrationMinSliderZ"),
+        maxSlider: document.getElementById("axisCalibrationMaxSliderZ"),
+        minValue: document.getElementById("axisCalibrationMinValueZ"),
+        maxValue: document.getElementById("axisCalibrationMaxValueZ"),
+        hint: document.getElementById("axisCalibrationHintZ"),
+        close: document.getElementById("axisCalibrationCloseZ"),
+        save: document.getElementById("axisCalibrationSaveZ")
+      }
+    };
 
     const GAUGE_CX = 180;
     const GAUGE_CY = 180;
     const GAUGE_R = 140;
     const GAUGE_STROKE_W = 52;
     const GAUGE_TOTAL_LEN = Math.PI * GAUGE_R;
+
+    function clampCalibrationAmp(value){
+      const v = Number(value);
+      if (!Number.isFinite(v)) return AXIS_CALIBRATION_MIN_A;
+      return Math.max(AXIS_CALIBRATION_MIN_A, Math.min(AXIS_CALIBRATION_MAX_A, v));
+    }
+
+    function normalizeCalibrationRange(rawValue, fallback){
+      const fallbackRange = fallback && typeof fallback === "object" ? fallback : { minA: 0, maxA: 10 };
+      let minA = clampCalibrationAmp(rawValue && rawValue.minA !== undefined ? rawValue.minA : fallbackRange.minA);
+      let maxA = clampCalibrationAmp(rawValue && rawValue.maxA !== undefined ? rawValue.maxA : fallbackRange.maxA);
+      if (maxA < minA){
+        maxA = minA;
+      }
+      return {
+        minA: Math.round(minA * 100) / 100,
+        maxA: Math.round(maxA * 100) / 100
+      };
+    }
+
+    function cloneAxisCalibrationMap(rawValue){
+      const normalized = {};
+      sensorAxisKeys.forEach((axis) => {
+        normalized[axis] = normalizeCalibrationRange(
+          rawValue && typeof rawValue === "object" ? rawValue[axis] : null,
+          AXIS_CALIBRATION_DEFAULTS[axis]
+        );
+      });
+      return normalized;
+    }
+
+    function applyAxisCalibrationMap(rawValue){
+      const normalized = cloneAxisCalibrationMap(rawValue);
+      sensorAxisKeys.forEach((axis) => {
+        axisLoadCalibration[axis] = normalized[axis];
+        if (activeAxisCalibrationModalAxis !== axis){
+          syncAxisCalibrationModal(axis);
+        }
+      });
+    }
+
+    function formatAmpValue(value, fractionDigits = 1){
+      const v = Number(value);
+      if (!Number.isFinite(v)){
+        return "-- A";
+      }
+      return `${v.toLocaleString("de-DE", {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+      })} A`;
+    }
+
+    function formatPercentValue(value){
+      const v = Number(value);
+      if (!Number.isFinite(v)){
+        return "-- %";
+      }
+      return `${Math.round(v)}%`;
+    }
 
     function describeArc(start, end){
       const x1 = GAUGE_CX + GAUGE_R * Math.cos(start);
@@ -299,6 +521,9 @@
         }
       }
       if (axis === "spindle") setSpindleValue(v);
+      if (sensorAxisKeys.includes(axis)){
+        updateAxisCalibrationStatus(axis);
+      }
     }
 
     function renderChart(now){
@@ -368,6 +593,9 @@
                 setAxisEnabled(axis, !!data.axisVisibility[axis], false);
               }
             });
+          }
+          if (data.axisLoadCalibration && typeof data.axisLoadCalibration === "object"){
+            applyAxisCalibrationMap(data.axisLoadCalibration);
           }
         })
         .catch(() => {});
@@ -443,13 +671,150 @@
       if (isAvailable && axisValueEls[axis]){
         axisValueEls[axis].textContent = `${clampPercent(axisValues[axis])}%`;
       }
+      updateAxisCalibrationStatus(axis);
+    }
+
+    function setAxisCurrentA(axis, currentA){
+      if (!sensorAxisKeys.includes(axis)) return;
+      const value = Number(currentA);
+      axisCurrentAmps[axis] = Number.isFinite(value) ? value : null;
+      updateAxisCalibrationStatus(axis);
+    }
+
+    function updateAxisCalibrationStatus(axis){
+      const ui = axisCalibrationUi[axis];
+      if (!ui) return;
+
+      ui.current.textContent = axisCurrentAmps[axis] === null
+        ? "-- A"
+        : formatAmpValue(axisCurrentAmps[axis], 2);
+
+      ui.percent.textContent = axisAvailability[axis]
+        ? formatPercentValue(axisValues[axis])
+        : "-- %";
+
+      if (axisAvailability[axis]){
+        ui.error.hidden = true;
+        ui.error.textContent = "";
+      } else {
+        ui.error.hidden = false;
+        ui.error.textContent = "Sensor momentan nicht verfügbar. Die Kalibrierung kann trotzdem gespeichert werden.";
+      }
+    }
+
+    function syncAxisCalibrationModal(axis){
+      const ui = axisCalibrationUi[axis];
+      if (!ui) return;
+      const calibration = axisLoadCalibration[axis] || AXIS_CALIBRATION_DEFAULTS[axis];
+      ui.minSlider.value = String(calibration.minA);
+      ui.maxSlider.value = String(calibration.maxA);
+      ui.minValue.textContent = formatAmpValue(calibration.minA, 1);
+      ui.maxValue.textContent = formatAmpValue(calibration.maxA, 1);
+      ui.hint.textContent = `${formatAmpValue(calibration.minA, 1)} entsprechen 0%, ${formatAmpValue(calibration.maxA, 1)} entsprechen 100%.`;
+      updateAxisCalibrationStatus(axis);
+    }
+
+    function updateAxisCalibrationDraft(axis, changedField){
+      const ui = axisCalibrationUi[axis];
+      if (!ui) return;
+
+      let minA = clampCalibrationAmp(ui.minSlider.value);
+      let maxA = clampCalibrationAmp(ui.maxSlider.value);
+
+      if (changedField === "min" && minA > maxA){
+        maxA = minA;
+      }
+      if (changedField === "max" && maxA < minA){
+        minA = maxA;
+      }
+
+      ui.minSlider.value = String(minA);
+      ui.maxSlider.value = String(maxA);
+      ui.minValue.textContent = formatAmpValue(minA, 1);
+      ui.maxValue.textContent = formatAmpValue(maxA, 1);
+      ui.hint.textContent = `${formatAmpValue(minA, 1)} entsprechen 0%, ${formatAmpValue(maxA, 1)} entsprechen 100%.`;
+    }
+
+    function openAxisCalibrationModal(axis){
+      if (!sensorAxisKeys.includes(axis)) return;
+      const ui = axisCalibrationUi[axis];
+      if (!ui) return;
+
+      activeAxisCalibrationModalAxis = axis;
+      syncAxisCalibrationModal(axis);
+      ui.save.disabled = false;
+      ui.save.textContent = "Speichern";
+      ui.modal.classList.add("is-open");
+      ui.modal.setAttribute("aria-hidden", "false");
+      ui.minSlider.focus();
+    }
+
+    function closeAxisCalibrationModal(axis, restoreFocus = true){
+      const ui = axisCalibrationUi[axis];
+      if (!ui) return;
+
+      ui.modal.classList.remove("is-open");
+      ui.modal.setAttribute("aria-hidden", "true");
+      ui.save.disabled = false;
+      ui.save.textContent = "Speichern";
+      syncAxisCalibrationModal(axis);
+      if (activeAxisCalibrationModalAxis === axis){
+        activeAxisCalibrationModalAxis = null;
+      }
+      if (restoreFocus && cardEls[axis]){
+        cardEls[axis].focus();
+      }
+    }
+
+    function persistAxisCalibration(axis){
+      const ui = axisCalibrationUi[axis];
+      if (!ui) return Promise.resolve();
+
+      const nextCalibration = cloneAxisCalibrationMap(axisLoadCalibration);
+      nextCalibration[axis] = normalizeCalibrationRange(
+        {
+          minA: ui.minSlider.value,
+          maxA: ui.maxSlider.value
+        },
+        axisLoadCalibration[axis]
+      );
+
+      ui.save.disabled = true;
+      ui.save.textContent = "Speichert...";
+
+      return fetch(`${API_BASE}/api/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          axisLoadCalibration: nextCalibration
+        })
+      })
+        .then((res) => res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)))
+        .then((data) => {
+          if (data && data.axisLoadCalibration && typeof data.axisLoadCalibration === "object"){
+            applyAxisCalibrationMap(data.axisLoadCalibration);
+          } else {
+            applyAxisCalibrationMap(nextCalibration);
+          }
+          closeAxisCalibrationModal(axis);
+        })
+        .catch(() => {
+          ui.save.disabled = false;
+          ui.save.textContent = "Speichern";
+          ui.error.hidden = false;
+          ui.error.textContent = "Kalibrierung konnte nicht gespeichert werden.";
+        });
     }
 
     function applyAxisSensorPayload(sensorPayloads){
-      axisKeys.forEach((axis) => {
-        if (axis === "spindle") return;
+      sensorAxisKeys.forEach((axis) => {
         const payload = sensorPayloads && typeof sensorPayloads === "object" ? sensorPayloads[axis] : null;
         setAxisAvailability(axis, !!(payload && payload.available));
+        setAxisCurrentA(axis, payload && payload.currentA);
+        if (payload && payload.calibration && typeof payload.calibration === "object" && activeAxisCalibrationModalAxis !== axis){
+          axisLoadCalibration[axis] = normalizeCalibrationRange(payload.calibration, axisLoadCalibration[axis]);
+          syncAxisCalibrationModal(axis);
+        }
       });
     }
 
@@ -457,14 +822,33 @@
       const axis = card.dataset.axis;
       setAxisEnabled(axis, true, false);
       card.addEventListener("pointerdown", (ev) => {
-        if (ev.pointerType === "mouse"){
+        if (ev.pointerType === "mouse" && ev.button !== 0){
           return;
         }
-        axisSuppressClickUntilMs[axis] = performance.now() + 700;
-        ev.preventDefault();
-        setAxisEnabled(axis, !axisState[axis], true);
+        axisLongPressActive[axis] = false;
+        if (axisPressTimers[axis]) clearTimeout(axisPressTimers[axis]);
+        if (!sensorAxisKeys.includes(axis)){
+          return;
+        }
+        axisPressTimers[axis] = setTimeout(() => {
+          axisLongPressActive[axis] = true;
+          axisSuppressClickUntilMs[axis] = performance.now() + AXIS_CALIBRATION_LONG_PRESS_MS;
+          openAxisCalibrationModal(axis);
+        }, AXIS_CALIBRATION_LONG_PRESS_MS);
       });
+      const clearAxisPress = () => {
+        if (axisPressTimers[axis]) clearTimeout(axisPressTimers[axis]);
+        axisPressTimers[axis] = null;
+      };
+      card.addEventListener("pointerup", clearAxisPress);
+      card.addEventListener("pointerleave", clearAxisPress);
+      card.addEventListener("pointercancel", clearAxisPress);
       card.addEventListener("click", () => {
+        clearAxisPress();
+        if (axisLongPressActive[axis]){
+          axisLongPressActive[axis] = false;
+          return;
+        }
         if (performance.now() < (axisSuppressClickUntilMs[axis] || 0)){
           return;
         }
@@ -483,6 +867,20 @@
 
     const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
+    sensorAxisKeys.forEach((axis) => {
+      syncAxisCalibrationModal(axis);
+      axisCalibrationUi[axis].minSlider.addEventListener("input", () => updateAxisCalibrationDraft(axis, "min"));
+      axisCalibrationUi[axis].maxSlider.addEventListener("input", () => updateAxisCalibrationDraft(axis, "max"));
+      axisCalibrationUi[axis].close.addEventListener("click", () => closeAxisCalibrationModal(axis));
+      axisCalibrationUi[axis].save.addEventListener("click", () => {
+        void persistAxisCalibration(axis);
+      });
+      axisCalibrationUi[axis].modal.addEventListener("click", (ev) => {
+        if (ev.target && ev.target.dataset && ev.target.dataset.closeAxisCalibration === axis){
+          closeAxisCalibrationModal(axis);
+        }
+      });
+    });
     applyAxisSensorPayload({});
     pushHistory(performance.now());
     updateGraphWindow(60, false);
@@ -527,6 +925,13 @@
     axesChart.addEventListener("pointerup", clearGraphPress);
     axesChart.addEventListener("pointerleave", clearGraphPress);
     axesChart.addEventListener("pointercancel", clearGraphPress);
+
+    window.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape" || !activeAxisCalibrationModalAxis){
+        return;
+      }
+      closeAxisCalibrationModal(activeAxisCalibrationModalAxis);
+    });
   </script>
 </body>
 </html>

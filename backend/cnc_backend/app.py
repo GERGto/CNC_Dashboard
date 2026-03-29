@@ -12,6 +12,25 @@ from .system_service import ShutdownService, mock_axes_load
 from .wifi_service import WiFiService
 
 
+def _calibrate_axis_load_percent(current_a, calibration):
+    calibration_data = calibration if isinstance(calibration, dict) else {}
+    try:
+        min_a = float(calibration_data.get("minA", 0.0))
+    except (ValueError, TypeError):
+        min_a = 0.0
+    try:
+        max_a = float(calibration_data.get("maxA", 10.0))
+    except (ValueError, TypeError):
+        max_a = 10.0
+
+    min_a = max(0.0, min(10.0, min_a))
+    max_a = max(0.0, min(10.0, max_a))
+    if max_a <= min_a:
+        return 100.0 if abs(float(current_a or 0.0)) >= max_a else 0.0
+
+    return max(0.0, min(100.0, ((abs(float(current_a or 0.0)) - min_a) / (max_a - min_a)) * 100.0))
+
+
 class BackendApp:
     def __init__(self, config, store, wifi_service, shutdown_service, hardware_backend):
         self.config = config
@@ -33,13 +52,13 @@ class BackendApp:
     def get_axes(self, timestamp_ms=None):
         timestamp = int(timestamp_ms if timestamp_ms is not None else time.time() * 1000)
         axes = mock_axes_load(timestamp)
-        axis_loads = self.hardware_backend.get_axis_loads()
+        axis_loads = self.get_axis_loads()
         axis_sensor_payloads = axis_loads.get("axes", {}) if isinstance(axis_loads, dict) else {}
 
         for axis in ("x", "y", "z"):
             sensor_payload = axis_sensor_payloads.get(axis, {})
-            if sensor_payload.get("available") and sensor_payload.get("loadPercent") is not None:
-                axes[axis] = float(sensor_payload.get("loadPercent"))
+            if sensor_payload.get("available") and sensor_payload.get("calibratedLoadPercent") is not None:
+                axes[axis] = float(sensor_payload.get("calibratedLoadPercent"))
             else:
                 axes[axis] = 0.0
 
@@ -56,7 +75,29 @@ class BackendApp:
         return self.hardware_backend.get_spindle_temperature(force_refresh=force_refresh)
 
     def get_axis_loads(self, force_refresh=False):
-        return self.hardware_backend.get_axis_loads(force_refresh=force_refresh)
+        axis_loads = self.hardware_backend.get_axis_loads(force_refresh=force_refresh)
+        if not isinstance(axis_loads, dict):
+            return axis_loads
+
+        calibration = self.store.load_ui_settings().get("axisLoadCalibration", {})
+        axes = axis_loads.get("axes")
+        if not isinstance(axes, dict):
+            return axis_loads
+
+        for axis in ("x", "y", "z"):
+            payload = axes.get(axis)
+            if not isinstance(payload, dict):
+                continue
+            axis_calibration = calibration.get(axis, {"minA": 0.0, "maxA": 10.0})
+            payload["calibration"] = axis_calibration
+            if payload.get("available") and payload.get("currentA") is not None:
+                payload["calibratedLoadPercent"] = round(
+                    _calibrate_axis_load_percent(payload.get("currentA"), axis_calibration),
+                    2,
+                )
+            else:
+                payload["calibratedLoadPercent"] = None
+        return axis_loads
 
     def get_relay_board(self):
         return self.hardware_backend.get_relay_board()
@@ -102,6 +143,7 @@ class BackendApp:
             "wifiPassword",
             "wifiAutoConnect",
             "axisVisibility",
+            "axisLoadCalibration",
         }
         ui_patch = {key: payload[key] for key in ui_keys if key in payload}
         if ui_patch:

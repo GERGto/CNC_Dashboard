@@ -49,6 +49,89 @@ Hinweis:
 - Dadurch koennen mehrere INA228-Boards am selben I2C-Bus betrieben werden.
 - Fuer `Y` und `Z` sind die Adressen im Backend konfigurierbar, falls die reale Verdrahtung davon abweicht.
 
+## Anschluss an die 48V-Stepper-Treiber
+
+Wichtig:
+
+- Die INA228-Module sollten hier als `High-Side`-Messung im `+48V`-Zweig eingesetzt werden.
+- Daraus folgt fuer den CNC-Aufbau: pro Achse kommt ein INA228-Modul in Serie zwischen `48V+` des Netzteils und `48V+` des jeweiligen Stepper-Treibers.
+- Die `48V-`-Leitung des Netzteils geht direkt zum `-`-Eingang des jeweiligen Treibers und **nicht** durch den INA228.
+
+Klemmenbelegung des 3-poligen Schraubblocks:
+
+| Schraubklemme | INA228-Pin | Funktion im Achs-Aufbau |
+|---|---|---|
+| `V+` links | `VIN+` | Eingang von `+48V` vom Netzteil |
+| `Mitte` | `VBUS` | Busspannungs-Messpunkt, ebenfalls an `+48V` |
+| `V-` rechts | `VIN-` | Ausgang weiter zum `+48V`-Eingang des Stepper-Treibers |
+
+Die mittlere Klemme ist also nicht "ungenutzt", sondern der `VBUS`-Messanschluss.
+
+Fuer `High-Side` muss `VIN+` und `VBUS` auf demselben `+48V`-Potential liegen. Das geht auf zwei Arten:
+
+- Entweder `V+` und die mittlere `VBUS`-Klemme beide an `+48V` anschliessen.
+- Oder den `VBUS`-Jumper auf der Rueckseite fuer den High-Side-Betrieb setzen, sodass `VBUS` intern mit `VIN+` verbunden ist.
+
+Empfohlene Verdrahtung pro Achse:
+
+1. `48V Netzteil +` an `V+` des passenden INA228-Moduls.
+2. `48V Netzteil +` zusaetzlich an die mittlere `VBUS`-Klemme desselben Moduls, falls der `VBUS`-Jumper **nicht** gesetzt ist.
+3. `V-` des INA228 an den `+48V`-Eingang des Stepper-Treibers dieser Achse.
+4. `48V Netzteil -` direkt an den `-`-Eingang des Stepper-Treibers.
+5. `Qwiic` verbindet nur `3V3`, `GND`, `SDA`, `SCL` mit dem Raspberry Pi und fuehrt **nicht** den Motorstrom.
+
+Kurz gesagt:
+
+- `Netzteil + -> INA228 V+ / VBUS -> INA228 V- -> Treiber +`
+- `Netzteil - -> Treiber -`
+
+Grafik fuer eine Achse:
+
+```mermaid
+flowchart LR
+    PSU_PLUS["+48V Netzteil +"] --> INA_VPLUS["INA228 V+ / VIN+"]
+    PSU_PLUS --> INA_VBUS["INA228 Mitte / VBUS"]
+    INA_VPLUS -. gleiches Potential .- INA_VBUS
+    INA_VMINUS["INA228 V- / VIN-"] --> DRIVER_PLUS["Stepper-Treiber +48V"]
+    PSU_MINUS["48V Netzteil -"] --> DRIVER_MINUS["Stepper-Treiber 0V / -"]
+    INA_VPLUS --> INA_VMINUS
+    PI["Raspberry Pi via Qwiic"] --> INA_LOGIC["INA228 VIN / GND / SDA / SCL"]
+```
+
+Grafik fuer alle drei Achsen:
+
+```mermaid
+flowchart TB
+    PSU_PLUS["+48V Netzteil +"]
+    PSU_MINUS["48V Netzteil -"]
+
+    PSU_PLUS --> INA_X_P["INA228 X: V+ / VBUS"]
+    INA_X_P --> INA_X_M["INA228 X: V-"]
+    INA_X_M --> DRV_X_P["X-Treiber +48V"]
+    PSU_MINUS --> DRV_X_M["X-Treiber -"]
+
+    PSU_PLUS --> INA_Y_P["INA228 Y: V+ / VBUS"]
+    INA_Y_P --> INA_Y_M["INA228 Y: V-"]
+    INA_Y_M --> DRV_Y_P["Y-Treiber +48V"]
+    PSU_MINUS --> DRV_Y_M["Y-Treiber -"]
+
+    PSU_PLUS --> INA_Z_P["INA228 Z: V+ / VBUS"]
+    INA_Z_P --> INA_Z_M["INA228 Z: V-"]
+    INA_Z_M --> DRV_Z_P["Z-Treiber +48V"]
+    PSU_MINUS --> DRV_Z_M["Z-Treiber -"]
+
+    PI_BUS["Pi Qwiic / I2C Bus"] --> INA_X_I2C["INA228 X I2C"]
+    PI_BUS --> INA_Y_I2C["INA228 Y I2C"]
+    PI_BUS --> INA_Z_I2C["INA228 Z I2C"]
+```
+
+Hinweise zur Praxis:
+
+- Pro Achse wird ein eigenes INA228-Modul benoetigt.
+- Das Modul misst den Strom der einzelnen Achse nur dann separat, wenn wirklich nur der zugeordnete Stepper-Treiber hinter diesem einen INA228 haengt.
+- Die Messung sollte im `+48V`-Zweig bleiben; den `-`-Rueckleiter nicht ueber den INA228 fuehren.
+- Falls `X`, `Y` und `Z` gleichzeitig am selben Qwiic-Bus haengen, muessen die I2C-Adressen ueber `A0/A1` unterschiedlich gesetzt sein.
+
 ## Verifikation
 
 - Datum: `2026-03-29`

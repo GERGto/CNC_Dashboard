@@ -205,6 +205,12 @@ def create_request_handler(app):
                     if not isinstance(payload["axisVisibility"], dict):
                         return json_response(self, 400, {"error": "Invalid axisVisibility"})
                     updated["axisVisibility"] = app.store.normalize_axis_visibility(payload["axisVisibility"])
+                if "axisLoadCalibration" in payload:
+                    if not isinstance(payload["axisLoadCalibration"], dict):
+                        return json_response(self, 400, {"error": "Invalid axisLoadCalibration"})
+                    updated["axisLoadCalibration"] = app.store.normalize_axis_load_calibration(
+                        payload["axisLoadCalibration"]
+                    )
                 if "spindleRuntimeSec" in payload:
                     try:
                         value = int(payload["spindleRuntimeSec"])

@@ -311,6 +311,56 @@ body.home{
   letter-spacing: 0.4px;
 }
 
+.modal__panel--axis-calibration{
+  width: min(520px, 92vw);
+  display: grid;
+  gap: 12px;
+}
+
+.axis-calibration__meta{
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 2px solid var(--line);
+  background: #fff;
+}
+
+.axis-calibration__meta-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.axis-calibration__meta-row strong{
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis-calibration__slider{
+  margin: 0;
+}
+
+.axis-calibration__label{
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: #555;
+}
+
+.axis-calibration__hint{
+  margin: -4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+}
+
+.axis-calibration__error{
+  margin: -4px 0 0;
+}
+
 @media (max-width: 960px){
   .home-layout{
     grid-template-columns: 1fr;
