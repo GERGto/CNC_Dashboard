@@ -14,7 +14,7 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
   - `event: axes` with `{ timestamp, axes: { spindle, x, y, z }, axisLoadSensors }` every ~250 ms
   - Optional query: `?intervalMs=250`
 - GET `/api/hardware`
-  - `{ time, transport: { primary, i2c }, sensors: { spindleTemperature, axisLoads }, actuators: { relayBoard } }`
+  - `{ time, transport: { primary, i2c }, sensors: { spindleTemperature, axisLoads }, actuators: { relayBoard, statusIndicator }, machineStatus }`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/spindle-temperature`
   - `{ sensorId, sensorType, available, temperatureC, humidityPercent, measuredAt, ... }`
@@ -24,6 +24,11 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
   - Optional query: `?refresh=1`
 - GET `/api/hardware/relays`
   - `{ controllerId, status, addressHex, channels, ... }`
+- GET `/api/machine/status`
+  - `{ reportedStatus, maintenanceDue, eStopEngaged, effectiveStatus, indicator }`
+- POST `/api/machine/status`
+  - Request: `{ status: "IDLE"|"RUNNING"|"ERROR", source?: "<name>" }`
+  - Response: current effective machine status with LED mapping
 - POST `/api/hardware/light`
   - Request: `{ on: true|false }`
   - Response: `{ ok, channel, relayBoard }`
@@ -73,6 +78,36 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
   - `2`: spindle fan
   - `3`: E-Stop
   - `4`: spare
+
+## Status Indicator
+
+The project is now prepared for a `WS2812B` RGB strip as a machine status indicator.
+
+- Supply: `5V`
+- Data pin: `GPIO18`
+- Current strip length: `76` LEDs
+- Startup sequence:
+  - blue expansion from the center to the outside
+  - once the strip is fully blue, the machine light is switched on
+  - the strip then fades from blue to white for the system check
+- Shutdown sequence:
+  - on frontend-triggered shutdown, the current strip image collapses quickly from the outside to the center
+  - exactly when the strip turns fully off, the machine light is switched off
+- Idle behavior:
+  - `IDLE` uses slow moving white waves instead of static white
+  - each pixel moves between `RGB 28` and `127`
+  - phase offset per pixel: `0.12`
+  - frame phase step: `0.012` at about `60 FPS`
+- Effective color mapping after startup:
+  - `white`: idle / machine on
+  - `orange`: warning / maintenance due
+  - `green`: job or spindle running
+  - `red`: E-Stop active with repeated double pulses over a continuous red base
+- Effective priority:
+  - `E-Stop > maintenance due > RUNNING > IDLE`
+- Backend driver:
+  - `backend/cnc_hardware/neopixel.py`
+- The backend keeps running on non-Pi dev systems and reports the strip as unavailable when `rpi_ws281x` is missing.
 
 ## Axis Load Sensors
 
@@ -138,6 +173,16 @@ set RELAY_BOARD_POWER_GPIO_LINE_OFFSET=17
 set RELAY_BOARD_POWER_ACTIVE_HIGH=1
 set RELAY_BOARD_POWER_OFF_DELAY_SEC=0.25
 set RELAY_BOARD_POWER_ON_DELAY_SEC=1.0
+set STATUS_INDICATOR_ENABLED=1
+set STATUS_INDICATOR_LED_COUNT=76
+set STATUS_INDICATOR_GPIO_PIN=18
+set STATUS_INDICATOR_FREQUENCY_HZ=800000
+set STATUS_INDICATOR_DMA_CHANNEL=10
+set STATUS_INDICATOR_PWM_CHANNEL=0
+set STATUS_INDICATOR_BRIGHTNESS=255
+set STATUS_INDICATOR_INVERT=0
+set STATUS_INDICATOR_STRIP_TYPE=GRB
+set STATUS_INDICATOR_SYNC_INTERVAL_SEC=2.0
 ```
 
 The server listens on `http://localhost:8080` by default.

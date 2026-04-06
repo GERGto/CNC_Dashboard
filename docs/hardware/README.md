@@ -22,6 +22,7 @@ Hier sollen kuenftig alle verbauten oder angebundenen Komponenten mit ihren Schn
 - [Adafruit AHT20 Spindeltemperatur-Sensor](./adafruit-aht20-spindle-temperature.md)
 - [Adafruit INA228 Achslast-Sensoren](./adafruit-ina228-axis-load-sensors.md)
 - [GHI GDL-ACRELAYP4-C 4-Kanal-Relais](./ghi-gdl-acrelayp4-c-relay-board.md)
+- [WS2812B Status-LED-Streifen](./ws2812b-status-strip.md)
 - [SparkFun Qwiic HAT und I2C-Scan](./sparkfun-qwiic-hat.md)
 
 ## Vorlage fuer neue Komponenten

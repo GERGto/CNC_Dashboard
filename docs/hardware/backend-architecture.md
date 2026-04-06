@@ -16,7 +16,7 @@ Frontend noch `server.py` direkt I2C-Details kennen muessen.
 
 ## Aktueller Zuschnitt
 
-Die aktuelle Ausbaustufe besteht aus vier Ebenen:
+Die aktuelle Ausbaustufe besteht aus fuenf Ebenen:
 
 1. `backend/cnc_hardware/i2c.py`
    - Linux-I2C-Zugriff ueber `/dev/i2c-*` ohne zusaetzliche Python-Abhaengigkeiten
@@ -24,7 +24,9 @@ Die aktuelle Ausbaustufe besteht aus vier Ebenen:
    - Sensortreiber fuer den `AHT20` der Spindeltemperatur und die `INA228`-Achslastsensoren
 3. `backend/cnc_hardware/duelink_relay.py`
    - Aktortreiber fuer das `GHI GDL-ACRELAYP4-C` Relaisboard auf `0x52`
-4. `backend/cnc_hardware/service.py`
+4. `backend/cnc_hardware/neopixel.py`
+   - Aktortreiber fuer den `WS2812B`-Status-LED-Streifen an `GPIO18`
+5. `backend/cnc_hardware/service.py`
    - Hardware-Fassade mit normalisierter Antwortstruktur und kurzem Sensor-Cache
 
 ## HTTP-Anbindung
@@ -33,13 +35,17 @@ Der bestehende HTTP-Server bindet das Hardware-Backend als Adapter ein und stell
 aktuell folgende Hardware-Endpunkte bereit:
 
 - `GET /api/hardware`
-  - Gesamtuebersicht ueber Sensoren, Aktoren und I2C-Metadaten
+  - Gesamtuebersicht ueber Sensoren, Aktoren, Maschinenstatus und I2C-Metadaten
 - `GET /api/hardware/spindle-temperature`
   - Direkter Zugriff auf den AHT20-Messwert der Spindeltemperatur
 - `GET /api/hardware/axis-loads`
   - Direkter Zugriff auf die INA228-Messwerte fuer `X`, `Y` und `Z`
 - `GET /api/hardware/relays`
   - Snapshot des 4-Kanal-Relaisboards
+- `GET /api/machine/status`
+  - Liefert den effektiven Maschinenstatus inklusive LED-Farbe und Prioritaetsentscheidung
+- `POST /api/machine/status`
+  - Nimmt einen gemeldeten Basisstatus wie `IDLE`, `RUNNING` oder `ERROR` entgegen
 - `GET /api/axes`
   - Liefert die Frontend-Achswerte; `X/Y/Z` kommen aus den INA228-Sensoren, `Spindel` aktuell noch aus dem bestehenden Last-Mock
 - `GET /api/axes/stream`
@@ -64,8 +70,8 @@ Wichtige Betriebsdetails auf dem aktuellen Pi:
 
 - Service-Name: `cnc-dashboard-backend.service`
 - Startdatei: `/opt/cnc-dashboard/backend/server.py`
-- Service-User: `dietpi`
-- I2C-Zugriff: Der User `dietpi` muss Mitglied der Gruppe `i2c` sein
+- Service-User: aktuell `root`, damit `WS2812B` via `rpi_ws281x` stabil ueber `GPIO18/PWM` angesteuert werden kann
+- I2C-Zugriff: bei Root-Betrieb kein zusaetzliches Gruppenmitglied fuer `i2c` noetig
 
 Nuetzliche Pruefbefehle auf dem Pi:
 
@@ -94,6 +100,40 @@ Konfigurierbare Umgebungsvariablen:
 - `RELAY_BOARD_DEVICE_INDEX`
 - `RELAY_BOARD_RESPONSE_TIMEOUT_SEC`
 
+## Status-LED-Streifen-Konfiguration
+
+Der `WS2812B`-Statusstreifen ist aktuell so vorgesehen:
+
+- Versorgung: `5V`
+- Datenleitung: `GPIO18`
+- Aktuelle Laenge: `76` LEDs
+- Startup-Sequenz:
+  - blau expandierend von der Mitte nach aussen
+  - Maschinenlicht geht an, sobald der ganze Streifen blau ist
+  - danach Systemcheck-Fade von Blau auf Weiss
+- `IDLE`:
+  - wandernde weisse Atmungsanimation zwischen `RGB 104` und `127`
+  - Phasenversatz pro Pixel: `0.08`
+  - Phasenvorschub pro Frame: `0.03` bei rund `60 FPS`
+- Status-Farbabbildung nach dem Startup:
+  - `Weiss`: Maschine an / `IDLE`
+  - `Orange`: Warnung / Wartung faellig
+  - `Gruen`: Job oder Spindel laeuft
+  - `Rot`: `E-Stop` aktiv
+
+Konfigurierbare Umgebungsvariablen:
+
+- `STATUS_INDICATOR_ENABLED`
+- `STATUS_INDICATOR_LED_COUNT`
+- `STATUS_INDICATOR_GPIO_PIN`
+- `STATUS_INDICATOR_FREQUENCY_HZ`
+- `STATUS_INDICATOR_DMA_CHANNEL`
+- `STATUS_INDICATOR_PWM_CHANNEL`
+- `STATUS_INDICATOR_BRIGHTNESS`
+- `STATUS_INDICATOR_INVERT`
+- `STATUS_INDICATOR_STRIP_TYPE`
+- `STATUS_INDICATOR_SYNC_INTERVAL_SEC`
+
 ## INA228-Konfiguration
 
 Die Achslastsensoren sind aktuell so vorgesehen:
@@ -121,10 +161,12 @@ Dieselbe Struktur gilt analog fuer `Y` und `Z`.
 - Antwortobjekte enthalten immer Metadaten, Status und Fehlertext, damit Frontend und Backend gleich damit arbeiten koennen
 - Polling wird zentral ueber das Hardware-Backend begrenzt, um Sensoren nicht unnoetig oft auszulesen
 - Auf dem Zielsystem muss der Service-User Lese-/Schreibrechte auf `/dev/i2c-*` besitzen
+- Optional verfuegbare Hardware wie der WS2812B-Streifen darf das Backend im Dev-Betrieb nicht blockieren, wenn die Ziel-Library fehlt
 
 ## Naechste Schritte
 
 - Relaisboard auf dem Pi nach abgeschlossener Verdrahtung live verifizieren
+- Status-LED-Streifen auf dem Pi mit `rpi_ws281x` live verifizieren
 - Weitere I2C-Sensoren und Aktoren in eigene Treiber auslagern
 - Gemeinsame Hardware-Konfiguration pro Maschine einfuehren
 - Health- und Diagnoseinformationen fuer Busse, Adressen und Geraetestatus erweitern

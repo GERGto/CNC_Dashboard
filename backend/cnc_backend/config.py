@@ -42,6 +42,7 @@ class AppConfig:
     wifi_autoconnect_startup_delay_sec: float
     wifi_autoconnect_retry_delay_sec: float
     wifi_autoconnect_max_attempts: int
+    status_indicator_sync_interval_sec: float
 
 
 def load_app_config():
@@ -77,4 +78,5 @@ def load_app_config():
             "WIFI_AUTOCONNECT_RETRY_DELAY_SEC", 8.0
         ),
         wifi_autoconnect_max_attempts=_read_non_negative_int_env("WIFI_AUTOCONNECT_MAX_ATTEMPTS", 4),
+        status_indicator_sync_interval_sec=_read_non_negative_float_env("STATUS_INDICATOR_SYNC_INTERVAL_SEC", 2.0),
     )

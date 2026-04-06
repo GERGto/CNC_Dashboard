@@ -14,8 +14,17 @@ Die primaeren Aufgaben des Dashboards sind:
 - Live-Preview der Lasten von X-, Y- und Z-Achse sowie der Spindel
 - Anzeige und Verwaltung von Wartungsaufgaben
 - Steuerung ausgewaehlter Hardwarekomponenten der Maschine
+- Anzeige des Maschinenstatus ueber einen externen RGB-LED-Streifen
 
 Die Lastwerte werden per I2C ausgelesen.
+
+Der Maschinenstatus soll zusaetzlich physisch an der Maschine sichtbar sein:
+
+- `Blau`: Startup-Sequenz von der Mitte nach aussen
+- `Weiss`: `IDLE` mit sanftem wanderndem Atmen
+- `Orange`: Warnung oder Wartung faellig
+- `Gruen`: Job laeuft oder Spindel laeuft
+- `Rot`: `E-Stop` aktiv
 
 ## Zielhardware und Laufzeitumgebung
 
@@ -56,6 +65,15 @@ Aktuelle Relaisbelegung im Dashboard:
 - Kanal 2: Spindelluefter
 - Kanal 3: E-Stop
 - Kanal 4: Reserve
+
+## Aktuell bekannte GPIO-/LED-Hardware
+
+- `WS2812B` RGB-LED-Streifen fuer den Maschinenstatus
+  - Versorgung: `5V`
+  - Datensignal: `GPIO18`
+  - Aktuelle Laenge: `76` LEDs
+  - Startup-Sequenz: blau von der Mitte nach aussen, danach Systemcheck auf Weiss
+  - Idle-Sequenz: langsame wandernde weisse Wellen zwischen `RGB 28` und `127`, gedeckelt auf `50%` Maximalhelligkeit
 
 ## Getesteter Systemzustand auf DietPi
 

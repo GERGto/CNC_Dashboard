@@ -7,6 +7,7 @@ from cnc_hardware import create_hardware_backend
 
 from .common import iso_now_utc
 from .config import load_app_config
+from .machine_status import MachineStatusService
 from .settings_store import SettingsStore
 from .system_service import ShutdownService, mock_axes_load
 from .wifi_service import WiFiService
@@ -32,19 +33,21 @@ def _calibrate_axis_load_percent(current_a, calibration):
 
 
 class BackendApp:
-    def __init__(self, config, store, wifi_service, shutdown_service, hardware_backend):
+    def __init__(self, config, store, wifi_service, shutdown_service, hardware_backend, machine_status_service):
         self.config = config
         self.store = store
         self.wifi_service = wifi_service
         self.shutdown_service = shutdown_service
         self.hardware_backend = hardware_backend
+        self.machine_status_service = machine_status_service
 
     def ensure_storage(self):
         self.store.ensure_split_storage()
 
     def start_background_tasks(self):
         threading.Thread(target=self.wifi_service.autoconnect_wifi_on_startup, daemon=True).start()
-        threading.Thread(target=self.hardware_backend.initialize_relay_board_on_startup, daemon=True).start()
+        threading.Thread(target=self.hardware_backend.initialize_outputs_on_startup, daemon=True).start()
+        threading.Thread(target=self._status_indicator_worker, daemon=True).start()
 
     def get_health(self):
         return {"status": "ok", "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
@@ -69,7 +72,9 @@ class BackendApp:
         }
 
     def get_hardware_snapshot(self, force_refresh=False):
-        return self.hardware_backend.get_snapshot(force_refresh=force_refresh)
+        snapshot = self.hardware_backend.get_snapshot(force_refresh=force_refresh)
+        snapshot["machineStatus"] = self.get_machine_status()
+        return snapshot
 
     def get_spindle_temperature(self, force_refresh=False):
         return self.hardware_backend.get_spindle_temperature(force_refresh=force_refresh)
@@ -103,7 +108,32 @@ class BackendApp:
         return self.hardware_backend.get_relay_board()
 
     def set_relay_output(self, output_id, enabled):
-        return self.hardware_backend.set_relay_output(output_id, enabled)
+        result = self.hardware_backend.set_relay_output(output_id, enabled)
+        self.sync_status_indicator()
+        return result
+
+    def get_machine_status(self):
+        machine_stats = self.store.load_machine_stats()
+        maintenance_tasks = self.store.load_maintenance_tasks()
+        relay_board = self.hardware_backend.get_relay_board()
+        return self.machine_status_service.build_snapshot(
+            machine_stats.get("spindleRuntimeSec", 0),
+            maintenance_tasks,
+            relay_board,
+        )
+
+    def report_machine_status(self, status, source="api"):
+        self.machine_status_service.update_reported_status(status, source=source)
+        self.sync_status_indicator()
+        return self.get_machine_status()
+
+    def sync_status_indicator(self):
+        machine_status = self.get_machine_status()
+        indicator = machine_status.get("indicator", {}) if isinstance(machine_status, dict) else {}
+        state = str(indicator.get("state", "idle")).strip() or "idle"
+        reason = str(indicator.get("reason", "")).strip()
+        self.hardware_backend.set_status_indicator_state(state, reason=reason, source="machine-status")
+        return machine_status
 
     def get_settings(self):
         legacy = self.store.load_legacy_settings()
@@ -161,6 +191,8 @@ class BackendApp:
             saved = self.get_settings()
             if not ok:
                 return saved, message
+        if "spindleRuntimeSec" in payload or "maintenanceTasks" in payload:
+            self.sync_status_indicator()
         return saved, ""
 
     def get_maintenance_tasks(self):
@@ -213,17 +245,28 @@ class BackendApp:
     def get_wifi_autoconnect(self):
         return bool(self.store.load_ui_settings().get("wifiAutoConnect", False))
 
+    def _status_indicator_worker(self):
+        interval_sec = max(0.25, float(self.config.status_indicator_sync_interval_sec))
+        while True:
+            try:
+                self.sync_status_indicator()
+            except Exception as exc:  # pragma: no cover - background safety net
+                print(f"Status indicator sync failed: {exc}", flush=True)
+            time.sleep(interval_sec)
+
 
 def create_backend_app():
     config = load_app_config()
     store = SettingsStore(config)
     wifi_service = WiFiService(config, store)
-    shutdown_service = ShutdownService(config)
     hardware_backend = create_hardware_backend()
+    shutdown_service = ShutdownService(config, hardware_backend=hardware_backend)
+    machine_status_service = MachineStatusService()
     return BackendApp(
         config=config,
         store=store,
         wifi_service=wifi_service,
         shutdown_service=shutdown_service,
         hardware_backend=hardware_backend,
+        machine_status_service=machine_status_service,
     )

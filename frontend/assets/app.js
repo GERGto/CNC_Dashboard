@@ -130,6 +130,7 @@ const maintenanceDueDot = document.getElementById("maintenanceDueDot");
 const frames = new Map();
 let uiSettingsSaveTimer = null;
 let runtimeSaveTimer = null;
+let machineStatusSyncTimer = null;
 let spindleRuntimeRawSec = 0;
 let lastAxesTimestampMs = null;
 let graphWindowSec = 60;
@@ -237,6 +238,7 @@ setInterval(updateClock, 1000);
 // -----------------------------
 function setMachineStatus(newStatus){
   statusbarController.setMachineStatus(newStatus);
+  queueMachineStatusSync();
 }
 
 function setMaintenanceDue(isDue){
@@ -389,6 +391,21 @@ function queueUiSettingsSave(){
   uiSettingsSaveTimer = setTimeout(() => {
     persistUiSettings();
   }, 250);
+}
+
+function queueMachineStatusSync(){
+  if (machineStatusSyncTimer) clearTimeout(machineStatusSyncTimer);
+  machineStatusSyncTimer = setTimeout(() => {
+    machineStatusSyncTimer = null;
+    fetch(`${API_BASE}/api/machine/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: state.machineStatus,
+        source: "frontend",
+      }),
+    }).catch(() => {});
+  }, 100);
 }
 
 function queueRuntimeSave(){

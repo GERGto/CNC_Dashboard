@@ -24,8 +24,9 @@ def mock_axes_load(t_ms):
 
 
 class ShutdownService:
-    def __init__(self, config):
+    def __init__(self, config, hardware_backend=None):
         self.config = config
+        self.hardware_backend = hardware_backend
 
     def build_shutdown_commands(self):
         if self.config.shutdown_command:
@@ -80,6 +81,7 @@ class ShutdownService:
         return False
 
     def execute_shutdown_request(self):
+        self.prepare_hardware_for_shutdown()
         self.blackout_display_for_shutdown()
 
         if self.config.shutdown_delay_sec > 0:
@@ -110,6 +112,22 @@ class ShutdownService:
             failures.append(f"{command}: {detail}")
 
         print("Failed to execute system shutdown request:", " | ".join(failures), flush=True)
+
+    def prepare_hardware_for_shutdown(self):
+        if self.hardware_backend is None:
+            return
+
+        try:
+            result = self.hardware_backend.prepare_outputs_for_shutdown()
+            if isinstance(result, dict):
+                print(
+                    "Hardware shutdown sequence finished "
+                    f"(statusIndicatorStarted={result.get('statusIndicatorStarted')}, "
+                    f"statusIndicatorCompleted={result.get('statusIndicatorCompleted')}).",
+                    flush=True,
+                )
+        except Exception as exc:  # pragma: no cover - shutdown should still proceed
+            print(f"Hardware shutdown sequence failed: {exc}", flush=True)
 
     def request_system_shutdown(self):
         if not self.config.enable_real_shutdown:

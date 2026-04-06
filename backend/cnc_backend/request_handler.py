@@ -51,6 +51,9 @@ def create_request_handler(app):
             if path == "/api/hardware/relays":
                 return json_response(self, 200, app.get_relay_board())
 
+            if path == "/api/machine/status":
+                return json_response(self, 200, app.get_machine_status())
+
             if path == "/api/axes/stream":
                 interval_ms = app.config.default_interval_ms
                 if "intervalMs" in params:
@@ -235,6 +238,21 @@ def create_request_handler(app):
                         },
                     )
                 return json_response(self, 200, saved)
+
+            if parsed.path == "/api/machine/status":
+                payload, error = self._read_json_payload()
+                if error:
+                    return json_response(self, 400, {"error": error})
+
+                status = payload.get("status")
+                if not isinstance(status, str):
+                    return json_response(self, 400, {"error": "Invalid status"})
+
+                source = payload.get("source", "api")
+                if not isinstance(source, str):
+                    return json_response(self, 400, {"error": "Invalid source"})
+
+                return json_response(self, 200, app.report_machine_status(status, source=source))
 
             relay_path_map = {
                 "/api/hardware/light": ("light", ("on",)),

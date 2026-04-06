@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .duelink_relay import DuelinkI2CEngine, DuelinkRelayP4Controller
 from .gpio_power import LinuxGPIOChipLineOutput
+from .neopixel import NeoPixelStatusStripController
 from .sensors import AHT20Sensor, HardwareError, INA228Sensor
 
 
@@ -43,6 +44,8 @@ def _read_str_env(name, default_value):
 
 
 class HardwareBackend:
+    SHUTDOWN_SEQUENCE_TIMEOUT_SEC = 2.0
+
     def __init__(
         self,
         primary_i2c_bus=1,
@@ -59,6 +62,7 @@ class HardwareBackend:
         relay_light_on_after_startup=True,
         relay_power_off_delay_sec=0.25,
         relay_power_on_delay_sec=1.0,
+        status_indicator_controller=None,
     ):
         self.primary_i2c_bus = int(primary_i2c_bus)
         self.spindle_temperature_sensor = spindle_temperature_sensor or AHT20Sensor(
@@ -79,8 +83,10 @@ class HardwareBackend:
         self.relay_light_on_after_startup = bool(relay_light_on_after_startup)
         self.relay_power_off_delay_sec = max(0.0, float(relay_power_off_delay_sec))
         self.relay_power_on_delay_sec = max(0.0, float(relay_power_on_delay_sec))
+        self.status_indicator_controller = status_indicator_controller or NeoPixelStatusStripController()
         self._lock = threading.Lock()
         self._relay_operation_lock = threading.Lock()
+        self._status_indicator_lock = threading.Lock()
         self._spindle_temperature_cache = None
         self._spindle_temperature_cache_until = 0.0
         self._axis_load_cache = None
@@ -90,6 +96,7 @@ class HardwareBackend:
         spindle_temperature = self.get_spindle_temperature(force_refresh=force_refresh)
         axis_loads = self.get_axis_loads(force_refresh=force_refresh)
         relay_board = self.get_relay_board()
+        status_indicator = self.get_status_indicator()
         return {
             "time": iso_now_utc(),
             "transport": {
@@ -107,6 +114,7 @@ class HardwareBackend:
             },
             "actuators": {
                 "relayBoard": relay_board,
+                "statusIndicator": status_indicator,
             },
         }
 
@@ -163,6 +171,9 @@ class HardwareBackend:
 
     def get_relay_board(self):
         return self.relay_controller.get_snapshot()
+
+    def get_status_indicator(self):
+        return self.status_indicator_controller.get_snapshot()
 
     def get_axis_loads(self, force_refresh=False):
         with self._lock:
@@ -246,6 +257,21 @@ class HardwareBackend:
             "relayBoard": self.relay_controller.get_snapshot(),
         }
 
+    def set_status_indicator_state(self, state_id, reason="", source="machine-status"):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.set_state(state_id, reason=reason, source=source)
+
+    def start_status_indicator_boot_sequence(self, on_full_blue_callback=None):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.start_boot_sequence(on_full_blue_callback=on_full_blue_callback)
+
+    def start_status_indicator_shutdown_sequence(self, on_complete_callback=None):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.start_shutdown_sequence(on_complete_callback=on_complete_callback)
+
+    def wait_for_status_indicator_shutdown_sequence(self, timeout_sec=None):
+        return self.status_indicator_controller.wait_for_shutdown_sequence(timeout_sec=timeout_sec)
+
     def initialize_relay_board(self):
         with self._relay_operation_lock:
             return self.relay_controller.initialize()
@@ -276,16 +302,11 @@ class HardwareBackend:
                             on_delay_sec=self.relay_power_on_delay_sec,
                         )
                     result = self.relay_controller.initialize()
-                    if self.relay_light_on_after_startup:
-                        light_channel = self.relay_controller.set_output("light", True)
-                        result["lightChannel"] = light_channel
                 print(
                     "Relay startup initialization succeeded "
                     f"(attempt {attempt_label}, "
                     f"driver {result.get('driverVersion', '<unbekannt>')})."
                 )
-                if self.relay_light_on_after_startup:
-                    print("Relay startup default applied: machine light on.")
                 return True
             except HardwareError as exc:
                 print(
@@ -295,6 +316,62 @@ class HardwareBackend:
                 if attempt_limit is not None and attempt >= attempt_limit:
                     return False
                 time.sleep(self.relay_startup_initialization_interval_sec)
+
+    def initialize_outputs_on_startup(self):
+        relay_ready = self.initialize_relay_board_on_startup()
+
+        light_callback = None
+        if relay_ready and self.relay_light_on_after_startup:
+            light_callback = self._turn_machine_light_on_after_status_boot
+
+        boot_sequence_started = self.start_status_indicator_boot_sequence(on_full_blue_callback=light_callback)
+        if boot_sequence_started:
+            print("Status indicator startup sequence started.", flush=True)
+            return relay_ready
+
+        if light_callback is not None:
+            try:
+                light_callback()
+            except HardwareError as exc:
+                print(f"Machine light startup activation failed: {exc}", flush=True)
+        return relay_ready
+
+    def _turn_machine_light_on_after_status_boot(self):
+        with self._relay_operation_lock:
+            light_channel = self.relay_controller.set_output("light", True)
+        print(
+            "Status indicator startup reached full blue: machine light on "
+            f"(channel {light_channel.get('channel', '?')}).",
+            flush=True,
+        )
+
+    def prepare_outputs_for_shutdown(self):
+        light_callback = self._turn_machine_light_off_after_status_shutdown
+        shutdown_sequence_started = self.start_status_indicator_shutdown_sequence(on_complete_callback=light_callback)
+        shutdown_sequence_completed = self.wait_for_status_indicator_shutdown_sequence(
+            timeout_sec=self.SHUTDOWN_SEQUENCE_TIMEOUT_SEC
+        )
+
+        if not shutdown_sequence_completed:
+            print("Status indicator shutdown sequence timed out; forcing machine light off.", flush=True)
+            try:
+                light_callback()
+            except HardwareError as exc:
+                print(f"Machine light shutdown deactivation failed: {exc}", flush=True)
+
+        return {
+            "statusIndicatorStarted": shutdown_sequence_started,
+            "statusIndicatorCompleted": shutdown_sequence_completed,
+        }
+
+    def _turn_machine_light_off_after_status_shutdown(self):
+        with self._relay_operation_lock:
+            light_channel = self.relay_controller.set_output("light", False)
+        print(
+            "Status indicator shutdown reached off: machine light off "
+            f"(channel {light_channel.get('channel', '?')}).",
+            flush=True,
+        )
 
 
 def create_hardware_backend():
@@ -339,6 +416,15 @@ def create_hardware_backend():
     relay_power_active_high = _read_bool_env("RELAY_BOARD_POWER_ACTIVE_HIGH", True)
     relay_power_off_delay_sec = _read_non_negative_float_env("RELAY_BOARD_POWER_OFF_DELAY_SEC", 0.25)
     relay_power_on_delay_sec = _read_non_negative_float_env("RELAY_BOARD_POWER_ON_DELAY_SEC", 1.0)
+    status_indicator_enabled = _read_bool_env("STATUS_INDICATOR_ENABLED", True)
+    status_indicator_pixel_count = max(1, _read_int_env("STATUS_INDICATOR_LED_COUNT", 76))
+    status_indicator_gpio_pin = _read_int_env("STATUS_INDICATOR_GPIO_PIN", 18)
+    status_indicator_frequency_hz = max(1, _read_int_env("STATUS_INDICATOR_FREQUENCY_HZ", 800000))
+    status_indicator_dma_channel = max(0, _read_int_env("STATUS_INDICATOR_DMA_CHANNEL", 10))
+    status_indicator_pwm_channel = max(0, _read_int_env("STATUS_INDICATOR_PWM_CHANNEL", 0))
+    status_indicator_brightness = max(0, min(255, _read_int_env("STATUS_INDICATOR_BRIGHTNESS", 255)))
+    status_indicator_invert = _read_bool_env("STATUS_INDICATOR_INVERT", False)
+    status_indicator_strip_type = _read_str_env("STATUS_INDICATOR_STRIP_TYPE", "GRB")
     cache_ttl_sec = _read_non_negative_float_env("HARDWARE_SENSOR_CACHE_TTL_SEC", 2.0)
     spindle_temperature_sensor = AHT20Sensor(
         bus_number=primary_i2c_bus,
@@ -390,6 +476,17 @@ def create_hardware_backend():
             line_offset=relay_power_gpio_line_offset,
             active_high=relay_power_active_high,
         )
+    status_indicator_controller = NeoPixelStatusStripController(
+        pixel_count=status_indicator_pixel_count,
+        gpio_pin=status_indicator_gpio_pin,
+        frequency_hz=status_indicator_frequency_hz,
+        dma_channel=status_indicator_dma_channel,
+        invert=status_indicator_invert,
+        brightness=status_indicator_brightness,
+        pwm_channel=status_indicator_pwm_channel,
+        strip_type=status_indicator_strip_type,
+        enabled=status_indicator_enabled,
+    )
     return HardwareBackend(
         primary_i2c_bus=primary_i2c_bus,
         spindle_temperature_sensor=spindle_temperature_sensor,
@@ -405,4 +502,5 @@ def create_hardware_backend():
         relay_light_on_after_startup=relay_light_on_after_startup,
         relay_power_off_delay_sec=relay_power_off_delay_sec,
         relay_power_on_delay_sec=relay_power_on_delay_sec,
+        status_indicator_controller=status_indicator_controller,
     )
