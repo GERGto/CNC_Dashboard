@@ -1,4 +1,4 @@
-import { createStatusbarController } from "./modules/statusbar.js";
+import { createStatusbarController } from "./modules/statusbar.js?v=20260406-02";
 import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
@@ -13,12 +13,32 @@ const PAGES = [
   { id: "system",      title: "Systemkonfiguration", src: "pages/system.html" },
 ];
 
-const API_BASE = "http://localhost:8080";
+function createApiBase(){
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get("apiBase");
+  if (fromQuery){
+    try{
+      return new URL(fromQuery).origin;
+    }catch (_error){
+      // Ignore invalid override and fall back to host-based resolution.
+    }
+  }
+
+  const base = new URL(window.location.href);
+  base.port = params.get("backendPort") || "8080";
+  base.pathname = "";
+  base.search = "";
+  base.hash = "";
+  return base.origin;
+}
+
+const API_BASE = createApiBase();
 const AXES_INTERVAL_MS = 250;
-const SPINDLE_RUNNING_THRESHOLD = 5;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
 const WIFI_STATUS_REFRESH_MS = 5000;
+const MACHINE_STATUS_REFRESH_MS = 1500;
+const HARDWARE_REFRESH_MS = 1500;
 const SHUTDOWN_RECOVERY_MS = 15000;
 const PAGE_LOAD_TOKEN = String(Date.now());
 
@@ -26,9 +46,12 @@ const state = {
   activePage: "home",
   machineStatus: "IDLE", // IDLE | RUNNING | ERROR
   maintenanceDue: false,
+  eStopEngaged: false,
+  spindleRunning: false,
   wifiConnected: false,
   wifiSsid: "",
   wifiIssue: "",
+  wifiIpAddress: "",
   lightOn: true,
   lightBrightness: 75,
   fanOn: true,
@@ -61,6 +84,7 @@ const wifiImg = document.getElementById("wifiImg");
 const lightImg = document.getElementById("lightImg");
 const fanImg = document.getElementById("fanImg");
 const wifiEastereggOverlay = document.getElementById("wifiEastereggOverlay");
+const wifiEastereggGif = document.getElementById("wifiEastereggGif");
 const shutdownModal = document.getElementById("shutdownModal");
 const shutdownMessage = shutdownModal.querySelector(".modal__text");
 const shutdownError = document.getElementById("shutdownError");
@@ -128,11 +152,10 @@ const maintenanceTaskDone = document.getElementById("maintenanceTaskDone");
 const maintenanceDueDot = document.getElementById("maintenanceDueDot");
 
 const frames = new Map();
+const frameStates = new Map();
 let uiSettingsSaveTimer = null;
-let runtimeSaveTimer = null;
 let machineStatusSyncTimer = null;
 let spindleRuntimeRawSec = 0;
-let lastAxesTimestampMs = null;
 let graphWindowSec = 60;
 let navSuppressClickUntilMs = 0;
 let shutdownRecoveryTimer = null;
@@ -147,6 +170,7 @@ const statusbarController = createStatusbarController({
 });
 const wifiEastereggController = createWifiEastereggController({
   overlayEl: wifiEastereggOverlay,
+  imageEl: wifiEastereggGif,
   tapTarget: 5,
   tapWindowMs: 1600,
   durationMs: 12000,
@@ -245,6 +269,35 @@ function setMaintenanceDue(isDue){
   statusbarController.setMaintenanceDue(isDue);
 }
 
+function applyMachineStatusSnapshot(snapshot){
+  if (!snapshot || typeof snapshot !== "object") return;
+
+  if (typeof snapshot.effectiveStatus === "string"){
+    const nextStatus = String(snapshot.effectiveStatus || "").trim().toUpperCase();
+    state.machineStatus = nextStatus || "IDLE";
+  }
+  if (snapshot.maintenanceDue !== undefined){
+    state.maintenanceDue = !!snapshot.maintenanceDue;
+    if (maintenanceDueDot) {
+      maintenanceDueDot.hidden = !state.maintenanceDue;
+    }
+  }
+  if (snapshot.eStopEngaged !== undefined){
+    state.eStopEngaged = !!snapshot.eStopEngaged;
+  }
+  if (snapshot.spindleRunning !== undefined){
+    state.spindleRunning = !!snapshot.spindleRunning;
+  }
+  if (snapshot.spindleRuntimeSec !== undefined){
+    const nextRuntimeSec = Math.max(0, Math.floor(Number(snapshot.spindleRuntimeSec) || 0));
+    if (nextRuntimeSec !== state.spindleRuntimeSec){
+      setSpindleRuntimeSec(nextRuntimeSec, false);
+    }
+  }
+
+  statusbarController.applyStatusbarState();
+}
+
 function setWifiConnected(isConnected, ssid = null){
   state.wifiConnected = !!isConnected;
   if (typeof ssid === "string"){
@@ -255,7 +308,13 @@ function setWifiConnected(isConnected, ssid = null){
 }
 
 function broadcastWifiState(){
-  broadcastToFrames({ type: "wifi", connected: state.wifiConnected, ssid: state.wifiSsid, issue: state.wifiIssue });
+  broadcastToFrames({
+    type: "wifi",
+    connected: state.wifiConnected,
+    ssid: state.wifiSsid,
+    issue: state.wifiIssue,
+    wifiIpAddress: state.wifiIpAddress,
+  });
 }
 
 function setLightOn(isOn, broadcast = false){
@@ -366,6 +425,29 @@ function registerWifiRapidTap(){
   wifiEastereggController.registerRapidTap();
 }
 
+function buildFrameSrc(page){
+  const separator = page.src.includes("?") ? "&" : "?";
+  return `${page.src}${separator}v=${encodeURIComponent(PAGE_LOAD_TOKEN)}`;
+}
+
+function buildInitMessage(){
+  return {
+    type: "init",
+    machineStatus: state.machineStatus,
+    eStopEngaged: state.eStopEngaged,
+    wifiConnected: state.wifiConnected,
+    wifiSsid: state.wifiSsid,
+    wifiIssue: state.wifiIssue,
+    wifiIpAddress: state.wifiIpAddress,
+    lightOn: state.lightOn,
+    fanOn: state.fanOn,
+    fanSpeed: state.fanSpeed,
+    fanAuto: state.fanAuto,
+    spindleRuntimeSec: state.spindleRuntimeSec,
+    spindleRunning: state.spindleRunning
+  };
+}
+
 function openKeyboardModal(options = {}){
   keyboardController.open(options);
 }
@@ -408,14 +490,6 @@ function queueMachineStatusSync(){
   }, 100);
 }
 
-function queueRuntimeSave(){
-  if (runtimeSaveTimer) return;
-  runtimeSaveTimer = setTimeout(() => {
-    runtimeSaveTimer = null;
-    persistUiSettings();
-  }, RUNTIME_SAVE_INTERVAL_MS);
-}
-
 function persistUiSettings(){
   fetch(`${API_BASE}/api/settings`, {
     method: "POST",
@@ -423,7 +497,16 @@ function persistUiSettings(){
     body: JSON.stringify({
       lightBrightness: state.lightBrightness,
       fanSpeed: state.fanSpeed,
-      fanAuto: state.fanAuto,
+      fanAuto: state.fanAuto
+    })
+  }).catch(() => {});
+}
+
+function persistSpindleRuntime(){
+  fetch(`${API_BASE}/api/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       spindleRuntimeSec: state.spindleRuntimeSec
     })
   }).catch(() => {});
@@ -438,6 +521,10 @@ function applyRelayBoardSnapshot(relayBoard){
   }
   if (channels.fan && typeof channels.fan.on === "boolean"){
     setFanOn(channels.fan.on, true);
+  }
+  if (channels.eStop){
+    state.eStopEngaged = !!(channels.eStop.engaged ?? channels.eStop.on);
+    statusbarController.applyStatusbarState();
   }
 }
 
@@ -502,42 +589,7 @@ function setSpindleRuntimeSec(value, persist = false){
   broadcastToFrames({ type: "spindleRuntime", seconds: v });
   maintenanceController.onSpindleRuntimeChanged();
   if (persist){
-    queueRuntimeSave();
-  }
-}
-
-function updateSpindleRuntimeFromAxes(data){
-  const nowMs = Math.max(0, Number(data && data.timestamp) || Date.now());
-  if (lastAxesTimestampMs === null){
-    lastAxesTimestampMs = nowMs;
-    return;
-  }
-
-  let deltaSec = (nowMs - lastAxesTimestampMs) / 1000;
-  lastAxesTimestampMs = nowMs;
-  if (!Number.isFinite(deltaSec) || deltaSec <= 0){
-    return;
-  }
-  if (deltaSec > 10){
-    deltaSec = 0;
-  }
-  if (deltaSec <= 0){
-    return;
-  }
-
-  const axes = (data && typeof data.axes === "object") ? data.axes : null;
-  const spindleLoad = Number(axes && axes.spindle);
-  if (!Number.isFinite(spindleLoad) || spindleLoad <= SPINDLE_RUNNING_THRESHOLD){
-    return;
-  }
-
-  spindleRuntimeRawSec += deltaSec;
-  const rounded = Math.floor(spindleRuntimeRawSec);
-  if (rounded !== state.spindleRuntimeSec){
-    state.spindleRuntimeSec = rounded;
-    broadcastToFrames({ type: "spindleRuntime", seconds: rounded });
-    maintenanceController.onSpindleRuntimeChanged();
-    queueRuntimeSave();
+    window.setTimeout(persistSpindleRuntime, RUNTIME_SAVE_INTERVAL_MS);
   }
 }
 
@@ -595,11 +647,21 @@ function loadWifiStatus(){
 }
 
 function loadHardwareState(){
-  fetch(`${API_BASE}/api/hardware`)
+  fetch(`${API_BASE}/api/hardware`, { cache: "no-store" })
     .then((res) => res.ok ? res.json() : null)
     .then((data) => {
       if (!data || typeof data !== "object") return;
       applyHardwareSnapshot(data);
+    })
+    .catch(() => {});
+}
+
+function loadMachineStatus(){
+  fetch(`${API_BASE}/api/machine/status`, { cache: "no-store" })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => {
+      if (!data || typeof data !== "object") return;
+      applyMachineStatusSnapshot(data);
     })
     .catch(() => {});
 }
@@ -879,18 +941,31 @@ function createFrames(){
     const f = document.createElement("iframe");
     f.className = "viewframe";
     f.dataset.page = p.id;
-    const separator = p.src.includes("?") ? "&" : "?";
-    f.src = `${p.src}${separator}v=${encodeURIComponent(PAGE_LOAD_TOKEN)}`;
-    f.loading = "eager"; // alles beim Start laden
+    const frameState = {
+      src: buildFrameSrc(p),
+      loadRequested: false,
+      loaded: false,
+      pendingMessages: [],
+    };
+    f.loading = p.id === state.activePage ? "eager" : "lazy";
     f.setAttribute("title", p.title);
+    f.addEventListener("load", () => {
+      frameState.loaded = true;
+      flushQueuedFrameMessages(p.id);
+    });
     mainEl.appendChild(f);
     frames.set(p.id, f);
+    frameStates.set(p.id, frameState);
+    if (p.id === state.activePage){
+      ensureFrameLoaded(p.id);
+    }
   }
 }
 
 function showPage(pageId){
   if (!frames.has(pageId)) return;
   state.activePage = pageId;
+  ensureFrameLoaded(pageId);
 
   for (const [id, frame] of frames.entries()){
     frame.classList.toggle("active", id === pageId);
@@ -908,8 +983,6 @@ function openSystemWifiConfig(){
   showPage("system");
   openWifiConfigModal();
   postToFrame("system", message);
-  setTimeout(() => postToFrame("system", message), 150);
-  setTimeout(() => postToFrame("system", message), 500);
 }
 
 function activateNavButton(btn){
@@ -940,13 +1013,52 @@ navEl.addEventListener("click", (ev) => {
 createFrames();
 showPage(state.activePage);
 openStartupNoticeModal();
+window.addEventListener("load", () => {
+  const deferredPageIds = PAGES
+    .map((page) => page.id)
+    .filter((pageId) => pageId !== state.activePage);
+  deferredPageIds.forEach((pageId, index) => {
+    window.setTimeout(() => {
+      ensureFrameLoaded(pageId);
+    }, 800 + (index * 400));
+  });
+}, { once: true });
 
 // -----------------------------
 // Kommunikation Shell <-> iFrames (optional)
 // -----------------------------
+function ensureFrameLoaded(pageId){
+  const f = frames.get(pageId);
+  const frameState = frameStates.get(pageId);
+  if (!f || !frameState || frameState.loadRequested){
+    return;
+  }
+  frameState.loadRequested = true;
+  f.src = frameState.src;
+}
+
+function flushQueuedFrameMessages(pageId){
+  const f = frames.get(pageId);
+  const frameState = frameStates.get(pageId);
+  if (!f || !frameState || !frameState.loaded || !f.contentWindow){
+    return;
+  }
+  f.contentWindow.postMessage(buildInitMessage(), location.origin);
+  for (const message of frameState.pendingMessages){
+    f.contentWindow.postMessage(message, location.origin);
+  }
+  frameState.pendingMessages = [];
+}
+
 function postToFrame(pageId, message){
   const f = frames.get(pageId);
-  if (!f || !f.contentWindow) return;
+  const frameState = frameStates.get(pageId);
+  if (!f || !frameState) return;
+  if (!frameState.loaded || !f.contentWindow){
+    frameState.pendingMessages.push(message);
+    ensureFrameLoaded(pageId);
+    return;
+  }
   f.contentWindow.postMessage(message, location.origin);
 }
 
@@ -964,7 +1076,6 @@ function startAxesStream(){
     es.addEventListener("axes", (ev) => {
       try{
         const data = JSON.parse(ev.data || "{}");
-        updateSpindleRuntimeFromAxes(data);
         broadcastToFrames({ type: "axes", ...data });
       }catch (_err){
         // Ignore malformed payloads in dev.
@@ -1017,24 +1128,13 @@ window.addEventListener("message", (ev) => {
   }
 });
 
-// initiale Zustände an alle Frames
-broadcastToFrames({
-  type: "init",
-  machineStatus: state.machineStatus,
-  wifiConnected: state.wifiConnected,
-  wifiSsid: state.wifiSsid,
-  wifiIssue: state.wifiIssue,
-  lightOn: state.lightOn,
-  fanOn: state.fanOn,
-  fanSpeed: state.fanSpeed,
-  fanAuto: state.fanAuto,
-  spindleRuntimeSec: state.spindleRuntimeSec
-});
-
 loadUiSettings();
 loadWifiStatus();
 loadHardwareState();
+loadMachineStatus();
 loadMaintenanceTasks();
 setInterval(loadWifiStatus, WIFI_STATUS_REFRESH_MS);
+setInterval(loadHardwareState, HARDWARE_REFRESH_MS);
+setInterval(loadMachineStatus, MACHINE_STATUS_REFRESH_MS);
 setInterval(loadMaintenanceTasks, MAINTENANCE_REFRESH_MS);
 startAxesStream();

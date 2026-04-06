@@ -48,11 +48,68 @@ UI-Grundsatz:
 
 Hinweis: Das wirkt wie ein lokal konfigurierter SSH-Alias und kann daher von der SSH-Konfiguration des jeweiligen Rechners abhaengen.
 
+### Ethernet fuer CNC-Controller als lokales Netz
+
+Der Raspberry Pi wurde so umgestellt, dass `eth0` nicht mehr per DHCP im Heimnetz sucht, sondern ein eigenes lokales Netz fuer den CNC-Controller bereitstellt.
+
+Zielbild:
+
+- `wlan0`: Verbindung ins Heimnetz und Zugriff auf das lokale Web-UI
+- `eth0`: separates Punkt-zu-Punkt-/Lokalsegment fuer den CNC-Controller
+- Dateifluss spaeter: Upload ins Web-UI auf dem Pi und Weitergabe vom Pi an das CNC-Board
+
+Aktive Konfiguration auf dem Pi:
+
+- Statische IP des Pi auf `eth0`: `192.168.137.1/24`
+- DHCP-Server auf `eth0` via `dnsmasq`
+- DHCP-Bereich fuer den CNC-Controller: `192.168.137.100` bis `192.168.137.150`
+- Gateway-Option per DHCP: `192.168.137.1`
+- DNS ist in `dnsmasq` bewusst deaktiviert (`port=0`), da fuer den lokalen SMB-Dateitransfer zunaechst nur DHCP benoetigt wird
+
+Geaenderte Dateien auf dem Pi:
+
+- `/etc/network/interfaces`
+- `/etc/dnsmasq.d/cnc-eth0.conf`
+
+Verwendete `dnsmasq`-Konfiguration:
+
+```ini
+port=0
+interface=eth0
+bind-interfaces
+dhcp-authoritative
+dhcp-range=192.168.137.100,192.168.137.150,255.255.255.0,12h
+dhcp-option=option:router,192.168.137.1
+dhcp-leasefile=/var/lib/misc/dnsmasq.eth0.leases
+```
+
+Verifikation:
+
+- `ip -4 addr show eth0` zeigt `192.168.137.1/24`
+- `systemctl status dnsmasq --no-pager` zeigt einen laufenden Dienst
+- `journalctl -u dnsmasq -n 20 --no-pager` bestaetigt, dass DHCP exklusiv auf `eth0` gebunden ist
+
+Nutzen fuer den Bootvorgang:
+
+- Vor der Umstellung wartete `eth0` beim Booten auf DHCP und blockierte dadurch den Kiosk-Start deutlich.
+- Mit der statischen `eth0`-Konfiguration sollte dieser Blocker beim naechsten Neustart entfallen oder stark reduziert sein.
+
 ## Aktuell bekannte I2C-Hardware
 
 - `Adafruit AHT20` fuer die Spindeltemperatur auf `0x38`
 - `Adafruit INA228` fuer die `X`-Achslast auf `0x40`
 - `GHI GDL-ACRELAYP4-C` 4-Kanal-Relais auf `0x52` (`82` dezimal)
+- `PCF8574`-kompatibles 8-Kanal-Optokoppler-Eingangsmodul auf `0x21`
+  - Produkt: `PCF8574 I2C 8 Kanal Optokoppler Eingang Input Modul 3,6-24V`
+  - Auf dem Pi per erneutem `i2cdetect -y 1` nach dem Umstecken der Adressjumper auf Bus `1` verifiziert
+  - Feste Betriebsadresse im aktuellen Aufbau: `0x21`
+  - Die Adresse `0x21` liegt im offiziellen `PCF8574`-Bereich `0x20` bis `0x27` und nicht im `PCF8574A`-Bereich `0x38` bis `0x3F`
+  - Daraus folgt: Der aktuell aktive Adressdecoder des Moduls verhaelt sich im Live-Betrieb wie ein `PCF8574`, nicht wie ein `PCF8574A`
+  - `Input 1` und `Input 2` sind fest fuer mechanische Hardware-E-Stops reserviert
+  - `Input 3` ist fest als `Spindel laeuft` verdrahtet
+  - Sobald `Input 1` oder `Input 2` aktiv wird, loest das Backend sofort einen System-E-Stop aus
+  - Dieser Hardware-E-Stop kann nicht im Frontend quittiert werden; er bleibt aktiv, bis der mechanische Taster real geloest wurde
+  - Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist
 
 Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
 
@@ -63,15 +120,24 @@ Aktuelle Relaisbelegung im Dashboard:
 
 - Kanal 1: Maschinenlicht
 - Kanal 2: Spindelluefter
-- Kanal 3: E-Stop
-- Kanal 4: Reserve
+- Kanal 3: Reserve
+- Kanal 4: E-Stop
+
+Aktuelle E-Stop-Logik:
+
+- Frontend-E-Stop nutzt Relaiskanal `4`
+- Hardware-E-Stop kommt zusaetzlich ueber das PCF8574-Eingangsmodul auf `Input 1` und `Input 2`
+- Spindel-Running kommt ueber dasselbe Eingangsmodul auf `Input 3`
+- Der effektive Maschinen-Not-Halt ist aktiv, sobald Relaiskanal `4` aktiv ist oder einer der Hardware-E-Stop-Eingaenge ausloest
+- Bei aktivem Hardware-E-Stop zeigt das lokale UI die rote Statusleiste `E-STOP`, und der WS2812B-Statusstreifen wechselt auf rot
+- Die Spindellaufzeit kommt nicht mehr aus der Lastkurve, sondern nur noch aus dem echten Hardware-Signal auf `Input 3`
 
 ## Aktuell bekannte GPIO-/LED-Hardware
 
 - `WS2812B` RGB-LED-Streifen fuer den Maschinenstatus
   - Versorgung: `5V`
   - Datensignal: `GPIO18`
-  - Aktuelle Laenge: `76` LEDs
+  - Aktuelle Laenge: `59` LEDs
   - Startup-Sequenz: blau von der Mitte nach aussen, danach Systemcheck auf Weiss
   - Idle-Sequenz: langsame wandernde weisse Wellen zwischen `RGB 28` und `127`, gedeckelt auf `50%` Maximalhelligkeit
 

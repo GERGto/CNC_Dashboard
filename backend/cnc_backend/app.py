@@ -5,6 +5,7 @@ import time
 
 from cnc_hardware import create_hardware_backend
 
+from .camera_service import CameraService
 from .common import iso_now_utc
 from .config import load_app_config
 from .machine_status import MachineStatusService
@@ -33,20 +34,42 @@ def _calibrate_axis_load_percent(current_a, calibration):
 
 
 class BackendApp:
-    def __init__(self, config, store, wifi_service, shutdown_service, hardware_backend, machine_status_service):
+    SPINDLE_RUNTIME_POLL_INTERVAL_SEC = 0.25
+    SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC = 5.0
+    SPINDLE_RUNTIME_DELTA_CLAMP_SEC = 5.0
+
+    def __init__(
+        self,
+        config,
+        store,
+        wifi_service,
+        shutdown_service,
+        hardware_backend,
+        machine_status_service,
+        camera_service,
+    ):
         self.config = config
         self.store = store
         self.wifi_service = wifi_service
         self.shutdown_service = shutdown_service
         self.hardware_backend = hardware_backend
         self.machine_status_service = machine_status_service
+        self.camera_service = camera_service
+        self._spindle_runtime_lock = threading.Lock()
+        self._spindle_runtime_sec = None
+        self._spindle_runtime_last_sample_monotonic = None
+        self._spindle_runtime_last_persist_monotonic = 0.0
+        self._spindle_runtime_last_running = False
 
     def ensure_storage(self):
         self.store.ensure_split_storage()
+        self._load_spindle_runtime_state()
 
     def start_background_tasks(self):
         threading.Thread(target=self.wifi_service.autoconnect_wifi_on_startup, daemon=True).start()
         threading.Thread(target=self.hardware_backend.initialize_outputs_on_startup, daemon=True).start()
+        threading.Thread(target=self._hardware_estop_worker, daemon=True).start()
+        threading.Thread(target=self._spindle_runtime_worker, daemon=True).start()
         threading.Thread(target=self._status_indicator_worker, daemon=True).start()
 
     def get_health(self):
@@ -107,17 +130,23 @@ class BackendApp:
     def get_relay_board(self):
         return self.hardware_backend.get_relay_board()
 
+    def get_camera_status(self):
+        return self.camera_service.get_status()
+
+    def stream_camera(self, handler):
+        return self.camera_service.stream_mjpeg(handler)
+
     def set_relay_output(self, output_id, enabled):
         result = self.hardware_backend.set_relay_output(output_id, enabled)
         self.sync_status_indicator()
         return result
 
     def get_machine_status(self):
-        machine_stats = self.store.load_machine_stats()
+        self.hardware_backend.sync_hardware_estop(force_refresh=False)
         maintenance_tasks = self.store.load_maintenance_tasks()
         relay_board = self.hardware_backend.get_relay_board()
         return self.machine_status_service.build_snapshot(
-            machine_stats.get("spindleRuntimeSec", 0),
+            self.get_spindle_runtime_sec(),
             maintenance_tasks,
             relay_board,
         )
@@ -138,7 +167,7 @@ class BackendApp:
     def get_settings(self):
         legacy = self.store.load_legacy_settings()
         ui_settings = self.wifi_service.merge_wifi_runtime_settings(self.store.load_ui_settings())
-        machine_stats = self.store.load_machine_stats(legacy)
+        machine_stats = {"spindleRuntimeSec": self.get_spindle_runtime_sec()}
         maintenance_tasks = self.store.load_maintenance_tasks(legacy)
         return {
             **ui_settings,
@@ -180,7 +209,7 @@ class BackendApp:
             self.store.save_ui_settings(ui_patch)
 
         if "spindleRuntimeSec" in payload:
-            self.store.save_machine_stats({"spindleRuntimeSec": payload.get("spindleRuntimeSec")})
+            self.set_spindle_runtime_sec(payload.get("spindleRuntimeSec"), persist=True)
 
         if "maintenanceTasks" in payload:
             self.store.save_maintenance_tasks(payload.get("maintenanceTasks"))
@@ -245,6 +274,47 @@ class BackendApp:
     def get_wifi_autoconnect(self):
         return bool(self.store.load_ui_settings().get("wifiAutoConnect", False))
 
+    def get_spindle_runtime_sec(self):
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            return max(0, int(self._spindle_runtime_sec or 0))
+
+    def set_spindle_runtime_sec(self, value, persist=False):
+        normalized = max(0, int(value or 0))
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            self._spindle_runtime_sec = float(normalized)
+            self._spindle_runtime_last_sample_monotonic = time.monotonic()
+        if persist:
+            self._persist_spindle_runtime(force=True)
+        return normalized
+
+    def _load_spindle_runtime_state(self):
+        with self._spindle_runtime_lock:
+            self._load_spindle_runtime_state_locked()
+
+    def _load_spindle_runtime_state_locked(self):
+        machine_stats = self.store.load_machine_stats()
+        self._spindle_runtime_sec = float(max(0, int(machine_stats.get("spindleRuntimeSec", 0) or 0)))
+        self._spindle_runtime_last_sample_monotonic = time.monotonic()
+        self._spindle_runtime_last_persist_monotonic = self._spindle_runtime_last_sample_monotonic
+
+    def _persist_spindle_runtime(self, force=False):
+        runtime_to_save = None
+        now = time.monotonic()
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            if not force and (now - self._spindle_runtime_last_persist_monotonic) < self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC:
+                return max(0, int(self._spindle_runtime_sec or 0))
+            runtime_to_save = max(0, int(self._spindle_runtime_sec or 0))
+            self._spindle_runtime_last_persist_monotonic = now
+
+        self.store.save_machine_stats({"spindleRuntimeSec": runtime_to_save})
+        return runtime_to_save
+
     def _status_indicator_worker(self):
         interval_sec = max(0.25, float(self.config.status_indicator_sync_interval_sec))
         while True:
@@ -252,6 +322,59 @@ class BackendApp:
                 self.sync_status_indicator()
             except Exception as exc:  # pragma: no cover - background safety net
                 print(f"Status indicator sync failed: {exc}", flush=True)
+            time.sleep(interval_sec)
+
+    def _hardware_estop_worker(self):
+        interval_sec = max(0.05, float(self.config.hardware_estop_poll_interval_sec))
+        while True:
+            try:
+                result = self.hardware_backend.sync_hardware_estop(force_refresh=True)
+                if result.get("stateChanged") or result.get("relayChanged"):
+                    self.sync_status_indicator()
+                elif result.get("relayError"):
+                    print(f"Hardware E-Stop relay sync failed: {result['relayError']}", flush=True)
+            except Exception as exc:  # pragma: no cover - background safety net
+                print(f"Hardware E-Stop monitor failed: {exc}", flush=True)
+            time.sleep(interval_sec)
+
+    def _spindle_runtime_worker(self):
+        interval_sec = self.SPINDLE_RUNTIME_POLL_INTERVAL_SEC
+        while True:
+            try:
+                spindle_running_info = self.hardware_backend.get_spindle_running(force_refresh=False)
+                spindle_running = bool(spindle_running_info.get("spindleRunning", False))
+                now = time.monotonic()
+                persist_required = False
+                status_sync_required = False
+
+                with self._spindle_runtime_lock:
+                    if self._spindle_runtime_sec is None:
+                        self._load_spindle_runtime_state_locked()
+
+                    previous_running = bool(self._spindle_runtime_last_running)
+                    last_sample = self._spindle_runtime_last_sample_monotonic
+                    delta_sec = now - last_sample if last_sample is not None else 0.0
+                    self._spindle_runtime_last_sample_monotonic = now
+
+                    if spindle_running and 0.0 < delta_sec <= self.SPINDLE_RUNTIME_DELTA_CLAMP_SEC:
+                        self._spindle_runtime_sec += delta_sec
+
+                    if spindle_running != previous_running:
+                        status_sync_required = True
+
+                    if spindle_running:
+                        persist_required = (now - self._spindle_runtime_last_persist_monotonic) >= self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC
+                    elif previous_running:
+                        persist_required = True
+
+                    self._spindle_runtime_last_running = spindle_running
+
+                if persist_required:
+                    self._persist_spindle_runtime(force=True)
+                if status_sync_required:
+                    self.sync_status_indicator()
+            except Exception as exc:  # pragma: no cover - background safety net
+                print(f"Spindle runtime worker failed: {exc}", flush=True)
             time.sleep(interval_sec)
 
 
@@ -262,6 +385,7 @@ def create_backend_app():
     hardware_backend = create_hardware_backend()
     shutdown_service = ShutdownService(config, hardware_backend=hardware_backend)
     machine_status_service = MachineStatusService()
+    camera_service = CameraService(config)
     return BackendApp(
         config=config,
         store=store,
@@ -269,4 +393,5 @@ def create_backend_app():
         shutdown_service=shutdown_service,
         hardware_backend=hardware_backend,
         machine_status_service=machine_status_service,
+        camera_service=camera_service,
     )

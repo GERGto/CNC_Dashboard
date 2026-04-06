@@ -159,10 +159,14 @@ export function createWifiController({
     const fallbackConnected = !!options.fallbackConnected;
     const broadcast = options.broadcast !== false;
     const showIssue = options.showIssue === true;
+    const hasWifiIpAddress = typeof data.wifiIpAddress === "string";
 
     const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : state.wifiSsid;
     state.wifiSsid = String(currentSsid || "").trim();
     state.wifiIssue = typeof data.wifiIssue === "string" ? data.wifiIssue.trim() : "";
+    if (hasWifiIpAddress) {
+      state.wifiIpAddress = data.wifiIpAddress.trim();
+    }
 
     if (updateForm) {
       if (typeof data.wifiPassword === "string") {
@@ -177,6 +181,9 @@ export function createWifiController({
     const connected = toBooleanLike(data.wifiConnected);
     if (connected !== null) {
       onSetWifiConnected(connected, currentSsid);
+      if (!connected && !hasWifiIpAddress) {
+        state.wifiIpAddress = "";
+      }
     } else if (fallbackConnected) {
       onSetWifiConnected(state.wifiConnected, currentSsid);
     }
@@ -320,6 +327,7 @@ export function createWifiController({
       const connected = !!data.connected;
       const ssid = String(data.ssid || payload.ssid || "").trim();
       state.wifiIssue = "";
+      state.wifiIpAddress = "";
       onSetWifiConnected(connected, ssid);
       onBroadcastWifi();
       await showConnectFeedbackResult(true, "WLAN verbunden", "WLAN-Verbindung fehlgeschlagen");
@@ -362,6 +370,7 @@ export function createWifiController({
 
       const ssid = String(data.ssid || state.wifiSsid || "").trim();
       state.wifiIssue = "";
+      state.wifiIpAddress = "";
       onSetWifiConnected(false, ssid);
       onBroadcastWifi();
       await showConnectFeedbackResult(true, "WLAN getrennt", "WLAN konnte nicht getrennt werden.");

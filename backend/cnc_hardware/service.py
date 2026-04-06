@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import os
 import threading
 import time
@@ -8,7 +9,8 @@ from datetime import datetime, timezone
 from .duelink_relay import DuelinkI2CEngine, DuelinkRelayP4Controller
 from .gpio_power import LinuxGPIOChipLineOutput
 from .neopixel import NeoPixelStatusStripController
-from .sensors import AHT20Sensor, HardwareError, INA228Sensor
+from .pcf8574_inputs import PCF8574InputModule
+from .sensors import AHT20Sensor, HardwareError, HardwareStateConflictError, INA228Sensor
 
 
 def iso_now_utc():
@@ -43,6 +45,25 @@ def _read_str_env(name, default_value):
     return str(raw_value).strip()
 
 
+def _read_int_list_env(name, default_values):
+    raw_value = str(os.getenv(name, "")).strip()
+    if not raw_value:
+        return tuple(int(value) for value in default_values)
+
+    values = []
+    for part in raw_value.split(","):
+        token = str(part).strip()
+        if not token:
+            continue
+        try:
+            parsed = int(token, 0)
+        except ValueError:
+            continue
+        values.append(parsed)
+
+    return tuple(values) if values else tuple(int(value) for value in default_values)
+
+
 class HardwareBackend:
     SHUTDOWN_SEQUENCE_TIMEOUT_SEC = 2.0
 
@@ -63,6 +84,7 @@ class HardwareBackend:
         relay_power_off_delay_sec=0.25,
         relay_power_on_delay_sec=1.0,
         status_indicator_controller=None,
+        emergency_input_module=None,
     ):
         self.primary_i2c_bus = int(primary_i2c_bus)
         self.spindle_temperature_sensor = spindle_temperature_sensor or AHT20Sensor(
@@ -84,6 +106,7 @@ class HardwareBackend:
         self.relay_power_off_delay_sec = max(0.0, float(relay_power_off_delay_sec))
         self.relay_power_on_delay_sec = max(0.0, float(relay_power_on_delay_sec))
         self.status_indicator_controller = status_indicator_controller or NeoPixelStatusStripController()
+        self.emergency_input_module = emergency_input_module or PCF8574InputModule(bus_number=self.primary_i2c_bus)
         self._lock = threading.Lock()
         self._relay_operation_lock = threading.Lock()
         self._status_indicator_lock = threading.Lock()
@@ -91,10 +114,17 @@ class HardwareBackend:
         self._spindle_temperature_cache_until = 0.0
         self._axis_load_cache = None
         self._axis_load_cache_until = 0.0
+        self._emergency_input_snapshot = self.emergency_input_module.get_snapshot()
+        self._hardware_estop_active = False
+        self._hardware_estop_triggered_inputs = []
+        self._hardware_estop_forced_relay = False
+        self._manual_estop_requested = False
 
     def get_snapshot(self, force_refresh=False):
+        self.sync_hardware_estop(force_refresh=force_refresh)
         spindle_temperature = self.get_spindle_temperature(force_refresh=force_refresh)
         axis_loads = self.get_axis_loads(force_refresh=force_refresh)
+        safety_inputs = self.get_emergency_stop_inputs(force_refresh=False)
         relay_board = self.get_relay_board()
         status_indicator = self.get_status_indicator()
         return {
@@ -111,6 +141,7 @@ class HardwareBackend:
             "sensors": {
                 "spindleTemperature": spindle_temperature,
                 "axisLoads": axis_loads,
+                "safetyInputs": safety_inputs,
             },
             "actuators": {
                 "relayBoard": relay_board,
@@ -170,7 +201,47 @@ class HardwareBackend:
         }
 
     def get_relay_board(self):
-        return self.relay_controller.get_snapshot()
+        relay_board = self.relay_controller.get_snapshot()
+        with self._lock:
+            hardware_estop_active = bool(self._hardware_estop_active)
+            triggered_inputs = list(self._hardware_estop_triggered_inputs)
+            forced_by_hardware = bool(self._hardware_estop_forced_relay)
+            manual_requested = bool(self._manual_estop_requested)
+            emergency_snapshot = copy.deepcopy(self._emergency_input_snapshot)
+
+        channels = relay_board.get("channels", {}) if isinstance(relay_board, dict) else {}
+        estop_channel = channels.get("eStop") if isinstance(channels, dict) else None
+        if isinstance(estop_channel, dict):
+            estop_channel["hardwareInputEngaged"] = hardware_estop_active
+            estop_channel["triggeredInputIds"] = triggered_inputs
+            estop_channel["resetLocked"] = hardware_estop_active
+            estop_channel["forcedByHardware"] = forced_by_hardware
+            estop_channel["manualRequested"] = manual_requested
+            estop_channel["engaged"] = bool(estop_channel.get("engaged", estop_channel.get("on", False)) or hardware_estop_active)
+
+        relay_board["safetyInputs"] = emergency_snapshot
+        return relay_board
+
+    def get_emergency_stop_inputs(self, force_refresh=False):
+        snapshot = self.emergency_input_module.read_snapshot() if force_refresh else self.emergency_input_module.get_snapshot()
+        if not force_refresh and str(snapshot.get("status", "")).strip().lower() == "unknown":
+            snapshot = self.emergency_input_module.read_snapshot()
+
+        with self._lock:
+            self._emergency_input_snapshot = copy.deepcopy(snapshot)
+        return copy.deepcopy(snapshot)
+
+    def get_spindle_running(self, force_refresh=False):
+        snapshot = self.get_emergency_stop_inputs(force_refresh=force_refresh)
+        return {
+            "spindleRunning": bool(snapshot.get("spindleRunning", False)),
+            "spindleRunningInputIds": [
+                str(input_id)
+                for input_id in snapshot.get("spindleRunningInputIds", [])
+                if str(input_id).strip()
+            ],
+            "snapshot": snapshot,
+        }
 
     def get_status_indicator(self):
         return self.status_indicator_controller.get_snapshot()
@@ -250,11 +321,92 @@ class HardwareBackend:
         }
 
     def set_relay_output(self, output_id, enabled):
+        normalized_output_id = self._normalize_output_id(output_id)
+        if normalized_output_id == "eStop":
+            sync_result = self.sync_hardware_estop(force_refresh=True)
+            if not enabled and sync_result["hardwareEStopEngaged"]:
+                active_inputs = ", ".join(sync_result["triggeredInputIds"]) or "input1, input2"
+                raise HardwareStateConflictError(
+                    "Hardware-E-Stop ist aktiv "
+                    f"({active_inputs}) und kann nur mechanisch am Taster geloest werden."
+                )
+            with self._lock:
+                self._manual_estop_requested = bool(enabled)
+                if not enabled:
+                    self._hardware_estop_forced_relay = False
+
         with self._relay_operation_lock:
-            channel = self.relay_controller.set_output(output_id, enabled)
+            channel = self.relay_controller.set_output(normalized_output_id, enabled)
         return {
             "channel": channel,
-            "relayBoard": self.relay_controller.get_snapshot(),
+            "relayBoard": self.get_relay_board(),
+        }
+
+    def sync_hardware_estop(self, force_refresh=False):
+        snapshot = self.get_emergency_stop_inputs(force_refresh=force_refresh)
+        read_ok = bool(snapshot.get("available")) and str(snapshot.get("status", "")).strip().lower() == "ok"
+
+        with self._lock:
+            previous_active = bool(self._hardware_estop_active)
+            previous_triggered_inputs = list(self._hardware_estop_triggered_inputs)
+            forced_by_hardware = bool(self._hardware_estop_forced_relay)
+            manual_estop_requested = bool(self._manual_estop_requested)
+
+        if read_ok:
+            hardware_estop_active = bool(snapshot.get("hardwareEStopEngaged"))
+            triggered_inputs = [
+                str(input_id)
+                for input_id in snapshot.get("triggeredInputIds", [])
+                if str(input_id).strip()
+            ]
+        else:
+            hardware_estop_active = previous_active
+            triggered_inputs = previous_triggered_inputs
+
+        relay_changed = False
+        relay_error = ""
+
+        if hardware_estop_active:
+            estop_channel = self.relay_controller.get_channel_snapshot("eStop")
+            relay_engaged = bool(estop_channel.get("engaged", estop_channel.get("on", False)))
+            if not relay_engaged:
+                try:
+                    with self._relay_operation_lock:
+                        self.relay_controller.set_output("eStop", True)
+                    relay_changed = True
+                    with self._lock:
+                        self._hardware_estop_forced_relay = True
+                except HardwareError as exc:
+                    relay_error = str(exc)
+        elif read_ok and forced_by_hardware and not manual_estop_requested:
+            try:
+                with self._relay_operation_lock:
+                    self.relay_controller.set_output("eStop", False)
+                relay_changed = True
+                with self._lock:
+                    self._hardware_estop_forced_relay = False
+            except HardwareError as exc:
+                relay_error = str(exc)
+        elif read_ok and forced_by_hardware and manual_estop_requested:
+            with self._lock:
+                self._hardware_estop_forced_relay = False
+
+        with self._lock:
+            state_changed = (
+                self._hardware_estop_active != hardware_estop_active
+                or self._hardware_estop_triggered_inputs != triggered_inputs
+            )
+            self._hardware_estop_active = hardware_estop_active
+            self._hardware_estop_triggered_inputs = list(triggered_inputs)
+
+        return {
+            "hardwareEStopEngaged": hardware_estop_active,
+            "triggeredInputIds": list(triggered_inputs),
+            "stateChanged": state_changed,
+            "relayChanged": relay_changed,
+            "readHealthy": read_ok,
+            "relayError": relay_error,
+            "snapshot": snapshot,
         }
 
     def set_status_indicator_state(self, state_id, reason="", source="machine-status"):
@@ -373,6 +525,17 @@ class HardwareBackend:
             flush=True,
         )
 
+    @staticmethod
+    def _normalize_output_id(output_id):
+        key = str(output_id or "").strip().lower()
+        aliases = {
+            "light": "light",
+            "fan": "fan",
+            "estop": "eStop",
+            "e-stop": "eStop",
+        }
+        return aliases.get(key, str(output_id or "").strip())
+
 
 def create_hardware_backend():
     primary_i2c_bus = _read_int_env("HARDWARE_PRIMARY_I2C_BUS", 1)
@@ -416,8 +579,18 @@ def create_hardware_backend():
     relay_power_active_high = _read_bool_env("RELAY_BOARD_POWER_ACTIVE_HIGH", True)
     relay_power_off_delay_sec = _read_non_negative_float_env("RELAY_BOARD_POWER_OFF_DELAY_SEC", 0.25)
     relay_power_on_delay_sec = _read_non_negative_float_env("RELAY_BOARD_POWER_ON_DELAY_SEC", 1.0)
+    emergency_input_module_enabled = _read_bool_env("EMERGENCY_INPUT_MODULE_ENABLED", True)
+    emergency_input_module_address = _read_int_env("EMERGENCY_INPUT_MODULE_I2C_ADDRESS", PCF8574InputModule.DEFAULT_ADDRESS)
+    emergency_input_estop_channels = _read_int_list_env(
+        "EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS",
+        PCF8574InputModule.DEFAULT_ESTOP_CHANNELS,
+    )
+    emergency_input_spindle_running_channels = _read_int_list_env(
+        "EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS",
+        PCF8574InputModule.DEFAULT_SPINDLE_RUNNING_CHANNELS,
+    )
     status_indicator_enabled = _read_bool_env("STATUS_INDICATOR_ENABLED", True)
-    status_indicator_pixel_count = max(1, _read_int_env("STATUS_INDICATOR_LED_COUNT", 76))
+    status_indicator_pixel_count = max(1, _read_int_env("STATUS_INDICATOR_LED_COUNT", 59))
     status_indicator_gpio_pin = _read_int_env("STATUS_INDICATOR_GPIO_PIN", 18)
     status_indicator_frequency_hz = max(1, _read_int_env("STATUS_INDICATOR_FREQUENCY_HZ", 800000))
     status_indicator_dma_channel = max(0, _read_int_env("STATUS_INDICATOR_DMA_CHANNEL", 10))
@@ -476,6 +649,13 @@ def create_hardware_backend():
             line_offset=relay_power_gpio_line_offset,
             active_high=relay_power_active_high,
         )
+    emergency_input_module = PCF8574InputModule(
+        bus_number=primary_i2c_bus,
+        address=emergency_input_module_address,
+        enabled=emergency_input_module_enabled,
+        hardware_estop_channels=emergency_input_estop_channels,
+        spindle_running_channels=emergency_input_spindle_running_channels,
+    )
     status_indicator_controller = NeoPixelStatusStripController(
         pixel_count=status_indicator_pixel_count,
         gpio_pin=status_indicator_gpio_pin,
@@ -503,4 +683,5 @@ def create_hardware_backend():
         relay_power_off_delay_sec=relay_power_off_delay_sec,
         relay_power_on_delay_sec=relay_power_on_delay_sec,
         status_indicator_controller=status_indicator_controller,
+        emergency_input_module=emergency_input_module,
     )

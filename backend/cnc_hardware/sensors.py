@@ -15,6 +15,10 @@ class HardwareError(RuntimeError):
     pass
 
 
+class HardwareStateConflictError(HardwareError):
+    pass
+
+
 class SensorUnavailableError(HardwareError):
     pass
 

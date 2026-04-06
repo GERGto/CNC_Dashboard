@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>CNC Controller</title>
+  <link rel="stylesheet" href="assets/monitor.css?v=20260406-07" />
+  <script type="module" src="assets/monitor.js?v=20260406-07"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <span class="topbar__status-dot" id="headerStatusDot" aria-hidden="true"></span>
+        <span class="topbar__title">CNC Controller</span>
+      </div>
+
+      <div class="topbar__status">
+        <div class="status-pill" id="statusIdlePill" data-tone="idle">
+          <span class="status-pill__dot" aria-hidden="true"></span>
+          <span>Idle</span>
+        </div>
+        <div class="status-pill" id="statusSpindlePill" data-tone="spindle">
+          <span class="status-pill__dot" aria-hidden="true"></span>
+          <span>Spindel</span>
+        </div>
+        <div class="status-pill" id="statusMaintenancePill" data-tone="maintenance">
+          <span class="status-pill__dot" aria-hidden="true"></span>
+          <span>Wartung faellig</span>
+        </div>
+        <div class="status-pill" id="statusEstopPill" data-tone="estop">
+          <span class="status-pill__dot" aria-hidden="true"></span>
+          <span>E-Stop aktiv</span>
+        </div>
+      </div>
+
+      <div class="topbar__controls">
+        <button class="toolbar-btn" id="lightToggleBtn" type="button">
+          <span class="toolbar-btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M9 18h6M10 22h4M12 2v1M4.22 4.22l.7.7M1 12h1M21 12h1M18.36 4.22l-.7.7"></path>
+              <path d="M15 9a3 3 0 1 0-4.24 4.24L9 15h6l-1.76-1.76A3 3 0 0 0 15 9z"></path>
+            </svg>
+          </span>
+          <span class="toolbar-btn__text">Licht</span>
+        </button>
+
+        <button class="toolbar-btn" id="spindleFanToggleBtn" type="button">
+          <span class="toolbar-btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 12c-1.5-4-1-7 2-9 3.5 2.5 2 6 0 9m0 0c4-1.5 7-1 9 2-2.5 3.5-6 2-9 0m0 0c1.5 4 1 7-2 9-3.5-2.5-2-6 0-9m0 0c-4 1.5-7 1-9-2 2.5-3.5 6-2 9 0"></path>
+              <circle cx="12" cy="12" r="1.5"></circle>
+            </svg>
+          </span>
+          <span class="toolbar-btn__text">Spindel-Luefter</span>
+        </button>
+
+        <button class="toolbar-btn" id="enclosureFanToggleBtn" type="button">
+          <span class="toolbar-btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 12c-1.5-4-1-7 2-9 3.5 2.5 2 6 0 9m0 0c4-1.5 7-1 9 2-2.5 3.5-6 2-9 0m0 0c1.5 4 1 7-2 9-3.5-2.5-2-6 0-9m0 0c-4 1.5-7 1-9-2 2.5-3.5 6-2 9 0"></path>
+              <circle cx="12" cy="12" r="1.5"></circle>
+            </svg>
+          </span>
+          <span class="toolbar-btn__text">Gehaeuse-Luefter</span>
+        </button>
+
+        <button class="toolbar-btn" id="recordToggleBtn" type="button">
+          <span class="toolbar-btn__icon" id="recordToggleIcon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="12" r="8"></circle>
+            </svg>
+          </span>
+          <span class="toolbar-btn__text" id="recordToggleLabel">Aufnahme</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="main-grid">
+      <section class="left-column">
+        <section class="camera-stage" aria-label="Kamera-Feed">
+          <img class="camera-feed" id="cameraFeed" alt="Kamera-Feed der CNC-Maschine" hidden />
+
+          <div class="camera-placeholder" id="cameraPlaceholder">
+            <div class="camera-placeholder__ring">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </div>
+            <div class="camera-placeholder__copy">
+              <strong id="cameraPlaceholderTitle">Kamera-Feed</strong>
+              <span id="cameraPlaceholderText">Die USB-Webcam des Pi wird automatisch als Live-Stream eingebunden.</span>
+            </div>
+          </div>
+
+          <div class="camera-badge camera-badge--record" id="recordingBadge" hidden>
+            <span class="camera-badge__dot" aria-hidden="true"></span>
+            <span id="recordingBadgeLabel">REC 00:00</span>
+          </div>
+
+          <div class="camera-badge camera-badge--light" id="lightCameraBadge" hidden>
+            <span class="camera-badge__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M9 18h6M10 22h4M12 2v1M4.22 4.22l.7.7M1 12h1M21 12h1M18.36 4.22l-.7.7"></path>
+                <path d="M15 9a3 3 0 1 0-4.24 4.24L9 15h6l-1.76-1.76A3 3 0 0 0 15 9z"></path>
+              </svg>
+            </span>
+            <span>Licht</span>
+          </div>
+
+          <div class="camera-alert" id="estopOverlay" hidden>
+            <div class="camera-alert__copy">E-STOP AKTIV</div>
+          </div>
+        </section>
+
+        <section class="loads-panel">
+          <div class="loads-panel__content">
+            <p class="section-kicker">Live-Lasten</p>
+
+            <div class="load-grid">
+              <article class="load-meter" id="loadMeterX" data-axis="x">
+                <div class="load-meter__head">
+                  <span>X-Achse</span>
+                  <strong id="axisValueX">0%</strong>
+                </div>
+                <div class="load-meter__track">
+                  <div id="axisBarX"></div>
+                </div>
+              </article>
+
+              <article class="load-meter" id="loadMeterY" data-axis="y">
+                <div class="load-meter__head">
+                  <span>Y-Achse</span>
+                  <strong id="axisValueY">0%</strong>
+                </div>
+                <div class="load-meter__track">
+                  <div id="axisBarY"></div>
+                </div>
+              </article>
+
+              <article class="load-meter" id="loadMeterZ" data-axis="z">
+                <div class="load-meter__head">
+                  <span>Z-Achse</span>
+                  <strong id="axisValueZ">0%</strong>
+                </div>
+                <div class="load-meter__track">
+                  <div id="axisBarZ"></div>
+                </div>
+              </article>
+
+              <article class="load-meter" id="loadMeterSpindle" data-axis="spindle">
+                <div class="load-meter__head">
+                  <span>Spindel</span>
+                  <strong id="axisValueSpindle">0%</strong>
+                </div>
+                <div class="load-meter__track">
+                  <div id="axisBarSpindle"></div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="estop-panel">
+            <button class="estop-btn" id="estopToggleBtn" type="button">
+              <span id="estopToggleLabel">E-STOP</span>
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="side-panel">
+        <div class="tabs">
+          <button class="tab-btn is-active" id="filesTabBtn" type="button">
+            <span class="tab-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+            </span>
+            <span>Dateien</span>
+            <span class="tab-btn__count" id="filesCountBadge">0</span>
+          </button>
+
+          <button class="tab-btn" id="maintenanceTabBtn" type="button">
+            <span class="tab-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+              </svg>
+            </span>
+            <span>Wartung</span>
+            <span class="tab-btn__count" id="maintenanceCountBadge">0</span>
+          </button>
+        </div>
+
+        <section class="panel-view" id="filesPanel">
+          <div class="upload-card" id="fileDropZone" tabindex="0" role="button" aria-controls="fileInput">
+            <input id="fileInput" type="file" multiple accept=".gcode,.nc,.tap,.ngc,.webm,.mp4,.mov" hidden />
+            <div class="upload-card__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <path d="M17 8l-5-5-5 5"></path>
+                <path d="M12 3v12"></path>
+              </svg>
+            </div>
+            <div class="upload-card__title">Dateien hierher ziehen</div>
+            <div class="upload-card__hint">.gcode .nc .tap .ngc</div>
+          </div>
+
+          <div class="list-scroll">
+            <div class="file-list" id="fileList"></div>
+            <div class="empty-state" id="fileEmptyState">Keine Dateien vorhanden</div>
+          </div>
+        </section>
+
+        <section class="panel-view" id="maintenancePanel" hidden>
+          <div class="list-scroll">
+            <div class="maintenance-list" id="taskList"></div>
+            <div class="empty-state" id="taskEmptyState" hidden>Keine Wartungsdaten verfuegbar</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+  </div>
+</body>
+</html>

@@ -14,7 +14,7 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
   - `event: axes` with `{ timestamp, axes: { spindle, x, y, z }, axisLoadSensors }` every ~250 ms
   - Optional query: `?intervalMs=250`
 - GET `/api/hardware`
-  - `{ time, transport: { primary, i2c }, sensors: { spindleTemperature, axisLoads }, actuators: { relayBoard, statusIndicator }, machineStatus }`
+  - `{ time, transport: { primary, i2c }, sensors: { spindleTemperature, axisLoads, safetyInputs }, actuators: { relayBoard, statusIndicator }, machineStatus }`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/spindle-temperature`
   - `{ sensorId, sensorType, available, temperatureC, humidityPercent, measuredAt, ... }`
@@ -24,8 +24,12 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
   - Optional query: `?refresh=1`
 - GET `/api/hardware/relays`
   - `{ controllerId, status, addressHex, channels, ... }`
+- GET `/api/camera/status`
+  - `{ enabled, available, devicePath, ffmpegPath, streamUrl, backend, width, height, fps, inputFormat, error }`
+- GET `/api/camera/stream`
+  - MJPEG stream from the configured USB webcam via `ffmpeg` and `v4l2`
 - GET `/api/machine/status`
-  - `{ reportedStatus, maintenanceDue, eStopEngaged, effectiveStatus, indicator }`
+  - `{ reportedStatus, maintenanceDue, eStopEngaged, hardwareEStopEngaged, hardwareEStopInputIds, eStopResetLocked, effectiveStatus, indicator }`
 - POST `/api/machine/status`
   - Request: `{ status: "IDLE"|"RUNNING"|"ERROR", source?: "<name>" }`
   - Response: current effective machine status with LED mapping
@@ -37,9 +41,6 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
   - Response: `{ ok, channel, relayBoard }`
 - POST `/api/hardware/e-stop`
   - Request: `{ engaged: true|false }` or `{ on: true|false }`
-  - Response: `{ ok, channel, relayBoard }`
-- POST `/api/hardware/relay-4`
-  - Request: `{ on: true|false }`
   - Response: `{ ok, channel, relayBoard }`
 - GET `/api/settings`
   - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
@@ -76,8 +77,26 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
 - Channel mapping:
   - `1`: machine light
   - `2`: spindle fan
-  - `3`: E-Stop
-  - `4`: spare
+  - `3`: spare
+  - `4`: E-Stop
+- Manual frontend reset is blocked while a hardware E-Stop input is active.
+
+## Safety Inputs
+
+The project now uses a `PCF8574`-compatible 8-channel optocoupler input module for hardware safety signals.
+
+- Fixed I2C address in the current machine: `0x21`
+- Current hardware E-Stop inputs:
+  - `Input 1`
+  - `Input 2`
+- Current spindle-running input:
+  - `Input 3`
+- Logic:
+  - if either input becomes active, the backend immediately marks the machine as `E-Stop`
+  - the RGB status strip switches to red through the normal machine-status sync
+  - relay channel `4` is driven into the E-Stop state automatically
+  - the web frontend cannot clear this state while the hardware input is still active
+  - spindle runtime is counted only while `Input 3` is active
 
 ## Status Indicator
 
@@ -85,7 +104,7 @@ The project is now prepared for a `WS2812B` RGB strip as a machine status indica
 
 - Supply: `5V`
 - Data pin: `GPIO18`
-- Current strip length: `76` LEDs
+- Current strip length: `59` LEDs
 - Startup sequence:
   - blue expansion from the center to the outside
   - once the strip is fully blue, the machine light is switched on
@@ -173,8 +192,13 @@ set RELAY_BOARD_POWER_GPIO_LINE_OFFSET=17
 set RELAY_BOARD_POWER_ACTIVE_HIGH=1
 set RELAY_BOARD_POWER_OFF_DELAY_SEC=0.25
 set RELAY_BOARD_POWER_ON_DELAY_SEC=1.0
+set EMERGENCY_INPUT_MODULE_ENABLED=1
+set EMERGENCY_INPUT_MODULE_I2C_ADDRESS=0x21
+set EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS=1,2
+set EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS=3
+set HARDWARE_ESTOP_POLL_INTERVAL_SEC=0.1
 set STATUS_INDICATOR_ENABLED=1
-set STATUS_INDICATOR_LED_COUNT=76
+set STATUS_INDICATOR_LED_COUNT=59
 set STATUS_INDICATOR_GPIO_PIN=18
 set STATUS_INDICATOR_FREQUENCY_HZ=800000
 set STATUS_INDICATOR_DMA_CHANNEL=10
@@ -183,6 +207,14 @@ set STATUS_INDICATOR_BRIGHTNESS=255
 set STATUS_INDICATOR_INVERT=0
 set STATUS_INDICATOR_STRIP_TYPE=GRB
 set STATUS_INDICATOR_SYNC_INTERVAL_SEC=2.0
+set CAMERA_ENABLED=1
+set CAMERA_FFMPEG_PATH=ffmpeg
+set CAMERA_DEVICE_PATH=/dev/video0
+set CAMERA_WIDTH=1280
+set CAMERA_HEIGHT=720
+set CAMERA_FPS=12
+set CAMERA_INPUT_FORMAT=mjpeg
+set CAMERA_JPEG_QUALITY=5
 ```
 
 The server listens on `http://localhost:8080` by default.

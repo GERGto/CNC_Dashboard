@@ -1,0 +1,333 @@
+import { useState, useRef, useCallback, useEffect } from "react";
+
+const MOCK_FILES = [
+  { name: "bracket_v3.gcode", size: "2.4 MB", date: "05.04.2026" },
+  { name: "gehaeuse_top.gcode", size: "8.1 MB", date: "03.04.2026" },
+  { name: "adapter_plate.nc", size: "1.1 MB", date: "01.04.2026" },
+  { name: "spannplatte.tap", size: "540 KB", date: "28.03.2026" },
+];
+
+const Icon = ({ type, size = 20 }) => {
+  const s = { width: size, height: size, display: "inline-block", verticalAlign: "middle" };
+  const icons = {
+    light: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 18h6M10 22h4M12 2v1M4.22 4.22l.7.7M1 12h1M21 12h1M18.36 4.22l-.7.7" /><path d="M15 9a3 3 0 1 0-4.24 4.24L9 15h6l-1.76-1.76A3 3 0 0 0 15 9z" /></svg>),
+    upload: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>),
+    trash: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /></svg>),
+    rec: (<svg style={s} viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8" /></svg>),
+    stop: (<svg style={s} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>),
+    download: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>),
+    file: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>),
+    fan: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 12c-1.5-4-1-7 2-9 3.5 2.5 2 6 0 9m0 0c4-1.5 7-1 9 2-2.5 3.5-6 2-9 0m0 0c1.5 4 1 7-2 9-3.5-2.5-2-6 0-9m0 0c-4 1.5-7 1-9-2 2.5-3.5 6-2 9 0" /><circle cx="12" cy="12" r="1.5" /></svg>),
+    wrench: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" /></svg>),
+    check: (<svg style={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>),
+  };
+  return icons[type] || null;
+};
+
+const LoadBar = ({ label, value, unit = "%", color, warn = 80 }) => {
+  const c = value > warn ? "#ef4444" : color;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 11 }}>
+        <span style={{ color: "#a1a1aa" }}>{label}</span>
+        <span style={{ color: c, fontWeight: 700 }}>{value}{unit}</span>
+      </div>
+      <div style={{ height: 5, borderRadius: 3, background: "#27272a", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${Math.min(value, 100)}%`, borderRadius: 3, background: c, boxShadow: `0 0 8px ${c}44`, transition: "width .5s ease" }} />
+      </div>
+    </div>
+  );
+};
+
+export default function CNCMillUI() {
+  const [files, setFiles] = useState(MOCK_FILES);
+  const [lightOn, setLightOn] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [estopActive, setEstopActive] = useState(false);
+
+  const [loads, setLoads] = useState({ x: 12, y: 18, z: 8, spindle: 34 });
+  const [spindleFan, setSpindleFan] = useState(false);
+  const [enclosureFan, setEnclosureFan] = useState(false);
+  const [rightTab, setRightTab] = useState("files");
+  const [tasks, setTasks] = useState([
+    { id: 1, text: "Spindelkeilriemen prüfen", due: "Überfällig", priority: "high", done: false },
+    { id: 2, text: "Kühlmittelstand kontrollieren", due: "Heute", priority: "high", done: false },
+    { id: 3, text: "Linearführungen schmieren", due: "In 3 Tagen", priority: "medium", done: false },
+    { id: 4, text: "Spänebehälter leeren", due: "In 5 Tagen", priority: "low", done: false },
+    { id: 5, text: "Werkzeugvermessung Pos. 4", due: "In 7 Tagen", priority: "low", done: false },
+  ]);
+  const timerRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      setLoads({
+        x: Math.max(0, Math.min(100, 12 + Math.round((Math.random() - 0.5) * 14))),
+        y: Math.max(0, Math.min(100, 18 + Math.round((Math.random() - 0.5) * 16))),
+        z: Math.max(0, Math.min(100, 8 + Math.round((Math.random() - 0.5) * 10))),
+        spindle: Math.max(0, Math.min(100, 34 + Math.round((Math.random() - 0.5) * 20))),
+      });
+    }, 1200);
+    return () => clearInterval(iv);
+  }, []);
+
+
+  const formatTime = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
+  const toggleRecording = () => {
+    if (!recording) {
+      setRecording(true); setRecordingTime(0);
+      timerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000);
+      
+    } else {
+      setRecording(false); clearInterval(timerRef.current);
+      const duration = formatTime(recordingTime);
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const filename = `aufnahme_${ts}.mp4`;
+      // In production: replace with real recorded blob URL
+      const blob = new Blob([""], { type: "video/mp4" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setRecordingTime(0);
+    }
+  };
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault(); setDragOver(false);
+    const d = Array.from(e.dataTransfer?.files || []);
+    if (d.length) {
+      setFiles((p) => [...d.map((f) => ({ name: f.name, size: f.size > 1048576 ? (f.size / 1048576).toFixed(1) + " MB" : (f.size / 1024).toFixed(0) + " KB", date: new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) })), ...p]);
+      
+    }
+  }, []);
+
+  const handleFileSelect = (e) => {
+    const s = Array.from(e.target.files || []);
+    if (s.length) {
+      setFiles((p) => [...s.map((f) => ({ name: f.name, size: f.size > 1048576 ? (f.size / 1048576).toFixed(1) + " MB" : (f.size / 1024).toFixed(0) + " KB", date: new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) })), ...p]);
+      
+    }
+  };
+
+  const deleteFile = (i) => { const n = files[i].name; setFiles((p) => p.filter((_, j) => j !== i));  };
+
+  const font = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
+  const C = { bg: "#0c0c0e", surface: "#161619", surface2: "#1e1e22", border: "#2a2a30", text: "#d4d4d8", dim: "#71717a", accent: "#22d3ee", red: "#ef4444", redGlow: "rgba(239,68,68,0.35)", green: "#22c55e", amber: "#f59e0b" };
+
+  const spindleOn = loads.spindle > 5;
+  const statusItems = [
+    { label: "Idle", active: !estopActive && !spindleOn, activeColor: C.green },
+    { label: "Spindel", active: spindleOn && !estopActive, activeColor: C.accent },
+    { label: "Wartung fällig", active: true, activeColor: C.amber },
+    { label: "E-Stop aktiv", active: estopActive, activeColor: C.red },
+  ];
+
+  return (
+    <div style={{ background: C.bg, color: C.text, fontFamily: font, minHeight: "100vh", fontSize: 13, position: "relative" }}>
+
+
+
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", borderBottom: `1px solid ${C.border}`, background: C.surface, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: estopActive ? C.red : C.green, boxShadow: `0 0 8px ${estopActive ? C.red : C.green}` }} />
+          <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }}>CNC Controller</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {statusItems.map((si) => (
+            <div key={si.label} style={{
+              padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+              background: si.active ? `${si.activeColor}18` : "transparent",
+              border: `1px solid ${si.active ? si.activeColor : C.border}`,
+              color: si.active ? si.activeColor : C.dim,
+              display: "flex", alignItems: "center", gap: 5, transition: "all .25s",
+            }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: si.active ? si.activeColor : C.border, boxShadow: si.active ? `0 0 6px ${si.activeColor}` : "none" }} />
+              {si.label}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => { setLightOn(!lightOn);  }}
+            style={{ background: lightOn ? "rgba(245,158,11,0.15)" : C.surface2, border: `1px solid ${lightOn ? C.amber : C.border}`, color: lightOn ? C.amber : C.dim, borderRadius: 8, padding: "6px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontFamily: font, transition: "all .2s" }}>
+            <Icon type="light" size={14} /> Licht
+          </button>
+          <button onClick={() => setSpindleFan(!spindleFan)}
+            style={{ background: spindleFan ? "rgba(34,211,238,0.12)" : C.surface2, border: `1px solid ${spindleFan ? C.accent : C.border}`, color: spindleFan ? C.accent : C.dim, borderRadius: 8, padding: "6px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontFamily: font, transition: "all .2s" }}>
+            <Icon type="fan" size={14} /> Spindel-Lüfter
+          </button>
+          <button onClick={() => setEnclosureFan(!enclosureFan)}
+            style={{ background: enclosureFan ? "rgba(34,211,238,0.12)" : C.surface2, border: `1px solid ${enclosureFan ? C.accent : C.border}`, color: enclosureFan ? C.accent : C.dim, borderRadius: 8, padding: "6px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontFamily: font, transition: "all .2s" }}>
+            <Icon type="fan" size={14} /> Gehäuse-Lüfter
+          </button>
+          <button onClick={toggleRecording}
+            style={{ background: recording ? "rgba(239,68,68,0.12)" : C.surface2, border: `1px solid ${recording ? C.red : C.border}`, color: recording ? C.red : C.dim, borderRadius: 8, padding: "6px 11px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontFamily: font, transition: "all .2s" }}>
+            <Icon type={recording ? "stop" : "rec"} size={12} />
+            {recording ? `REC ${formatTime(recordingTime)}` : "Aufnahme"}
+          </button>
+        </div>
+      </div>
+
+      {/* Main */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 0, height: "calc(100vh - 49px)" }}>
+        {/* Left */}
+        <div style={{ display: "flex", flexDirection: "column", borderRight: `1px solid ${C.border}` }}>
+          {/* Camera */}
+          <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#000" }}>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: `radial-gradient(ellipse at 40% 50%, rgba(34,211,238,0.04) 0%, transparent 60%), repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.015) 3px, rgba(255,255,255,0.015) 4px), #0a0a0a` }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ width: 90, height: 90, margin: "0 auto 10px", border: `2px solid ${C.border}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.02)" }}>
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={C.dim} strokeWidth="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+                </div>
+                <div style={{ color: C.dim, fontSize: 10, letterSpacing: 1 }}>KAMERA-FEED</div>
+              </div>
+            </div>
+            {recording && (
+              <div style={{ position: "absolute", top: 12, left: 12, display: "flex", alignItems: "center", gap: 6, background: "rgba(0,0,0,0.75)", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.red}` }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.red, animation: "blink 1s ease infinite" }} />
+                <span style={{ fontSize: 10, color: C.red, fontWeight: 600 }}>REC {formatTime(recordingTime)}</span>
+              </div>
+            )}
+            {lightOn && (<div style={{ position: "absolute", top: 12, right: 12, background: "rgba(0,0,0,0.75)", padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.amber}`, fontSize: 10, color: C.amber }}>💡 Licht</div>)}
+            {estopActive && (
+              <div style={{ position: "absolute", inset: 0, background: "rgba(239,68,68,0.08)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(2px)" }}>
+                <div style={{ color: C.red, fontSize: 18, fontWeight: 800, letterSpacing: 5, textShadow: `0 0 30px ${C.redGlow}`, animation: "blink 1s ease infinite" }}>⚠ E-STOP AKTIV ⚠</div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom: loads + estop */}
+          <div style={{ background: C.surface, borderTop: `1px solid ${C.border}`, display: "grid", gridTemplateColumns: "1fr auto" }}>
+            <div style={{ padding: "14px 20px" }}>
+              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginBottom: 8, textTransform: "uppercase", fontWeight: 700 }}>Live-Lasten</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 18px" }}>
+                <LoadBar label="X-Achse" value={loads.x} color={C.accent} />
+                <LoadBar label="Y-Achse" value={loads.y} color={C.accent} />
+                <LoadBar label="Z-Achse" value={loads.z} color={C.accent} />
+                <LoadBar label="Spindel" value={loads.spindle} color="#a78bfa" warn={75} />
+              </div>
+            </div>
+            <div style={{ padding: 14, display: "flex", alignItems: "center", borderLeft: `1px solid ${C.border}` }}>
+              <button onClick={() => { setEstopActive(!estopActive);  }}
+                style={{
+                  width: 130, height: "100%", minHeight: 80,
+                  background: estopActive ? "radial-gradient(circle, #dc2626, #991b1b)" : "radial-gradient(circle, #ef4444, #b91c1c)",
+                  border: `3px solid ${estopActive ? "#fca5a5" : "#dc2626"}`, borderRadius: 14,
+                  color: "#fff", fontSize: 15, fontWeight: 900, fontFamily: font, letterSpacing: 4,
+                  cursor: "pointer", textTransform: "uppercase", userSelect: "none",
+                  boxShadow: estopActive ? `0 0 40px ${C.redGlow}, 0 0 80px ${C.redGlow}, inset 0 2px 0 rgba(255,255,255,0.15)` : `0 0 20px ${C.redGlow}, inset 0 2px 0 rgba(255,255,255,0.1)`,
+                  transition: "all .15s",
+                }}>
+                {estopActive ? "⟳ RESET" : "E-STOP"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Tabbed Sidebar */}
+        <div style={{ display: "flex", flexDirection: "column", background: C.surface, overflow: "hidden" }}>
+          {/* Tabs */}
+          <div style={{ display: "flex", borderBottom: `1px solid ${C.border}` }}>
+            {[["files", "Dateien", files.length], ["maintenance", "Wartung", tasks.filter(t => !t.done).length]].map(([key, label, count]) => (
+              <button key={key} onClick={() => setRightTab(key)}
+                style={{
+                  flex: 1, padding: "11px 0", fontSize: 11, fontWeight: 700, fontFamily: font,
+                  letterSpacing: 1, textTransform: "uppercase", cursor: "pointer", border: "none",
+                  borderBottom: rightTab === key ? `2px solid ${C.accent}` : "2px solid transparent",
+                  background: "transparent", color: rightTab === key ? C.accent : C.dim,
+                  transition: "all .2s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}>
+                <Icon type={key === "files" ? "file" : "wrench"} size={13} />
+                {label}
+                <span style={{
+                  background: rightTab === key ? `${C.accent}22` : C.surface2,
+                  color: rightTab === key ? C.accent : C.dim,
+                  padding: "1px 7px", borderRadius: 10, fontSize: 10,
+                }}>{count}</span>
+              </button>
+            ))}
+          </div>
+
+          {rightTab === "files" && (<>
+            <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={handleDrop} onClick={() => fileInputRef.current?.click()}
+              style={{ margin: "12px 12px 4px", padding: 22, border: `2px dashed ${dragOver ? C.accent : C.border}`, borderRadius: 10, textAlign: "center", cursor: "pointer", transition: "all .2s", background: dragOver ? "rgba(34,211,238,0.05)" : "transparent" }}>
+              <input ref={fileInputRef} type="file" multiple accept=".gcode,.nc,.tap,.ngc" style={{ display: "none" }} onChange={handleFileSelect} />
+              <div style={{ color: dragOver ? C.accent : C.dim, marginBottom: 3 }}><Icon type="upload" size={24} /></div>
+              <div style={{ color: dragOver ? C.accent : C.dim, fontSize: 11, fontWeight: 500 }}>Dateien hierher ziehen</div>
+              <div style={{ color: C.dim, fontSize: 9, marginTop: 2, opacity: 0.6 }}>.gcode · .nc · .tap · .ngc</div>
+            </div>
+            <div style={{ flex: 1, overflow: "auto", padding: "4px 12px 12px" }}>
+              {files.map((f, i) => (
+                <div key={`${f.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", marginBottom: 3, borderRadius: 7, background: C.surface2, border: `1px solid ${C.border}` }}>
+                  <div style={{ color: C.accent, flexShrink: 0 }}><Icon type="file" size={15} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                    <div style={{ fontSize: 9, color: C.dim, marginTop: 1 }}>{f.size} · {f.date}</div>
+                  </div>
+                  <button onClick={() => deleteFile(i)} title="Löschen"
+                    style={{ background: "transparent", border: "none", color: C.dim, cursor: "pointer", padding: 4, borderRadius: 5, display: "flex", transition: "color .15s" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = C.red)} onMouseLeave={(e) => (e.currentTarget.style.color = C.dim)}>
+                    <Icon type="trash" size={13} />
+                  </button>
+                </div>
+              ))}
+              {files.length === 0 && (<div style={{ textAlign: "center", color: C.dim, fontSize: 10, padding: 28, opacity: 0.6 }}>Keine Dateien vorhanden</div>)}
+            </div>
+          </>)}
+
+          {rightTab === "maintenance" && (
+            <div style={{ flex: 1, overflow: "auto", padding: "12px" }}>
+              {tasks.map((t) => {
+                const pColor = t.priority === "high" ? C.red : t.priority === "medium" ? C.amber : C.dim;
+                const overdue = t.due === "Überfällig";
+                return (
+                  <div key={t.id} style={{
+                    display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 11px", marginBottom: 4,
+                    borderRadius: 7, background: C.surface2, border: `1px solid ${overdue && !t.done ? C.red + "44" : C.border}`,
+                    opacity: t.done ? 0.45 : 1, transition: "all .2s",
+                  }}>
+                    <button onClick={() => setTasks(prev => prev.map(x => x.id === t.id ? { ...x, done: !x.done } : x))}
+                      style={{
+                        width: 20, height: 20, borderRadius: 5, border: `2px solid ${t.done ? C.green : C.border}`,
+                        background: t.done ? C.green : "transparent", cursor: "pointer", flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1, padding: 0,
+                        transition: "all .15s",
+                      }}>
+                      {t.done && <span style={{ color: "#fff", fontSize: 12, lineHeight: 1 }}>✓</span>}
+                    </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, textDecoration: t.done ? "line-through" : "none" }}>{t.text}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <span style={{
+                          fontSize: 9, padding: "2px 7px", borderRadius: 4,
+                          background: `${pColor}18`, color: pColor, fontWeight: 600,
+                        }}>
+                          {t.priority === "high" ? "Hoch" : t.priority === "medium" ? "Mittel" : "Niedrig"}
+                        </span>
+                        <span style={{ fontSize: 9, color: overdue ? C.red : C.dim, fontWeight: overdue ? 700 : 400 }}>
+                          {t.due}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {tasks.every(t => t.done) && (
+                <div style={{ textAlign: "center", color: C.green, fontSize: 11, padding: 28, opacity: 0.7 }}>Alle Aufgaben erledigt ✓</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }`}</style>
+    </div>
+  );
+}

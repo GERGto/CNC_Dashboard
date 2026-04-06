@@ -164,7 +164,26 @@
   </main>
 
   <script>
-    const API_BASE = "http://localhost:8080";
+    function createApiBase(){
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get("apiBase");
+      if (fromQuery){
+        try{
+          return new URL(fromQuery).origin;
+        }catch (_error){
+          // Ignore invalid override and fall back to host-based resolution.
+        }
+      }
+
+      const base = new URL(window.location.href);
+      base.port = params.get("backendPort") || "8080";
+      base.pathname = "";
+      base.search = "";
+      base.hash = "";
+      return base.origin;
+    }
+
+    const API_BASE = createApiBase();
     const PAGE_SIZE = 4;
 
     const taskTableBody = document.getElementById("taskTableBody");

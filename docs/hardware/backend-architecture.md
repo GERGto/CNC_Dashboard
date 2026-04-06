@@ -55,7 +55,7 @@ aktuell folgende Hardware-Endpunkte bereit:
 - `POST /api/hardware/fan`
   - Schaltet Relaiskanal 2 fuer den Spindelluefter
 - `POST /api/hardware/e-stop`
-  - Stellt Relaiskanal 3 fuer E-Stop-Ansteuerung bereit
+  - Stellt Relaiskanal 4 fuer E-Stop-Ansteuerung bereit
 - `POST /api/hardware/relay-4`
   - Stellt Relaiskanal 4 als Reserve-Endpunkt bereit
 
@@ -106,7 +106,7 @@ Der `WS2812B`-Statusstreifen ist aktuell so vorgesehen:
 
 - Versorgung: `5V`
 - Datenleitung: `GPIO18`
-- Aktuelle Laenge: `76` LEDs
+- Aktuelle Laenge: `59` LEDs
 - Startup-Sequenz:
   - blau expandierend von der Mitte nach aussen
   - Maschinenlicht geht an, sobald der ganze Streifen blau ist

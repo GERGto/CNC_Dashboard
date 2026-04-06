@@ -5,7 +5,7 @@ import time
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from cnc_hardware.sensors import HardwareError
+from cnc_hardware.sensors import HardwareError, HardwareStateConflictError
 
 from .common import clamp, json_response, parse_bool_query_flag, send_sse
 
@@ -50,6 +50,12 @@ def create_request_handler(app):
 
             if path == "/api/hardware/relays":
                 return json_response(self, 200, app.get_relay_board())
+
+            if path == "/api/camera/status":
+                return json_response(self, 200, app.get_camera_status())
+
+            if path == "/api/camera/stream":
+                return app.stream_camera(self)
 
             if path == "/api/machine/status":
                 return json_response(self, 200, app.get_machine_status())
@@ -258,7 +264,6 @@ def create_request_handler(app):
                 "/api/hardware/light": ("light", ("on",)),
                 "/api/hardware/fan": ("fan", ("on",)),
                 "/api/hardware/e-stop": ("eStop", ("engaged", "on")),
-                "/api/hardware/relay-4": ("relay4", ("on",)),
             }
             if parsed.path in relay_path_map:
                 output_id, bool_keys = relay_path_map[parsed.path]
@@ -317,6 +322,16 @@ def create_request_handler(app):
 
             try:
                 result = app.set_relay_output(output_id, enabled)
+            except HardwareStateConflictError as exc:
+                return json_response(
+                    self,
+                    409,
+                    {
+                        "ok": False,
+                        "error": str(exc),
+                        "relayBoard": app.get_relay_board(),
+                    },
+                )
             except HardwareError as exc:
                 return json_response(
                     self,

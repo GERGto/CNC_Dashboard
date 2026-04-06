@@ -7,7 +7,7 @@
 - Aktuelle Kanalbelegung im CNC-Dashboard:
   - `K1`: Maschinenlicht
   - `K2`: Spindelluefter
-  - `K3`: E-Stop
+- `K4`: E-Stop
   - `K4`: frei / Reserve
 
 ## Anschluss und Kommunikation

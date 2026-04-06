@@ -7,7 +7,7 @@
 - Aktueller Ausbau:
   - Versorgung: `5V`
   - Datensignal: `GPIO18` am Raspberry Pi
-  - Aktuelle Laenge: `76` LEDs
+  - Aktuelle Laenge: `59` LEDs
 
 ## Startup-Sequenz
 
@@ -59,7 +59,7 @@ Im Zustand `IDLE` nutzt der Streifen kein statisches Weiss, sondern langsame wan
 - die Maximalhelligkeit bleibt damit bei `RGB 127`, also etwa `50%`
 - pro Pixel wird ein Phasenversatz von `0.12` verwendet
 - die Welle verschiebt sich pro Frame mit `t += 0.012`
-- Zielbild ist ein ruhiges, klar sichtbares Wellenbild entlang des gesamten 76-LED-Streifens bei rund `60 FPS`
+- Zielbild ist ein ruhiges, klar sichtbares Wellenbild entlang des gesamten 59-LED-Streifens bei rund `60 FPS`
 
 ## Anschluss
 
@@ -96,7 +96,7 @@ Im Zustand `IDLE` nutzt der Streifen kein statisches Weiss, sondern langsame wan
 ## Umgebungsvariablen
 
 - `STATUS_INDICATOR_ENABLED` (Default: `true`)
-- `STATUS_INDICATOR_LED_COUNT` (Default: `76`)
+- `STATUS_INDICATOR_LED_COUNT` (Default: `59`)
 - `STATUS_INDICATOR_GPIO_PIN` (Default: `18`)
 - `STATUS_INDICATOR_FREQUENCY_HZ` (Default: `800000`)
 - `STATUS_INDICATOR_DMA_CHANNEL` (Default: `10`)

@@ -219,14 +219,9 @@ class DuelinkRelayP4Controller:
             "endpoint": "/api/hardware/fan",
         },
         "eStop": {
-            "channel": 3,
+            "channel": 4,
             "label": "E-Stop",
             "endpoint": "/api/hardware/e-stop",
-        },
-        "relay4": {
-            "channel": 4,
-            "label": "Relais 4",
-            "endpoint": "/api/hardware/relay-4",
         },
     }
 
@@ -357,16 +352,12 @@ class DuelinkRelayP4Controller:
         return dict(snapshot["channels"][output_id])
 
     def _normalize_output_id(self, output_id):
-        key = str(output_id or "").strip()
+        key = str(output_id or "").strip().lower()
         aliases = {
             "light": "light",
             "fan": "fan",
             "estop": "eStop",
             "e-stop": "eStop",
-            "relay4": "relay4",
-            "relay-4": "relay4",
-            "channel4": "relay4",
-            "channel-4": "relay4",
         }
         normalized = aliases.get(key)
         if normalized is None:

@@ -15,8 +15,10 @@ def main():
     app.ensure_storage()
     app.start_background_tasks()
 
-    server = ThreadingHTTPServer(("", app.config.port), create_request_handler(app))
-    print(f"Hardware API listening on http://localhost:{app.config.port}")
+    bind_host = str(os.getenv("BIND_HOST", "")).strip()
+    server = ThreadingHTTPServer((bind_host, app.config.port), create_request_handler(app))
+    bind_label = bind_host or "0.0.0.0"
+    print(f"Hardware API listening on http://{bind_label}:{app.config.port}")
     server.serve_forever()
 
 

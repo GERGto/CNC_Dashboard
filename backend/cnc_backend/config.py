@@ -43,6 +43,15 @@ class AppConfig:
     wifi_autoconnect_retry_delay_sec: float
     wifi_autoconnect_max_attempts: int
     status_indicator_sync_interval_sec: float
+    hardware_estop_poll_interval_sec: float
+    camera_enabled: bool
+    camera_ffmpeg_path: str
+    camera_device_path: str
+    camera_width: int
+    camera_height: int
+    camera_fps: int
+    camera_input_format: str
+    camera_jpeg_quality: int
 
 
 def load_app_config():
@@ -79,4 +88,13 @@ def load_app_config():
         ),
         wifi_autoconnect_max_attempts=_read_non_negative_int_env("WIFI_AUTOCONNECT_MAX_ATTEMPTS", 4),
         status_indicator_sync_interval_sec=_read_non_negative_float_env("STATUS_INDICATOR_SYNC_INTERVAL_SEC", 2.0),
+        hardware_estop_poll_interval_sec=_read_non_negative_float_env("HARDWARE_ESTOP_POLL_INTERVAL_SEC", 0.1),
+        camera_enabled=str(os.getenv("CAMERA_ENABLED", "1")).strip().lower() in {"1", "true", "yes", "on"},
+        camera_ffmpeg_path=str(os.getenv("CAMERA_FFMPEG_PATH", "ffmpeg")).strip() or "ffmpeg",
+        camera_device_path=str(os.getenv("CAMERA_DEVICE_PATH", "/dev/video0")).strip() or "/dev/video0",
+        camera_width=_read_non_negative_int_env("CAMERA_WIDTH", 1280),
+        camera_height=_read_non_negative_int_env("CAMERA_HEIGHT", 720),
+        camera_fps=_read_non_negative_int_env("CAMERA_FPS", 12),
+        camera_input_format=str(os.getenv("CAMERA_INPUT_FORMAT", "")).strip(),
+        camera_jpeg_quality=_read_non_negative_int_env("CAMERA_JPEG_QUALITY", 5),
     )

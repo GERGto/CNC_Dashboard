@@ -137,7 +137,12 @@ class MachineStatusService:
         runtime_sec = _to_non_negative_int(spindle_runtime_sec, 0)
         due_task_ids = self._collect_due_task_ids(maintenance_tasks, runtime_sec)
         maintenance_due = bool(due_task_ids)
+        hardware_estop_engaged = self._is_hardware_estop_engaged(relay_board)
+        hardware_estop_input_ids = self._get_hardware_estop_input_ids(relay_board)
+        spindle_running = self._is_spindle_running(relay_board)
+        spindle_running_input_ids = self._get_spindle_running_input_ids(relay_board)
         estop_engaged = self._is_estop_engaged(relay_board)
+        estop_reset_locked = hardware_estop_engaged
 
         effective_status = "IDLE"
         effective_reason = "machine-on"
@@ -145,7 +150,7 @@ class MachineStatusService:
 
         if estop_engaged:
             effective_status = "ERROR"
-            effective_reason = "e-stop"
+            effective_reason = "hardware-e-stop" if hardware_estop_engaged else "e-stop"
             indicator_state = "eStop"
         elif reported["status"] == "ERROR":
             effective_status = "ERROR"
@@ -155,6 +160,10 @@ class MachineStatusService:
             effective_status = "WARNING"
             effective_reason = "maintenance-due"
             indicator_state = "warning"
+        elif spindle_running:
+            effective_status = "RUNNING"
+            effective_reason = "spindle-running-input"
+            indicator_state = "running"
         elif reported["status"] == "RUNNING":
             effective_status = "RUNNING"
             effective_reason = "reported-running"
@@ -168,6 +177,11 @@ class MachineStatusService:
             "maintenanceDue": maintenance_due,
             "maintenanceDueTaskIds": due_task_ids,
             "eStopEngaged": estop_engaged,
+            "hardwareEStopEngaged": hardware_estop_engaged,
+            "hardwareEStopInputIds": hardware_estop_input_ids,
+            "eStopResetLocked": estop_reset_locked,
+            "spindleRunning": spindle_running,
+            "spindleRunningInputIds": spindle_running_input_ids,
             "effectiveStatus": effective_status,
             "effectiveReason": effective_reason,
             "indicator": {
@@ -190,6 +204,39 @@ class MachineStatusService:
         return due_task_ids
 
     def _is_estop_engaged(self, relay_board):
+        estop = self._get_estop_channel(relay_board)
+        return bool(
+            estop.get("engaged", estop.get("on", False))
+            or estop.get("hardwareInputEngaged", False)
+        )
+
+    def _is_hardware_estop_engaged(self, relay_board):
+        estop = self._get_estop_channel(relay_board)
+        return bool(estop.get("hardwareInputEngaged", False))
+
+    def _get_hardware_estop_input_ids(self, relay_board):
+        estop = self._get_estop_channel(relay_board)
+        return [
+            str(input_id)
+            for input_id in estop.get("triggeredInputIds", [])
+            if str(input_id).strip()
+        ]
+
+    def _get_estop_channel(self, relay_board):
         channels = relay_board.get("channels", {}) if isinstance(relay_board, dict) else {}
-        estop = channels.get("eStop", {}) if isinstance(channels, dict) else {}
-        return bool(estop.get("engaged", estop.get("on", False)))
+        return channels.get("eStop", {}) if isinstance(channels, dict) else {}
+
+    def _is_spindle_running(self, relay_board):
+        safety_inputs = self._get_safety_inputs(relay_board)
+        return bool(safety_inputs.get("spindleRunning", False))
+
+    def _get_spindle_running_input_ids(self, relay_board):
+        safety_inputs = self._get_safety_inputs(relay_board)
+        return [
+            str(input_id)
+            for input_id in safety_inputs.get("spindleRunningInputIds", [])
+            if str(input_id).strip()
+        ]
+
+    def _get_safety_inputs(self, relay_board):
+        return relay_board.get("safetyInputs", {}) if isinstance(relay_board, dict) else {}

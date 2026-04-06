@@ -1,11 +1,26 @@
 export function createWifiEastereggController({
   overlayEl,
+  imageEl = null,
   tapTarget = 5,
   tapWindowMs = 1600,
   durationMs = 12000,
 }) {
   let tapTimestamps = [];
   let eastereggTimer = null;
+  let imageReady = false;
+
+  function ensureImageLoaded() {
+    if (!imageEl || imageReady) {
+      return;
+    }
+    const deferredSrc = String(imageEl.dataset.src || "").trim();
+    if (!deferredSrc) {
+      imageReady = true;
+      return;
+    }
+    imageEl.src = deferredSrc;
+    imageReady = true;
+  }
 
   function hide() {
     if (eastereggTimer) {
@@ -21,6 +36,7 @@ export function createWifiEastereggController({
       clearTimeout(eastereggTimer);
       eastereggTimer = null;
     }
+    ensureImageLoaded();
     overlayEl.hidden = false;
     overlayEl.setAttribute("aria-hidden", "false");
     eastereggTimer = setTimeout(() => {

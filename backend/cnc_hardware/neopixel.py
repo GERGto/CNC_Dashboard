@@ -91,7 +91,7 @@ class NeoPixelStatusStripController:
 
     def __init__(
         self,
-        pixel_count=76,
+        pixel_count=59,
         gpio_pin=18,
         frequency_hz=800000,
         dma_channel=10,

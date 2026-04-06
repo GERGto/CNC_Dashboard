@@ -129,6 +129,14 @@
       font-weight:600;
     }
 
+    .cfg-card__meta{
+      display:grid;
+      gap:4px;
+      font-size:14px;
+      font-weight:700;
+      color:#000;
+    }
+
     .cfg-card__btn{
       border:2px solid var(--line);
       border-radius:2px;
@@ -203,6 +211,9 @@
             </div>
           </div>
           <div class="cfg-card__text">Netzwerk auswählen, Zugangsdaten speichern und Verbindung steuern.</div>
+          <div class="cfg-card__meta">
+            <div id="wifiIpText">IP: -</div>
+          </div>
           <button class="cfg-card__btn" id="openWifiConfigBtn" type="button">WLAN konfigurieren</button>
         </div>
 
@@ -212,7 +223,26 @@
   </main>
 
   <script>
-    const API_BASE = "http://localhost:8080";
+    function createApiBase(){
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get("apiBase");
+      if (fromQuery){
+        try{
+          return new URL(fromQuery).origin;
+        }catch (_error){
+          // Ignore invalid override and fall back to host-based resolution.
+        }
+      }
+
+      const base = new URL(window.location.href);
+      base.port = params.get("backendPort") || "8080";
+      base.pathname = "";
+      base.search = "";
+      base.hash = "";
+      return base.origin;
+    }
+
+    const API_BASE = createApiBase();
     const runtimeCompactEl = document.getElementById("runtimeCompact");
     const tabOverview = document.getElementById("tabOverview");
     const tabConfig = document.getElementById("tabConfig");
@@ -221,11 +251,13 @@
     const openWifiConfigBtn = document.getElementById("openWifiConfigBtn");
     const wifiStateDot = document.getElementById("wifiStateDot");
     const wifiStateText = document.getElementById("wifiStateText");
+    const wifiIpText = document.getElementById("wifiIpText");
 
     let spindleRuntimeSec = 0;
     let wifiConnected = false;
     let wifiSsid = "";
     let wifiIssue = "";
+    let wifiIpAddress = "";
 
     function setActiveTab(name){
       const overview = name === "overview";
@@ -248,7 +280,7 @@
       window.parent.postMessage({ type: "openWifiConfigModal" }, location.origin);
     }
 
-    function setWifiStatus(connected, ssid = "", issue = ""){
+    function setWifiStatus(connected, ssid = "", issue = "", ipAddress = ""){
       wifiConnected = !!connected;
       if (typeof ssid === "string"){
         wifiSsid = ssid.trim();
@@ -256,13 +288,18 @@
       if (typeof issue === "string"){
         wifiIssue = issue.trim();
       }
+      if (typeof ipAddress === "string"){
+        wifiIpAddress = ipAddress.trim();
+      }
       wifiStateDot.classList.toggle("is-on", wifiConnected);
       wifiStateDot.classList.toggle("is-off", !wifiConnected);
       const networkName = wifiSsid;
       if (wifiConnected){
         wifiStateText.textContent = networkName ? `Status: Verbunden mit ${networkName}` : "Status: Verbunden";
+        wifiIpText.textContent = wifiIpAddress ? `IP: ${wifiIpAddress}` : "IP: Wird ermittelt...";
       } else {
         wifiStateText.textContent = wifiIssue ? `Status: ${wifiIssue}` : "Status: Nicht verbunden";
+        wifiIpText.textContent = "IP: -";
       }
     }
 
@@ -277,18 +314,28 @@
     }
 
     function loadSystemSettings(){
-      fetch(`${API_BASE}/api/settings`)
-        .then((res) => res.ok ? res.json() : null)
-        .then((data) => {
-          if (!data || typeof data !== "object") return;
-          if (typeof data.spindleRuntimeSec === "number"){
-            renderSpindleRuntime(data.spindleRuntimeSec);
-          }
-          const currentSsid = typeof data.wifiSsid === "string" ? data.wifiSsid : "";
-          const connected = toBool(data.wifiConnected);
-          const issue = typeof data.wifiIssue === "string" ? data.wifiIssue : "";
-          setWifiStatus(connected === null ? false : connected, currentSsid, issue);
-        });
+      Promise.all([
+        fetch(`${API_BASE}/api/settings`).then((res) => res.ok ? res.json() : null).catch(() => null),
+        fetch(`${API_BASE}/api/wifi/status`).then((res) => res.ok ? res.json() : null).catch(() => null),
+      ]).then(([settings, wifiStatus]) => {
+        const settingsData = settings && typeof settings === "object" ? settings : null;
+        const wifiData = wifiStatus && typeof wifiStatus === "object" ? wifiStatus : null;
+
+        if (settingsData && typeof settingsData.spindleRuntimeSec === "number"){
+          renderSpindleRuntime(settingsData.spindleRuntimeSec);
+        }
+
+        const currentSsid = typeof wifiData?.wifiSsid === "string"
+          ? wifiData.wifiSsid
+          : (typeof settingsData?.wifiSsid === "string" ? settingsData.wifiSsid : "");
+        const connected = toBool(wifiData?.wifiConnected ?? settingsData?.wifiConnected);
+        const issue = typeof wifiData?.wifiIssue === "string"
+          ? wifiData.wifiIssue
+          : (typeof settingsData?.wifiIssue === "string" ? settingsData.wifiIssue : "");
+        const ipAddress = typeof wifiData?.wifiIpAddress === "string" ? wifiData.wifiIpAddress : "";
+
+        setWifiStatus(connected === null ? false : connected, currentSsid, issue, ipAddress);
+      });
     }
 
     window.addEventListener("message", (ev) => {
@@ -306,16 +353,18 @@
         const connected = toBool(msg.wifiConnected);
         const ssid = typeof msg.wifiSsid === "string" ? msg.wifiSsid : wifiSsid;
         const issue = typeof msg.wifiIssue === "string" ? msg.wifiIssue : wifiIssue;
+        const ipAddress = typeof msg.wifiIpAddress === "string" ? msg.wifiIpAddress : wifiIpAddress;
         if (connected !== null){
-          setWifiStatus(connected, ssid, issue);
+          setWifiStatus(connected, ssid, issue, ipAddress);
         }
       }
       if (msg.type === "wifi"){
         const connected = toBool(msg.connected);
         const ssid = typeof msg.ssid === "string" ? msg.ssid : wifiSsid;
         const issue = typeof msg.issue === "string" ? msg.issue : wifiIssue;
+        const ipAddress = typeof msg.wifiIpAddress === "string" ? msg.wifiIpAddress : wifiIpAddress;
         if (connected !== null){
-          setWifiStatus(connected, ssid, issue);
+          setWifiStatus(connected, ssid, issue, ipAddress);
         }
       }
       if (msg.type === "openWifiConfig"){

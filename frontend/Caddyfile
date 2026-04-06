@@ -1,0 +1,36 @@
+{
+    auto_https off
+    admin off
+}
+
+:80 {
+    header {
+        Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Pragma "no-cache"
+        Expires "0"
+    }
+
+    @monitor_root path /
+    handle @monitor_root {
+        root * /opt/cnc-dashboard/frontend
+        rewrite * /monitor.html
+        file_server
+    }
+
+    @monitor_static path /monitor.html /assets/monitor.css /assets/monitor.js
+    handle @monitor_static {
+        root * /opt/cnc-dashboard/frontend
+        file_server
+    }
+
+    @monitor_api path /api/health /api/hardware /api/machine/status /api/wifi/status /api/maintenance/tasks* /api/camera/status /api/camera/stream /api/axes/stream /api/hardware/light /api/hardware/fan /api/hardware/e-stop /api/hardware/relay-4
+    handle @monitor_api {
+        reverse_proxy 127.0.0.1:8080 {
+            flush_interval -1
+        }
+    }
+
+    handle {
+        respond "Not found" 404
+    }
+}
