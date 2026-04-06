@@ -40,8 +40,8 @@ Aktuell verifiziert:
 
 Fuer die weitere Kette im Projekt vorgesehen:
 
-- `Y`-Achse: Backend-Default `0x41` (noch nicht live verifiziert)
-- `Z`-Achse: Backend-Default `0x44` (noch nicht live verifiziert)
+- `Y`-Achse: `0x41` im aktuellen Live-Scan sichtbar
+- `Z`-Achse: `0x44` im aktuellen Live-Scan sichtbar
 
 Hinweis:
 
@@ -134,14 +134,17 @@ Hinweise zur Praxis:
 
 ## Verifikation
 
-- Datum: `2026-03-29`
-- Zielsystem: `root@192.168.178.61`
+- Datum: `2026-04-06`
+- Zielsystem: `ssh cncpi`
 - I2C-Scan auf dem Pi:
+  - `0x21` = `PCF8574`-kompatibles Safety-Input-Modul
   - `0x38` = `AHT20`
   - `0x40` = `INA228` fuer die `X`-Achse
+  - `0x41` = `INA228` fuer die `Y`-Achse
+  - `0x44` = `INA228` fuer die `Z`-Achse
   - `0x52` = `GHI GDL-ACRELAYP4-C`
 - Direkter Registerzugriff auf `0x40` war erfolgreich
-- Die Adressen `0x41`, `0x44` und `0x45` haben im aktuellen Live-Setup noch nicht geantwortet
+- Im aktuellen Aufbau antworten damit alle drei vorgesehenen INA228-Adressen auf dem Bus
 
 ## Backend-Anbindung
 
@@ -217,6 +220,6 @@ curl -N "http://127.0.0.1:8080/api/axes/stream?intervalMs=250"
 
 ## Offene Punkte
 
-- Reale Verdrahtung und Adressen fuer `Y` und `Z` live verifizieren
+- Reale Zuordnung der bereits sichtbaren Adressen `0x41` und `0x44` zur finalen Y-/Z-Verdrahtung nochmals am Schaltschrank dokumentieren
 - Referenzstroeme pro Achse kalibrieren, damit `loadPercent` zur Maschine passt
 - Falls gewuenscht: zusaetzlich reale `A` oder `W` direkt im Frontend-Card-Text anzeigen

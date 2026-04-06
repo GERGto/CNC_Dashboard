@@ -48,6 +48,13 @@ UI-Grundsatz:
 
 Hinweis: Das wirkt wie ein lokal konfigurierter SSH-Alias und kann daher von der SSH-Konfiguration des jeweiligen Rechners abhaengen.
 
+### Aktuelle UI-Erreichbarkeit
+
+- Oeffentlich im Heimnetz ist nur der Browser-Monitor unter `http://192.168.178.61/` freigegeben.
+- Diese oeffentliche Seite wird ueber `Caddy` auf Port `80` ausgeliefert und zeigt nur `monitor.html` plus die fuer den Monitor benoetigten Assets und API-Routen.
+- Das lokale Maschinen-UI fuer Bedienung und Kiosk bleibt auf `http://127.0.0.1:8081/`.
+- Das Backend bleibt auf `http://127.0.0.1:8080/` gebunden und ist aus dem Heimnetz nicht direkt erreichbar.
+
 ### Ethernet fuer CNC-Controller als lokales Netz
 
 Der Raspberry Pi wurde so umgestellt, dass `eth0` nicht mehr per DHCP im Heimnetz sucht, sondern ein eigenes lokales Netz fuer den CNC-Controller bereitstellt.
@@ -96,6 +103,15 @@ Nutzen fuer den Bootvorgang:
 
 ## Aktuell bekannte I2C-Hardware
 
+Letzter bekannter Live-Scan auf `/dev/i2c-1`:
+
+- `0x21`
+- `0x38`
+- `0x40`
+- `0x41`
+- `0x44`
+- `0x52`
+
 - `Adafruit AHT20` fuer die Spindeltemperatur auf `0x38`
 - `Adafruit INA228` fuer die `X`-Achslast auf `0x40`
 - `GHI GDL-ACRELAYP4-C` 4-Kanal-Relais auf `0x52` (`82` dezimal)
@@ -105,11 +121,12 @@ Nutzen fuer den Bootvorgang:
   - Feste Betriebsadresse im aktuellen Aufbau: `0x21`
   - Die Adresse `0x21` liegt im offiziellen `PCF8574`-Bereich `0x20` bis `0x27` und nicht im `PCF8574A`-Bereich `0x38` bis `0x3F`
   - Daraus folgt: Der aktuell aktive Adressdecoder des Moduls verhaelt sich im Live-Betrieb wie ein `PCF8574`, nicht wie ein `PCF8574A`
+  - Die Eingangslogik wird im Projekt aktiv als `active-low` ausgewertet
   - `Input 1` und `Input 2` sind fest fuer mechanische Hardware-E-Stops reserviert
   - `Input 3` ist fest als `Spindel laeuft` verdrahtet
   - Sobald `Input 1` oder `Input 2` aktiv wird, loest das Backend sofort einen System-E-Stop aus
   - Dieser Hardware-E-Stop kann nicht im Frontend quittiert werden; er bleibt aktiv, bis der mechanische Taster real geloest wurde
-  - Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist
+  - Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist, und wird im Backend nach `machine_stats.json` persistiert
 
 Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
 
@@ -129,6 +146,7 @@ Aktuelle E-Stop-Logik:
 - Hardware-E-Stop kommt zusaetzlich ueber das PCF8574-Eingangsmodul auf `Input 1` und `Input 2`
 - Spindel-Running kommt ueber dasselbe Eingangsmodul auf `Input 3`
 - Der effektive Maschinen-Not-Halt ist aktiv, sobald Relaiskanal `4` aktiv ist oder einer der Hardware-E-Stop-Eingaenge ausloest
+- Bei aktivem Hardware-E-Stop wird Relaiskanal `4` automatisch gesetzt und ein Frontend-Reset mit Konfliktfehler abgewiesen
 - Bei aktivem Hardware-E-Stop zeigt das lokale UI die rote Statusleiste `E-STOP`, und der WS2812B-Statusstreifen wechselt auf rot
 - Die Spindellaufzeit kommt nicht mehr aus der Lastkurve, sondern nur noch aus dem echten Hardware-Signal auf `Input 3`
 

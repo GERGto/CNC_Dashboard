@@ -16,7 +16,7 @@ Frontend noch `server.py` direkt I2C-Details kennen muessen.
 
 ## Aktueller Zuschnitt
 
-Die aktuelle Ausbaustufe besteht aus fuenf Ebenen:
+Die aktuelle Ausbaustufe besteht aus sechs Hardware-Modulen plus Backend-Koordination:
 
 1. `backend/cnc_hardware/i2c.py`
    - Linux-I2C-Zugriff ueber `/dev/i2c-*` ohne zusaetzliche Python-Abhaengigkeiten
@@ -24,10 +24,18 @@ Die aktuelle Ausbaustufe besteht aus fuenf Ebenen:
    - Sensortreiber fuer den `AHT20` der Spindeltemperatur und die `INA228`-Achslastsensoren
 3. `backend/cnc_hardware/duelink_relay.py`
    - Aktortreiber fuer das `GHI GDL-ACRELAYP4-C` Relaisboard auf `0x52`
-4. `backend/cnc_hardware/neopixel.py`
+4. `backend/cnc_hardware/pcf8574_inputs.py`
+   - Eingangstreiber fuer das `PCF8574`-kompatible 8-Kanal-Optokoppler-Modul auf `0x21`
+5. `backend/cnc_hardware/neopixel.py`
    - Aktortreiber fuer den `WS2812B`-Status-LED-Streifen an `GPIO18`
-5. `backend/cnc_hardware/service.py`
-   - Hardware-Fassade mit normalisierter Antwortstruktur und kurzem Sensor-Cache
+6. `backend/cnc_hardware/service.py`
+   - Hardware-Fassade mit normalisierter Antwortstruktur, kurzem Sensor-Cache und Hardware-E-Stop-Synchronisation
+
+Zusaetzlich koordiniert `backend/cnc_backend/app.py` die laufenden Hintergrund-Worker fuer:
+
+- Hardware-E-Stop-Polling
+- RGB-Status-Synchronisation
+- backend-seitiges Hochzaehlen und Persistieren der Spindellaufzeit
 
 ## HTTP-Anbindung
 
@@ -35,29 +43,31 @@ Der bestehende HTTP-Server bindet das Hardware-Backend als Adapter ein und stell
 aktuell folgende Hardware-Endpunkte bereit:
 
 - `GET /api/hardware`
-  - Gesamtuebersicht ueber Sensoren, Aktoren, Maschinenstatus und I2C-Metadaten
+  - Gesamtuebersicht ueber Sensoren, Aktoren, Safety-Inputs und I2C-Metadaten
 - `GET /api/hardware/spindle-temperature`
   - Direkter Zugriff auf den AHT20-Messwert der Spindeltemperatur
 - `GET /api/hardware/axis-loads`
   - Direkter Zugriff auf die INA228-Messwerte fuer `X`, `Y` und `Z`
 - `GET /api/hardware/relays`
-  - Snapshot des 4-Kanal-Relaisboards
+  - Snapshot des 4-Kanal-Relaisboards inklusive eingebetteter `safetyInputs`
 - `GET /api/machine/status`
-  - Liefert den effektiven Maschinenstatus inklusive LED-Farbe und Prioritaetsentscheidung
+  - Liefert den effektiven Maschinenstatus inklusive Hardware-E-Stop-Lock, `spindleRunning` und LED-Prioritaetsentscheidung
 - `POST /api/machine/status`
   - Nimmt einen gemeldeten Basisstatus wie `IDLE`, `RUNNING` oder `ERROR` entgegen
 - `GET /api/axes`
   - Liefert die Frontend-Achswerte; `X/Y/Z` kommen aus den INA228-Sensoren, `Spindel` aktuell noch aus dem bestehenden Last-Mock
 - `GET /api/axes/stream`
   - SSE-Stream fuer die Frontend-Achsenanzeige mit eingebetteten `axisLoadSensors`
+- `GET /api/camera/status`
+  - Liefert Verfuegbarkeit und Parameter des automatischen USB-Kamerastreams
+- `GET /api/camera/stream`
+  - MJPEG-Livestream der USB-Webcam fuer den Browser-Monitor
 - `POST /api/hardware/light`
   - Schaltet Relaiskanal 1 fuer das Maschinenlicht
 - `POST /api/hardware/fan`
   - Schaltet Relaiskanal 2 fuer den Spindelluefter
 - `POST /api/hardware/e-stop`
-  - Stellt Relaiskanal 4 fuer E-Stop-Ansteuerung bereit
-- `POST /api/hardware/relay-4`
-  - Stellt Relaiskanal 4 als Reserve-Endpunkt bereit
+  - Schaltet den manuellen E-Stop auf Relaiskanal 4; ein Hardware-E-Stop kann darueber nicht quittiert werden
 
 ## Service-Integration
 
@@ -70,8 +80,10 @@ Wichtige Betriebsdetails auf dem aktuellen Pi:
 
 - Service-Name: `cnc-dashboard-backend.service`
 - Startdatei: `/opt/cnc-dashboard/backend/server.py`
-- Service-User: aktuell `root`, damit `WS2812B` via `rpi_ws281x` stabil ueber `GPIO18/PWM` angesteuert werden kann
-- I2C-Zugriff: bei Root-Betrieb kein zusaetzliches Gruppenmitglied fuer `i2c` noetig
+- Service-User: `dietpi`
+- Bind-Adresse: `127.0.0.1:8080`
+- Kamera-Backend: `ffmpeg` auf `/dev/video0`
+- I2C-Zugriff laeuft im aktuellen Deployment ueber denselben Backend-Dienst
 
 Nuetzliche Pruefbefehle auf dem Pi:
 
@@ -92,6 +104,11 @@ Das `GHI GDL-ACRELAYP4-C` ist aktuell so eingeplant:
 - Adresse: `0x52`
 - Protokoll: `DUELink DaisyLink`
 - Default-Geraeteindex: `1`
+- Kanalbelegung:
+  - `1`: Maschinenlicht
+  - `2`: Spindelluefter
+  - `3`: Reserve
+  - `4`: E-Stop
 
 Konfigurierbare Umgebungsvariablen:
 
@@ -99,6 +116,32 @@ Konfigurierbare Umgebungsvariablen:
 - `RELAY_BOARD_I2C_ADDRESS`
 - `RELAY_BOARD_DEVICE_INDEX`
 - `RELAY_BOARD_RESPONSE_TIMEOUT_SEC`
+
+## Safety-Input-Konfiguration
+
+Das `PCF8574`-kompatible Optokoppler-Eingangsmodul ist aktuell fest so verdrahtet:
+
+- Bus: `/dev/i2c-1`
+- Adresse: `0x21`
+- Logik: `active-low`
+- `Input 1`: mechanischer Hardware-E-Stop
+- `Input 2`: mechanischer Hardware-E-Stop
+- `Input 3`: `Spindel laeuft`
+
+Laufzeitverhalten:
+
+- Sobald `Input 1` oder `Input 2` aktiv wird, markiert das Backend die Maschine sofort als `E-STOP`.
+- Relaiskanal `4` wird automatisch in den E-Stop-Zustand gedrueckt.
+- Ein Frontend-Reset wird geblockt, solange der mechanische Taster noch ausgeloest ist.
+- Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist.
+
+Konfigurierbare Umgebungsvariablen:
+
+- `EMERGENCY_INPUT_MODULE_ENABLED`
+- `EMERGENCY_INPUT_MODULE_I2C_ADDRESS`
+- `EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS`
+- `EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS`
+- `HARDWARE_ESTOP_POLL_INTERVAL_SEC`
 
 ## Status-LED-Streifen-Konfiguration
 
@@ -112,9 +155,9 @@ Der `WS2812B`-Statusstreifen ist aktuell so vorgesehen:
   - Maschinenlicht geht an, sobald der ganze Streifen blau ist
   - danach Systemcheck-Fade von Blau auf Weiss
 - `IDLE`:
-  - wandernde weisse Atmungsanimation zwischen `RGB 104` und `127`
-  - Phasenversatz pro Pixel: `0.08`
-  - Phasenvorschub pro Frame: `0.03` bei rund `60 FPS`
+  - wandernde weisse Atmungsanimation zwischen `RGB 28` und `127`
+  - Phasenversatz pro Pixel: `0.12`
+  - Phasenvorschub pro Frame: `0.012` bei rund `60 FPS`
 - Status-Farbabbildung nach dem Startup:
   - `Weiss`: Maschine an / `IDLE`
   - `Orange`: Warnung / Wartung faellig
@@ -140,8 +183,8 @@ Die Achslastsensoren sind aktuell so vorgesehen:
 
 - Bus: `/dev/i2c-1`
 - `X`: `0x40` live verifiziert
-- `Y`: Backend-Default `0x41`
-- `Z`: Backend-Default `0x44`
+- `Y`: `0x41` im aktuellen Bus-Inventar sichtbar
+- `Z`: `0x44` im aktuellen Bus-Inventar sichtbar
 
 Konfigurierbare Umgebungsvariablen:
 
@@ -165,8 +208,6 @@ Dieselbe Struktur gilt analog fuer `Y` und `Z`.
 
 ## Naechste Schritte
 
-- Relaisboard auf dem Pi nach abgeschlossener Verdrahtung live verifizieren
-- Status-LED-Streifen auf dem Pi mit `rpi_ws281x` live verifizieren
-- Weitere I2C-Sensoren und Aktoren in eigene Treiber auslagern
-- Gemeinsame Hardware-Konfiguration pro Maschine einfuehren
-- Health- und Diagnoseinformationen fuer Busse, Adressen und Geraetestatus erweitern
+- Nicht belegte Safety-Eingaenge `4..8` dokumentieren, sobald deren Rolle feststeht
+- Physische Verdrahtung von Relaisboard, Safety-Modul und LED-Streifen als Einbaudokument ergaenzen
+- Health- und Diagnoseinformationen fuer Busse, Adressen und Geraetestatus weiter ausbauen

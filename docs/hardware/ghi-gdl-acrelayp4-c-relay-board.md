@@ -7,8 +7,8 @@
 - Aktuelle Kanalbelegung im CNC-Dashboard:
   - `K1`: Maschinenlicht
   - `K2`: Spindelluefter
-- `K4`: E-Stop
-  - `K4`: frei / Reserve
+  - `K3`: frei / Reserve
+  - `K4`: E-Stop
 
 ## Anschluss und Kommunikation
 
@@ -35,18 +35,18 @@ Vom Hersteller bestaetigte Kommandostruktur:
 
 ## Verifikation
 
-- Datum: `2026-03-26`
-- Zielsystem: Raspberry Pi mit DietPi via `root@192.168.137.116`
+- Datum: `2026-04-06`
+- Zielsystem: Raspberry Pi mit DietPi via `ssh cncpi`
 - Ergebnis der Herstellerrecherche: Das Board spricht auf `0x52`
 - Ergebnis des Pi-Scans:
   - `i2c-1` ist der primaere Linux-I2C-Bus
-  - auf `i2c-1` wurde beim Scan nur `0x38` (AHT20) gesehen
-  - das Relaisboard war beim Linux-Scan auf `i2c-1` noch nicht sichtbar
+  - auf `i2c-1` wurden zuletzt `0x21`, `0x38`, `0x40`, `0x41`, `0x44` und `0x52` gesehen
+  - `0x52` ist damit im aktuellen Maschinenaufbau live sichtbar
 
 Wichtiger Hinweis:
 
 - Die Software ist auf `0x52` und den DUELink-Befehlssatz vorbereitet.
-- Wenn das Board physisch noch nicht korrekt antwortet, liefern die Relais-Endpunkte einen Hardware-Fehler zurueck, bis Verdrahtung, Versorgung oder Bus-Anbindung passen.
+- Kanal `4` wird zusaetzlich vom Backend automatisch gesetzt, wenn ein Hardware-E-Stop ueber das PCF8574-Eingangsmodul ausloest.
 
 ## Backend-Anbindung
 
@@ -98,17 +98,17 @@ Initialisierung im Backend:
   - Request: `{ "on": true|false }`
 - `POST /api/hardware/e-stop`
   - Request: `{ "engaged": true|false }` oder `{ "on": true|false }`
-- `POST /api/hardware/relay-4`
-  - Request: `{ "on": true|false }`
 
 ## Frontend-Anbindung
 
 - Das Haupt-Frontend schaltet das Maschinenlicht ueber `/api/hardware/light`
 - Das Haupt-Frontend schaltet den Spindelluefter ueber `/api/hardware/fan`
-- Der aktuelle Relaisstatus wird ueber den Hardware-Snapshot wieder in die iFrames gespiegelt
+- Der Web-Monitor nutzt fuer den manuellen Not-Halt `/api/hardware/e-stop`
+- Bei aktivem mechanischem Hardware-E-Stop sperrt das Backend das Ruecksetzen von `K4`, bis der reale Taster geloest wurde
+- Der aktuelle Relaisstatus wird ueber den Hardware-Snapshot wieder in die UIs gespiegelt
 
 ## Offene Punkte
 
 - Physische Verdrahtung am Pi und am Relaisboard abschliessend dokumentieren
 - Rueckmeldung des echten Board-Status nach erster erfolgreicher Schaltung auf dem Pi verifizieren
-- Sicherheitskonzept fuer `E-Stop` fachlich bewerten, bevor dieser Kanal produktiv verwendet wird
+- Falls spaeter ein weiterer Verbraucher hinzukommt: Nutzung von `K3` gezielt festlegen und dokumentieren

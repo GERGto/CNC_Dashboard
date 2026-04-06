@@ -29,7 +29,7 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
 - GET `/api/camera/stream`
   - MJPEG stream from the configured USB webcam via `ffmpeg` and `v4l2`
 - GET `/api/machine/status`
-  - `{ reportedStatus, maintenanceDue, eStopEngaged, hardwareEStopEngaged, hardwareEStopInputIds, eStopResetLocked, effectiveStatus, indicator }`
+  - `{ reportedStatus, reportedSource, reportedAt, spindleRuntimeSec, maintenanceDue, maintenanceDueTaskIds, eStopEngaged, hardwareEStopEngaged, hardwareEStopInputIds, eStopResetLocked, spindleRunning, spindleRunningInputIds, effectiveStatus, effectiveReason, indicator }`
 - POST `/api/machine/status`
   - Request: `{ status: "IDLE"|"RUNNING"|"ERROR", source?: "<name>" }`
   - Response: current effective machine status with LED mapping
@@ -86,6 +86,7 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
 The project now uses a `PCF8574`-compatible 8-channel optocoupler input module for hardware safety signals.
 
 - Fixed I2C address in the current machine: `0x21`
+- Input logic in the current setup: `active-low`
 - Current hardware E-Stop inputs:
   - `Input 1`
   - `Input 2`
@@ -95,7 +96,7 @@ The project now uses a `PCF8574`-compatible 8-channel optocoupler input module f
   - if either input becomes active, the backend immediately marks the machine as `E-Stop`
   - the RGB status strip switches to red through the normal machine-status sync
   - relay channel `4` is driven into the E-Stop state automatically
-  - the web frontend cannot clear this state while the hardware input is still active
+  - the web frontend cannot clear this state while the hardware input is still active and receives `HTTP 409`
   - spindle runtime is counted only while `Input 3` is active
 
 ## Status Indicator
@@ -133,9 +134,8 @@ The project is now prepared for a `WS2812B` RGB strip as a machine status indica
 The project is prepared for three `Adafruit INA228` current/power monitors.
 
 - Bus: `/dev/i2c-1`
-- Verified live:
+- Current live bus inventory:
   - `X`: `0x40`
-- Backend defaults prepared for:
   - `Y`: `0x41`
   - `Z`: `0x44`
 - The backend reads `currentA`, `powerW`, `busVoltageV`, `shuntVoltageMv` and `dieTemperatureC`.

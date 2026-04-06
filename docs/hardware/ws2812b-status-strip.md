@@ -87,10 +87,10 @@ Im Zustand `IDLE` nutzt der Streifen kein statisches Weiss, sondern langsame wan
 - Das Backend synchronisiert den LED-Streifen zyklisch mit dem effektiven Maschinenstatus.
 - Beim Backend-Start wird zuerst die Boot-Sequenz des Streifens gestartet.
 - Das Maschinenlicht wird absichtlich erst dann eingeschaltet, wenn der Streifen vollstaendig blau erreicht hat.
-- `E-Stop` wird direkt aus dem Relaisboard-Snapshot uebernommen.
+- `E-Stop` ergibt sich aus dem effektiven Maschinenstatus und beinhaltet sowohl den manuellen Relais-E-Stop als auch den Hardware-E-Stop ueber `Input 1` und `Input 2`.
 - Im `E-Stop`-Zustand rendert der Treiber ein permanentes rotes Warnbild mit wiederholten Doppel-Pulsen.
-- `Wartung faellig` wird aus den gespeicherten Wartungsaufgaben und der Spindellaufzeit abgeleitet.
-- `RUNNING` kann von anderen Backend- oder Frontend-Komponenten ueber `POST /api/machine/status` gemeldet werden.
+- `Wartung faellig` wird aus den gespeicherten Wartungsaufgaben und der backend-seitig gezaehlten Spindellaufzeit abgeleitet.
+- `RUNNING` wird bevorzugt aus dem echten Hardware-Signal `Input 3 = Spindel laeuft` abgeleitet und kann alternativ zusaetzlich ueber `POST /api/machine/status` gemeldet werden.
 - Wenn die NeoPixel-Library auf einem Nicht-Pi- oder Dev-System fehlt, bleibt das Backend lauffaehig und meldet den Streifen als `unavailable`.
 
 ## Umgebungsvariablen
@@ -108,5 +108,4 @@ Im Zustand `IDLE` nutzt der Streifen kein statisches Weiss, sondern langsame wan
 
 ## Offene Punkte
 
-- Live-Verifikation des Streifens auf dem Pi nach Installation von `rpi_ws281x`
 - Spaeteres Power- und Einspeisekonzept dokumentieren, wenn der Streifen deutlich laenger wird

@@ -24,13 +24,18 @@
 
 ## Letzte Verifikation
 
-- Datum: `2026-03-26`
-- System: Raspberry Pi via `root@192.168.137.116`
+- Datum: `2026-04-06`
+- System: Raspberry Pi via `ssh cncpi`
 - Relevanter Bus fuer den aktuellen Qwiic-HAT-Scan: `/dev/i2c-1`
 - Adapter auf `/dev/i2c-1`: `bcm2835 (i2c@7e804000)`
-- Gefundene Adresse auf `/dev/i2c-1`: `0x38`
-- Zuordnung: `0x38` ist der `Adafruit AHT20` fuer die Spindeltemperatur
-- Rohscan-Hinweis: In der `30:`-Zeile wurde die Adresse `38` erkannt.
+- Gefundene Adressen auf `/dev/i2c-1`:
+  - `0x21` = `PCF8574`-kompatibles Safety-Input-Modul
+  - `0x38` = `Adafruit AHT20`
+  - `0x40` = `INA228 X`
+  - `0x41` = `INA228 Y`
+  - `0x44` = `INA228 Z`
+  - `0x52` = `GHI GDL-ACRELAYP4-C`
+- Hinweis zur Einordnung: Nicht jedes dieser Module muss physisch direkt am Qwiic-HAT stecken, sie teilen sich aber im aktuellen Aufbau denselben Linux-I2C-Bus `/dev/i2c-1`.
 - Zusatzadapter: `/dev/i2c-20` (`fef04500.i2c`) und `/dev/i2c-21` (`fef09500.i2c`) antworteten auf sehr viele Adressen; diese Busse sind fuer die Qwiic-Inventarisierung aktuell nicht die primaere Referenz.
 
 ## Offene Punkte
