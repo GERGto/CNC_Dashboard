@@ -32,7 +32,7 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
 - GET `/api/hardware/relays`
   - `{ controllerId, status, addressHex, channels, ... }`
 - GET `/api/camera/status`
-  - `{ enabled, available, devicePath, ffmpegPath, mediamtxPath, backend, transport, streamPath, whepPath, webrtcPort, rtspPort, width, height, fps, videoBitrate, inputFormat, error }`
+  - `{ enabled, onDemandEnabled, idleTimeoutSec, available, streamState, serviceStates, devicePath, ffmpegPath, mediamtxPath, backend, transport, streamPath, whepPath, webrtcPort, rtspPort, width, height, fps, videoBitrate, inputFormat, error }`
   - The monitor uses this metadata to open the WebRTC stream directly from MediaMTX via `http://<host>:<webrtcPort>/<streamPath>/whep`
 - GET `/api/machine/status`
   - `{ reportedStatus, reportedSource, reportedAt, spindleRuntimeSec, maintenanceDue, maintenanceDueTaskIds, eStopEngaged, hardwareEStopEngaged, hardwareEStopInputIds, eStopResetLocked, spindleRunning, spindleRunningInputIds, effectiveStatus, effectiveReason, indicator }`
@@ -214,14 +214,19 @@ set STATUS_INDICATOR_INVERT=0
 set STATUS_INDICATOR_STRIP_TYPE=GRB
 set STATUS_INDICATOR_SYNC_INTERVAL_SEC=2.0
 set CAMERA_ENABLED=1
+set CAMERA_ON_DEMAND_ENABLED=1
+set CAMERA_IDLE_TIMEOUT_SEC=20
 set CAMERA_MEDIAMTX_PATH=mediamtx
 set CAMERA_FFMPEG_PATH=ffmpeg
 set CAMERA_DEVICE_PATH=/dev/video0
 set CAMERA_WIDTH=1280
 set CAMERA_HEIGHT=720
-set CAMERA_FPS=15
+set CAMERA_FPS=30
 set CAMERA_INPUT_FORMAT=mjpeg
-set CAMERA_VIDEO_BITRATE=3000000
+set CAMERA_VIDEO_BITRATE=6000000
+set CAMERA_THREAD_QUEUE_SIZE=64
+set CAMERA_GOP_SIZE=30
+set CAMERA_BUFFER_SIZE=6000000
 set CAMERA_STREAM_PATH=camera
 set CAMERA_WEBRTC_PORT=8889
 set CAMERA_RTSP_PORT=8554

@@ -48,10 +48,8 @@ const ICONS = {
 
 const dom = {
   headerStatusDot: document.getElementById("headerStatusDot"),
-  statusIdlePill: document.getElementById("statusIdlePill"),
-  statusSpindlePill: document.getElementById("statusSpindlePill"),
-  statusMaintenancePill: document.getElementById("statusMaintenancePill"),
-  statusEstopPill: document.getElementById("statusEstopPill"),
+  ledStrip: document.getElementById("ledStrip"),
+  ledStripLabel: document.getElementById("ledStripLabel"),
   lightToggleBtn: document.getElementById("lightToggleBtn"),
   spindleFanToggleBtn: document.getElementById("spindleFanToggleBtn"),
   enclosureFanToggleBtn: document.getElementById("enclosureFanToggleBtn"),
@@ -64,7 +62,6 @@ const dom = {
   cameraPlaceholderText: document.getElementById("cameraPlaceholderText"),
   recordingBadge: document.getElementById("recordingBadge"),
   recordingBadgeLabel: document.getElementById("recordingBadgeLabel"),
-  lightCameraBadge: document.getElementById("lightCameraBadge"),
   estopOverlay: document.getElementById("estopOverlay"),
   axisValueX: document.getElementById("axisValueX"),
   axisValueY: document.getElementById("axisValueY"),
@@ -171,6 +168,10 @@ let cameraReader = null;
 let cameraReaderUrl = "";
 let cameraReconnectTimer = null;
 let cameraConnectionToken = 0;
+
+function shouldEnsureCameraStream() {
+  return !document.hidden || state.recordingActive;
+}
 
 function createApiBase() {
   const params = new URLSearchParams(window.location.search);
@@ -351,6 +352,12 @@ function attachCameraStream(stream) {
 }
 
 function ensureCameraReader() {
+  if (!shouldEnsureCameraStream()) {
+    stopCameraReader(true);
+    state.cameraLoaded = false;
+    return;
+  }
+
   const whepUrl = state.cameraAvailable ? state.cameraWhepUrl.trim() : "";
   if (!whepUrl) {
     stopCameraReader(true);
@@ -419,22 +426,23 @@ function getCurrentTone() {
   return "idle";
 }
 
-function setActiveTone(element, active) {
-  if (element) {
-    element.classList.toggle("is-active", !!active);
-  }
-}
-
 function renderStatusStrip() {
-  const spindleActive = getSpindleActive();
-  const idleActive = !state.eStopEngaged && !state.maintenanceDue && !spindleActive;
-  setActiveTone(dom.statusIdlePill, idleActive);
-  setActiveTone(dom.statusSpindlePill, spindleActive && !state.eStopEngaged);
-  setActiveTone(dom.statusMaintenancePill, state.maintenanceDue);
-  setActiveTone(dom.statusEstopPill, state.eStopEngaged);
+  const tone = getCurrentTone();
+  const labels = {
+    idle: "IDLE",
+    spindle: "SPINDEL",
+    maintenance: "WARTUNG FÄLLIG",
+    estop: "E-STOP AKTIV",
+  };
+
+  if (dom.ledStrip) {
+    dom.ledStrip.dataset.tone = tone;
+  }
+  if (dom.ledStripLabel) {
+    dom.ledStripLabel.textContent = labels[tone] || "IDLE";
+  }
 
   dom.headerStatusDot.classList.remove("is-spindle", "is-maintenance", "is-estop");
-  const tone = getCurrentTone();
   if (tone === "spindle") {
     dom.headerStatusDot.classList.add("is-spindle");
   } else if (tone === "maintenance") {
@@ -482,6 +490,19 @@ function renderToolbar() {
 }
 
 function renderCamera() {
+  if (!shouldEnsureCameraStream()) {
+    stopCameraReader(true);
+    state.cameraLoaded = false;
+    dom.cameraFeed.hidden = true;
+    dom.cameraPlaceholder.hidden = false;
+    dom.cameraPlaceholderTitle.textContent = "Kamera-Feed pausiert";
+    dom.cameraPlaceholderText.textContent = "Der Stream startet wieder, sobald die Seite sichtbar ist.";
+    dom.recordingBadge.hidden = !state.recordingActive;
+    dom.recordingBadgeLabel.textContent = `REC ${formatRecordingTime(state.recordingSeconds)}`;
+    dom.estopOverlay.hidden = !state.eStopEngaged;
+    return;
+  }
+
   const whepUrl = state.cameraAvailable ? state.cameraWhepUrl.trim() : "";
   if (!whepUrl) {
     stopCameraReader(true);
@@ -508,7 +529,6 @@ function renderCamera() {
 
   dom.recordingBadge.hidden = !state.recordingActive;
   dom.recordingBadgeLabel.textContent = `REC ${formatRecordingTime(state.recordingSeconds)}`;
-  dom.lightCameraBadge.hidden = !state.lightOn;
   dom.estopOverlay.hidden = !state.eStopEngaged;
 }
 
@@ -885,11 +905,12 @@ async function refreshStaticData() {
   }
   state.pollingBusy = true;
   try {
+    const cameraStatusPath = shouldEnsureCameraStream() ? "/api/camera/status?ensure=1" : "/api/camera/status";
     const [hardware, machineStatus, maintenanceTasks, cameraStatus] = await Promise.all([
       fetchJson("/api/hardware?refresh=1"),
       fetchJson("/api/machine/status"),
       fetchJson("/api/maintenance/tasks"),
-      fetchJson("/api/camera/status"),
+      fetchJson(cameraStatusPath),
     ]);
 
     applyHardwareSnapshot(hardware);
@@ -1290,6 +1311,16 @@ function attachEvents() {
   dom.fileInput.addEventListener("change", () => {
     addBrowserFiles(dom.fileInput.files || []);
     dom.fileInput.value = "";
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopCameraReader(true);
+      state.cameraLoaded = false;
+      renderCamera();
+      return;
+    }
+    void refreshStaticData();
   });
 
   window.addEventListener("beforeunload", () => {

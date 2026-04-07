@@ -120,64 +120,74 @@ svg{
   flex: 1 1 auto;
   min-width: 0;
   justify-content: center;
-  flex-wrap: nowrap;
-  gap: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+  align-items: center;
+  padding: 0 8px;
 }
 
-.topbar__status::-webkit-scrollbar,
 .topbar__controls::-webkit-scrollbar{
   display: none;
 }
 
-.status-pill{
+/* ── LED-Strip Statusanzeige ── */
+.led-strip{
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 11px 18px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  color: #8b8b95;
-  font-size: 13px;
-  font-weight: 600;
+  gap: 14px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.led-strip__bar{
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.45), 0 0 3px rgba(255, 255, 255, 0.25);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+.led-strip__label{
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(244, 244, 245, 0.55);
   white-space: nowrap;
-  transition: all 0.2s ease;
+  min-width: 8ch;
+  transition: color 0.4s ease;
 }
 
-.status-pill__dot{
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: none;
+/* Spindel läuft → grün */
+.led-strip[data-tone="spindle"] .led-strip__bar{
+  background: var(--green);
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.82), 0 0 5px rgba(34, 197, 94, 0.45);
 }
-
-.status-pill[data-tone="idle"].is-active{
+.led-strip[data-tone="spindle"] .led-strip__label{
   color: var(--green);
-  border-color: var(--green);
-  background: rgba(34, 197, 94, 0.12);
 }
 
-.status-pill[data-tone="spindle"].is-active{
-  color: var(--accent);
-  border-color: var(--accent);
-  background: rgba(34, 211, 238, 0.12);
+/* Wartung fällig → orange */
+.led-strip[data-tone="maintenance"] .led-strip__bar{
+  background: var(--amber);
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.82), 0 0 5px rgba(245, 158, 11, 0.45);
 }
-
-.status-pill[data-tone="maintenance"].is-active{
+.led-strip[data-tone="maintenance"] .led-strip__label{
   color: var(--amber);
-  border-color: var(--amber);
-  background: rgba(245, 158, 11, 0.12);
 }
 
-.status-pill[data-tone="estop"].is-active{
+/* E-Stop aktiv → rot, blinkend */
+.led-strip[data-tone="estop"] .led-strip__bar{
+  background: var(--red);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.9), 0 0 6px rgba(239, 68, 68, 0.55);
+  animation: led-pulse 1s ease infinite;
+}
+.led-strip[data-tone="estop"] .led-strip__label{
   color: var(--red);
-  border-color: var(--red);
-  background: rgba(239, 68, 68, 0.14);
+}
+
+@keyframes led-pulse{
+  0%, 100%{ opacity: 1; }
+  50%{ opacity: 0.45; }
 }
 
 .topbar__controls{
@@ -899,11 +909,6 @@ svg{
     padding-block: 10px;
   }
 
-  .status-pill{
-    padding: 9px 14px;
-    font-size: 12px;
-  }
-
   .toolbar-btn{
     min-height: 42px;
     padding: 10px 15px;
@@ -942,5 +947,186 @@ svg{
   .task-row{
     padding: 14px 16px;
     border-radius: 16px;
+  }
+}
+
+/* ── Portrait / Mobile Hochformat ────────────────────────────────────────────
+   Strategie: Das starre Fullscreen-Flex-Layout wird in ein natürlich
+   scrollendes Dokumenten-Layout umgebaut. Alle overflow:hidden / min-height:0
+   Constraints der Desktop-Architektur werden aufgehoben.
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (orientation: portrait) and (max-width: 768px){
+
+  /* 1. Dokument scrollbar machen */
+  html,
+  body{
+    height: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* 2. App-Shell: nicht mehr Fullscreen-Clip */
+  .app-shell{
+    height: auto;
+    min-height: 100dvh;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  /* 3. Topbar: zweizeilig (Brand+Controls oben, LED-Strip unten) */
+  .topbar{
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 14px 6px;
+    gap: 8px;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .topbar__brand{
+    flex: 1 0 auto;
+  }
+
+  .topbar__controls{
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 8px;
+  }
+
+  /* LED-Strip: volle Breite in zweiter Zeile */
+  .topbar__status{
+    order: 3;
+    width: 100%;
+    padding: 0 0 6px;
+  }
+
+  .led-strip{
+    max-width: none;
+  }
+
+  .led-strip__bar{
+    height: 7px;
+  }
+
+  /* Toolbar: nur Icons, kein Text */
+  .toolbar-btn__text{
+    display: none;
+  }
+
+  .toolbar-btn{
+    padding: 10px 13px;
+    min-height: 44px;
+    gap: 0;
+  }
+
+  /* 4. Haupt-Grid: einspaltiger natürlicher Fluss */
+  .main-grid{
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  /* 5. Linke Spalte: overflow aufheben, natürliche Höhe */
+  .left-column{
+    min-height: auto;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+
+  /* 6. Kamera: feste Höhe statt flex:1 (bleibt overflow:hidden für Overlays) */
+  .camera-stage{
+    flex: 0 0 auto;
+    height: 56.25vw; /* 16:9 */
+    min-height: 200px;
+    max-height: 42vh;
+    overflow: hidden;
+  }
+
+  /* 7. Lasten-Panel stapeln */
+  .loads-panel{
+    flex: 0 0 auto;
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .loads-panel__content{
+    padding: 16px 18px 14px;
+  }
+
+  .section-kicker{
+    margin-bottom: 14px;
+  }
+
+  .load-grid{
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px 20px;
+  }
+
+  /* 8. E-Stop: volle Breite, kompakter */
+  .estop-panel{
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    justify-content: center;
+    padding: 14px 20px;
+  }
+
+  .estop-btn{
+    width: 100%;
+    max-width: 320px;
+    min-height: 58px;
+    font-size: clamp(18px, 5vw, 24px);
+    border-radius: 16px;
+  }
+
+  /* 9. Seiten-Panel: natürliche Höhe, kein Scroll-Container mehr */
+  .side-panel{
+    min-height: auto;
+    overflow: visible;
+    flex: 0 0 auto;
+  }
+
+  .panel-view{
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  /* list-scroll: Seiten-Scroll statt eigener Scrollbox */
+  .list-scroll{
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    padding: 8px 14px 28px;
+  }
+
+  .upload-card{
+    margin: 14px 14px 8px;
+    padding: 22px 14px;
+  }
+
+  .file-list,
+  .maintenance-list{
+    gap: 10px;
+  }
+
+  .file-row,
+  .task-row{
+    padding: 14px 16px;
+  }
+
+  /* Tabs kompakter */
+  .tabs{
+    padding-inline: 10px;
+    gap: 6px;
+  }
+
+  .tab-btn{
+    padding-block: 16px 12px;
+    font-size: 13px;
   }
 }

@@ -258,7 +258,8 @@
     };
     const SPINDLE_TEMP_MIN_C = 20;
     const SPINDLE_TEMP_MAX_C = 55;
-    const SPINDLE_TEMP_REFRESH_MS = 2500;
+    const SPINDLE_TEMP_REFRESH_MS = 5000;
+    const RENDER_INTERVAL_MS = 1000 / 20;
     const axisState = {};
 
     const spindleValueEl = document.getElementById("spindleValue");
@@ -306,8 +307,12 @@
     let spindleTempAvailable = false;
     const SPINDLE_TEMP_SMOOTH = 0.15;
     let HISTORY_WINDOW_MS = 60000;
-    const HISTORY_INTERVAL_MS = 120;
+    const HISTORY_INTERVAL_MS = 250;
+    let animationFrameId = 0;
+    let lastRenderTs = 0;
     let lastHistoryTs = 0;
+    let chartDirty = true;
+    let pageActive = true;
     let graphPressTimer = null;
     let settingsSaveTimer = null;
     let axisSaveTimer = null;
@@ -519,7 +524,11 @@
     }
 
     function loadSpindleTemperature(){
-      fetch(`${API_BASE}/api/hardware/spindle-temperature?refresh=1`)
+      if (!pageActive){
+        return;
+      }
+
+      fetch(`${API_BASE}/api/hardware/spindle-temperature`)
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
           applySpindleTemperaturePayload(data);
@@ -582,6 +591,7 @@
       const s = Math.max(10, Math.min(120, Number(seconds) || 60));
       HISTORY_WINDOW_MS = s * 1000;
       updateAxisLabels(HISTORY_WINDOW_MS);
+      chartDirty = true;
       if (persist){
         scheduleSettingsSave(s);
       }
@@ -641,10 +651,32 @@
           data.shift();
         }
       });
-      renderChart(now);
+      chartDirty = true;
+    }
+
+    function ensureTickScheduled(){
+      if (animationFrameId){
+        return;
+      }
+      animationFrameId = requestAnimationFrame(tick);
     }
 
     function tick(now){
+      animationFrameId = 0;
+
+      if (!pageActive){
+        return;
+      }
+
+      if (!lastRenderTs){
+        lastRenderTs = now;
+      }
+      if ((now - lastRenderTs) < RENDER_INTERVAL_MS){
+        ensureTickScheduled();
+        return;
+      }
+      lastRenderTs = now;
+
       const spindleTarget = axisValues.spindle;
       spindleDisplayValue += (spindleTarget - spindleDisplayValue) * SPINDLE_SMOOTH;
       setSpindleValue(spindleDisplayValue);
@@ -660,8 +692,12 @@
         lastHistoryTs = now;
       }
 
-      renderChart(now);
-      requestAnimationFrame(tick);
+      if (chartDirty){
+        renderChart(now);
+        chartDirty = false;
+      }
+
+      ensureTickScheduled();
     }
 
     function clearGraphPress(){
@@ -676,6 +712,7 @@
       if (cardEls[axis]) cardEls[axis].classList.toggle("is-off", !isOn);
       if (lineEls[axis]) lineEls[axis].classList.toggle("is-off", !isOn);
       if (cardEls[axis]) cardEls[axis].setAttribute("aria-pressed", String(isOn));
+      chartDirty = true;
       if (persist) scheduleAxisVisibilitySave();
     }
 
@@ -690,6 +727,7 @@
       if (isAvailable && axisValueEls[axis]){
         axisValueEls[axis].textContent = `${clampPercent(axisValues[axis])}%`;
       }
+      chartDirty = true;
       updateAxisCalibrationStatus(axis);
     }
 
@@ -906,7 +944,7 @@
     loadSettings();
     loadSpindleTemperature();
     setInterval(loadSpindleTemperature, SPINDLE_TEMP_REFRESH_MS);
-    requestAnimationFrame(tick);
+    ensureTickScheduled();
 
     function applyAxesPayload(payload){
       axisKeys.forEach((key) => {
@@ -928,6 +966,16 @@
       }
       if (msg.type === "setGraphWindow"){
         updateGraphWindow(msg.seconds, true);
+      }
+      if (msg.type === "pageShown"){
+        pageActive = true;
+        lastRenderTs = 0;
+        chartDirty = true;
+        loadSpindleTemperature();
+        ensureTickScheduled();
+      }
+      if (msg.type === "pageHidden"){
+        pageActive = false;
       }
     });
 

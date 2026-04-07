@@ -9,7 +9,10 @@ RTSP_PORT="${CAMERA_RTSP_PORT:-8554}"
 WIDTH="${CAMERA_WIDTH:-1280}"
 HEIGHT="${CAMERA_HEIGHT:-720}"
 FPS="${CAMERA_FPS:-15}"
-BITRATE="${CAMERA_VIDEO_BITRATE:-3000000}"
+BITRATE="${CAMERA_VIDEO_BITRATE:-6000000}"
+THREAD_QUEUE_SIZE="${CAMERA_THREAD_QUEUE_SIZE:-64}"
+GOP_SIZE="${CAMERA_GOP_SIZE:-$FPS}"
+BUFFER_SIZE="${CAMERA_BUFFER_SIZE:-$BITRATE}"
 
 if ! command -v "$FFMPEG_BIN" >/dev/null 2>&1; then
   echo "ffmpeg not found: $FFMPEG_BIN" >&2
@@ -41,17 +44,32 @@ esac
 
 case "$BITRATE" in
   ''|*[!0-9]*)
-    BITRATE=3000000
+    BITRATE=6000000
     ;;
 esac
 
-GOP_SIZE=$((FPS * 2))
+case "$THREAD_QUEUE_SIZE" in
+  ''|*[!0-9]*)
+    THREAD_QUEUE_SIZE=64
+    ;;
+esac
+
+case "$GOP_SIZE" in
+  ''|*[!0-9]*)
+    GOP_SIZE=$FPS
+    ;;
+esac
 if [ "$GOP_SIZE" -le 0 ]; then
-  GOP_SIZE=30
+  GOP_SIZE=$FPS
 fi
-BUFFER_SIZE=$((BITRATE * 2))
+
+case "$BUFFER_SIZE" in
+  ''|*[!0-9]*)
+    BUFFER_SIZE=$BITRATE
+    ;;
+esac
 if [ "$BUFFER_SIZE" -le 0 ]; then
-  BUFFER_SIZE=6000000
+  BUFFER_SIZE=$BITRATE
 fi
 
 set -- \
@@ -59,7 +77,7 @@ set -- \
   -loglevel error \
   -fflags nobuffer \
   -flags low_delay \
-  -thread_queue_size 1024 \
+  -thread_queue_size "$THREAD_QUEUE_SIZE" \
   -f video4linux2
 
 if [ -n "$INPUT_FORMAT" ]; then

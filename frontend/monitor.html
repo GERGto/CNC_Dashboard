@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>CNC Controller</title>
-  <link rel="stylesheet" href="assets/monitor.css?v=20260406-07" />
+  <link rel="stylesheet" href="assets/monitor.css?v=20260407-04" />
   <script defer src="assets/vendor/mediamtx-reader.js?v=20260407-03"></script>
-  <script defer src="assets/monitor.js?v=20260407-03"></script>
+  <script defer src="assets/monitor.js?v=20260407-05"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -17,22 +17,10 @@
         <span class="topbar__title">CNC Controller</span>
       </div>
 
-      <div class="topbar__status">
-        <div class="status-pill" id="statusIdlePill" data-tone="idle">
-          <span class="status-pill__dot" aria-hidden="true"></span>
-          <span>Idle</span>
-        </div>
-        <div class="status-pill" id="statusSpindlePill" data-tone="spindle">
-          <span class="status-pill__dot" aria-hidden="true"></span>
-          <span>Spindel</span>
-        </div>
-        <div class="status-pill" id="statusMaintenancePill" data-tone="maintenance">
-          <span class="status-pill__dot" aria-hidden="true"></span>
-          <span>Wartung faellig</span>
-        </div>
-        <div class="status-pill" id="statusEstopPill" data-tone="estop">
-          <span class="status-pill__dot" aria-hidden="true"></span>
-          <span>E-Stop aktiv</span>
+      <div class="topbar__status" aria-label="Maschinenstatus">
+        <div class="led-strip" id="ledStrip" data-tone="idle" role="status">
+          <div class="led-strip__bar" aria-hidden="true"></div>
+          <span class="led-strip__label" id="ledStripLabel">IDLE</span>
         </div>
       </div>
 
@@ -101,15 +89,6 @@
             <span id="recordingBadgeLabel">REC 00:00</span>
           </div>
 
-          <div class="camera-badge camera-badge--light" id="lightCameraBadge" hidden>
-            <span class="camera-badge__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <path d="M9 18h6M10 22h4M12 2v1M4.22 4.22l.7.7M1 12h1M21 12h1M18.36 4.22l-.7.7"></path>
-                <path d="M15 9a3 3 0 1 0-4.24 4.24L9 15h6l-1.76-1.76A3 3 0 0 0 15 9z"></path>
-              </svg>
-            </span>
-            <span>Licht</span>
-          </div>
 
           <div class="camera-alert" id="estopOverlay" hidden>
             <div class="camera-alert__copy">E-STOP AKTIV</div>

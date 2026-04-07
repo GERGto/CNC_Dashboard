@@ -71,6 +71,7 @@ class BackendApp:
         threading.Thread(target=self._hardware_estop_worker, daemon=True).start()
         threading.Thread(target=self._spindle_runtime_worker, daemon=True).start()
         threading.Thread(target=self._status_indicator_worker, daemon=True).start()
+        self.camera_service.start_background_tasks()
 
     def get_health(self):
         return {"status": "ok", "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
@@ -130,8 +131,8 @@ class BackendApp:
     def get_relay_board(self):
         return self.hardware_backend.get_relay_board()
 
-    def get_camera_status(self):
-        return self.camera_service.get_status()
+    def get_camera_status(self, ensure_active=False):
+        return self.camera_service.get_status(ensure_active=ensure_active)
 
     def set_relay_output(self, output_id, enabled):
         result = self.hardware_backend.set_relay_output(output_id, enabled)

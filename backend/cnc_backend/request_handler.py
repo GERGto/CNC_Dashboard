@@ -52,7 +52,8 @@ def create_request_handler(app):
                 return json_response(self, 200, app.get_relay_board())
 
             if path == "/api/camera/status":
-                return json_response(self, 200, app.get_camera_status())
+                ensure_active = parse_bool_query_flag(params, "ensure")
+                return json_response(self, 200, app.get_camera_status(ensure_active=ensure_active))
 
             if path == "/api/machine/status":
                 return json_response(self, 200, app.get_machine_status())
