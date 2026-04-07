@@ -101,8 +101,11 @@ class BackendApp:
         snapshot["machineStatus"] = self.get_machine_status()
         return snapshot
 
+    def get_enclosure_temperature(self, force_refresh=False):
+        return self.hardware_backend.get_enclosure_temperature(force_refresh=force_refresh)
+
     def get_spindle_temperature(self, force_refresh=False):
-        return self.hardware_backend.get_spindle_temperature(force_refresh=force_refresh)
+        return self.get_enclosure_temperature(force_refresh=force_refresh)
 
     def get_axis_loads(self, force_refresh=False):
         axis_loads = self.hardware_backend.get_axis_loads(force_refresh=force_refresh)

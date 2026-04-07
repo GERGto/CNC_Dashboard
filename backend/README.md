@@ -21,10 +21,13 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - `event: axes` with `{ timestamp, axes: { spindle, x, y, z }, axisLoadSensors }` every ~250 ms
   - Optional query: `?intervalMs=250`
 - GET `/api/hardware`
-  - `{ time, transport: { primary, i2c }, sensors: { spindleTemperature, axisLoads, safetyInputs }, actuators: { relayBoard, statusIndicator }, machineStatus }`
+  - `{ time, transport: { primary, i2c }, sensors: { enclosureTemperature, spindleTemperature, axisLoads, safetyInputs }, actuators: { relayBoard, statusIndicator }, machineStatus }`
+  - Optional query: `?refresh=1`
+- GET `/api/hardware/enclosure-temperature`
+  - `{ sensorId, sensorType, available, temperatureC, humidityPercent, measuredAt, ... }`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/spindle-temperature`
-  - `{ sensorId, sensorType, available, temperatureC, humidityPercent, measuredAt, ... }`
+  - Legacy alias of `/api/hardware/enclosure-temperature`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/axis-loads`
   - `{ sensorGroupId, available, axes: { x, y, z }, ... }`

@@ -12,7 +12,7 @@
   <main class="home-layout" role="main">
     <section class="panel spindle-panel" aria-labelledby="spindleTitle">
       <header class="panel-header">
-        <h2 id="spindleTitle">Spindel</h2>
+        <h2 id="spindleTitle">Spindel &amp; Gehäuse</h2>
         <span class="panel-sub" aria-live="polite">live</span>
       </header>
 
@@ -37,18 +37,18 @@
           </div>
         </article>
 
-        <article class="gauge-card" aria-labelledby="spindleTempGaugeTitle">
+        <article class="gauge-card" aria-labelledby="enclosureTempGaugeTitle">
           <div class="gauge-card__head">
-            <h3 id="spindleTempGaugeTitle">Spindeltemperatur</h3>
+            <h3 id="enclosureTempGaugeTitle">Gehäusetemperatur</h3>
           </div>
 
-          <div class="arc-gauge arc-gauge--temperature" id="spindleTempGauge" style="--gauge-color:#b66100" data-state="loading">
+          <div class="arc-gauge arc-gauge--temperature" id="enclosureTempGauge" style="--gauge-color:#b66100" data-state="loading">
             <div class="arc-gauge__wrap">
               <svg class="arc-gauge__svg" viewBox="0 0 360 180" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
                 <path class="arc-gauge__bg"></path>
                 <path class="arc-gauge__fill"></path>
               </svg>
-              <div class="arc-gauge__value" id="spindleTempValue">--.-&deg;C</div>
+              <div class="arc-gauge__value" id="enclosureTempValue">--.-&deg;C</div>
             </div>
             <div class="arc-gauge__markers" aria-hidden="true">
               <span>20&deg;C</span>
@@ -251,17 +251,17 @@
       y: { minA: 0, maxA: 10 },
       z: { minA: 0, maxA: 10 }
     };
-    const SPINDLE_TEMP_MIN_C = 20;
-    const SPINDLE_TEMP_MAX_C = 55;
-    const SPINDLE_TEMP_REFRESH_MS = 5000;
+    const ENCLOSURE_TEMP_MIN_C = 20;
+    const ENCLOSURE_TEMP_MAX_C = 55;
+    const ENCLOSURE_TEMP_REFRESH_MS = 5000;
     const axisState = {};
 
     const spindleValueEl = document.getElementById("spindleValue");
     const spindleGauge = document.getElementById("spindleGauge");
     const spindleGaugeFill = spindleGauge.querySelector(".arc-gauge__fill");
-    const spindleTempGauge = document.getElementById("spindleTempGauge");
-    const spindleTempGaugeFill = spindleTempGauge.querySelector(".arc-gauge__fill");
-    const spindleTempValueEl = document.getElementById("spindleTempValue");
+    const enclosureTempGauge = document.getElementById("enclosureTempGauge");
+    const enclosureTempGaugeFill = enclosureTempGauge.querySelector(".arc-gauge__fill");
+    const enclosureTempValueEl = document.getElementById("enclosureTempValue");
 
     const axisValueEls = {
       spindle: document.getElementById("axis-value-spindle"),
@@ -295,7 +295,7 @@
       y: [],
       z: []
     };
-    let spindleTempAvailable = false;
+    let enclosureTempAvailable = false;
     let HISTORY_WINDOW_MS = 60000;
     let pageActive = true;
     let chartBatchDepth = 0;
@@ -307,8 +307,8 @@
     let axesCanvasHeight = 0;
     let spindleGaugeTargetValue = 0;
     let spindleGaugeDisplayValue = 0;
-    let spindleTempTargetC = SPINDLE_TEMP_MIN_C;
-    let spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
+    let enclosureTempTargetC = ENCLOSURE_TEMP_MIN_C;
+    let enclosureTempDisplayC = ENCLOSURE_TEMP_MIN_C;
     let graphPressTimer = null;
     let settingsSaveTimer = null;
     let axisSaveTimer = null;
@@ -464,15 +464,15 @@
       return Math.max(0, Math.min(100, Math.round(v)));
     }
 
-    function clampSpindleTemperature(value){
+    function clampEnclosureTemperature(value){
       const v = Number(value);
-      if (!Number.isFinite(v)) return SPINDLE_TEMP_MIN_C;
-      return Math.max(SPINDLE_TEMP_MIN_C, Math.min(SPINDLE_TEMP_MAX_C, v));
+      if (!Number.isFinite(v)) return ENCLOSURE_TEMP_MIN_C;
+      return Math.max(ENCLOSURE_TEMP_MIN_C, Math.min(ENCLOSURE_TEMP_MAX_C, v));
     }
 
     function temperatureToProgress(value){
-      const clamped = clampSpindleTemperature(value);
-      return ((clamped - SPINDLE_TEMP_MIN_C) / (SPINDLE_TEMP_MAX_C - SPINDLE_TEMP_MIN_C)) * 100;
+      const clamped = clampEnclosureTemperature(value);
+      return ((clamped - ENCLOSURE_TEMP_MIN_C) / (ENCLOSURE_TEMP_MAX_C - ENCLOSURE_TEMP_MIN_C)) * 100;
     }
 
     function setGaugeProgress(fillEl, value){
@@ -487,62 +487,62 @@
       spindleGaugeTargetValue = v;
     }
 
-    function setSpindleTemperatureValue(value){
-      const clamped = clampSpindleTemperature(value);
-      spindleTempValueEl.textContent = `${clamped.toLocaleString("de-DE", {
+    function setEnclosureTemperatureValue(value){
+      const clamped = clampEnclosureTemperature(value);
+      enclosureTempValueEl.textContent = `${clamped.toLocaleString("de-DE", {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1
       })}\u00B0C`;
-      spindleTempTargetC = clamped;
+      enclosureTempTargetC = clamped;
     }
 
     function temperatureColorFor(value){
-      const temp = clampSpindleTemperature(value);
-      const ratio = (temp - SPINDLE_TEMP_MIN_C) / (SPINDLE_TEMP_MAX_C - SPINDLE_TEMP_MIN_C);
+      const temp = clampEnclosureTemperature(value);
+      const ratio = (temp - ENCLOSURE_TEMP_MIN_C) / (ENCLOSURE_TEMP_MAX_C - ENCLOSURE_TEMP_MIN_C);
       if (ratio >= 0.85) return "#8c1d18";
       if (ratio >= 0.6) return "#c56a00";
       if (ratio >= 0.35) return "#5f7f14";
       return "#0d5b8a";
     }
 
-    function applySpindleTemperaturePayload(payload){
+    function applyEnclosureTemperaturePayload(payload){
       const available = !!(payload && payload.available);
       const temperature = Number(payload && payload.temperatureC);
-      const wasAvailable = spindleTempAvailable;
+      const wasAvailable = enclosureTempAvailable;
 
-      spindleTempAvailable = available && Number.isFinite(temperature);
-      spindleTempGauge.dataset.state = spindleTempAvailable ? "ok" : "error";
+      enclosureTempAvailable = available && Number.isFinite(temperature);
+      enclosureTempGauge.dataset.state = enclosureTempAvailable ? "ok" : "error";
 
-      if (!spindleTempAvailable){
-        spindleTempValueEl.textContent = "--.-\u00B0C";
-        spindleTempTargetC = SPINDLE_TEMP_MIN_C;
-        spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
-        setGaugeProgress(spindleTempGaugeFill, 0);
-        spindleTempGauge.style.setProperty("--gauge-color", "#9b9b9b");
+      if (!enclosureTempAvailable){
+        enclosureTempValueEl.textContent = "--.-\u00B0C";
+        enclosureTempTargetC = ENCLOSURE_TEMP_MIN_C;
+        enclosureTempDisplayC = ENCLOSURE_TEMP_MIN_C;
+        setGaugeProgress(enclosureTempGaugeFill, 0);
+        enclosureTempGauge.style.setProperty("--gauge-color", "#9b9b9b");
         return;
       }
 
-      const nextTemperature = clampSpindleTemperature(temperature);
-      spindleTempGauge.style.setProperty("--gauge-color", temperatureColorFor(nextTemperature));
-      setSpindleTemperatureValue(nextTemperature);
+      const nextTemperature = clampEnclosureTemperature(temperature);
+      enclosureTempGauge.style.setProperty("--gauge-color", temperatureColorFor(nextTemperature));
+      setEnclosureTemperatureValue(nextTemperature);
       if (!wasAvailable){
-        spindleTempDisplayC = nextTemperature;
-        setGaugeProgress(spindleTempGaugeFill, temperatureToProgress(nextTemperature));
+        enclosureTempDisplayC = nextTemperature;
+        setGaugeProgress(enclosureTempGaugeFill, temperatureToProgress(nextTemperature));
       }
     }
 
-    function loadSpindleTemperature(){
+    function loadEnclosureTemperature(){
       if (!pageActive){
         return;
       }
 
-      fetch(`${API_BASE}/api/hardware/spindle-temperature`)
+      fetch(`${API_BASE}/api/hardware/enclosure-temperature`)
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
-          applySpindleTemperaturePayload(data);
+          applyEnclosureTemperaturePayload(data);
         })
         .catch(() => {
-          applySpindleTemperaturePayload(null);
+          applyEnclosureTemperaturePayload(null);
         });
     }
 
@@ -730,14 +730,14 @@
       );
       setGaugeProgress(spindleGaugeFill, spindleGaugeDisplayValue);
 
-      if (spindleTempAvailable){
-        spindleTempDisplayC = animateDisplayValue(
-          spindleTempDisplayC,
-          spindleTempTargetC,
+      if (enclosureTempAvailable){
+        enclosureTempDisplayC = animateDisplayValue(
+          enclosureTempDisplayC,
+          enclosureTempTargetC,
           deltaMs,
           TEMP_GAUGE_RESPONSE_MS
         );
-        setGaugeProgress(spindleTempGaugeFill, temperatureToProgress(spindleTempDisplayC));
+        setGaugeProgress(enclosureTempGaugeFill, temperatureToProgress(enclosureTempDisplayC));
       }
     }
 
@@ -1102,16 +1102,16 @@
     });
 
     setupGaugePaths(spindleGauge);
-    setupGaugePaths(spindleTempGauge);
+    setupGaugePaths(enclosureTempGauge);
 
     const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
     spindleGaugeDisplayValue = axisValues.spindle;
     spindleGaugeTargetValue = axisValues.spindle;
     setGaugeProgress(spindleGaugeFill, spindleGaugeDisplayValue);
-    spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
-    spindleTempTargetC = SPINDLE_TEMP_MIN_C;
-    setGaugeProgress(spindleTempGaugeFill, 0);
+    enclosureTempDisplayC = ENCLOSURE_TEMP_MIN_C;
+    enclosureTempTargetC = ENCLOSURE_TEMP_MIN_C;
+    setGaugeProgress(enclosureTempGaugeFill, 0);
     sensorAxisKeys.forEach((axis) => {
       syncAxisCalibrationModal(axis);
       axisCalibrationUi[axis].minSlider.addEventListener("input", () => updateAxisCalibrationDraft(axis, "min"));
@@ -1130,8 +1130,8 @@
     pushHistory(performance.now());
     updateGraphWindow(60, false);
     loadSettings();
-    loadSpindleTemperature();
-    setInterval(loadSpindleTemperature, SPINDLE_TEMP_REFRESH_MS);
+    loadEnclosureTemperature();
+    setInterval(loadEnclosureTemperature, ENCLOSURE_TEMP_REFRESH_MS);
     updateAxesCanvasSize();
     requestChartDraw();
     ensureAnimationLoop();

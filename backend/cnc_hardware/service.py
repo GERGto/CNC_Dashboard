@@ -122,7 +122,7 @@ class HardwareBackend:
 
     def get_snapshot(self, force_refresh=False):
         self.sync_hardware_estop(force_refresh=force_refresh)
-        spindle_temperature = self.get_spindle_temperature(force_refresh=force_refresh)
+        enclosure_temperature = self.get_enclosure_temperature(force_refresh=force_refresh)
         axis_loads = self.get_axis_loads(force_refresh=force_refresh)
         safety_inputs = self.get_emergency_stop_inputs(force_refresh=False)
         relay_board = self.get_relay_board()
@@ -133,13 +133,14 @@ class HardwareBackend:
                 "primary": "i2c",
                 "i2c": {
                     "bus": self.primary_i2c_bus,
-                    "devicePath": spindle_temperature["devicePath"],
+                    "devicePath": enclosure_temperature["devicePath"],
                     "relayBoardAddress": relay_board["address"],
                     "relayBoardAddressHex": relay_board["addressHex"],
                 },
             },
             "sensors": {
-                "spindleTemperature": spindle_temperature,
+                "enclosureTemperature": enclosure_temperature,
+                "spindleTemperature": dict(enclosure_temperature),
                 "axisLoads": axis_loads,
                 "safetyInputs": safety_inputs,
             },
@@ -149,7 +150,7 @@ class HardwareBackend:
             },
         }
 
-    def get_spindle_temperature(self, force_refresh=False):
+    def get_enclosure_temperature(self, force_refresh=False):
         with self._lock:
             if (
                 not force_refresh
@@ -158,7 +159,7 @@ class HardwareBackend:
             ):
                 return dict(self._spindle_temperature_cache)
 
-        reading = self._read_spindle_temperature()
+        reading = self._read_enclosure_temperature()
 
         with self._lock:
             self._spindle_temperature_cache = dict(reading)
@@ -166,11 +167,14 @@ class HardwareBackend:
 
         return dict(reading)
 
-    def _read_spindle_temperature(self):
+    def get_spindle_temperature(self, force_refresh=False):
+        return self.get_enclosure_temperature(force_refresh=force_refresh)
+
+    def _read_enclosure_temperature(self):
         base_payload = {
-            "sensorId": "spindle-temperature",
-            "displayName": "Spindeltemperatur",
-            "role": "spindleTemperature",
+            "sensorId": "enclosure-temperature",
+            "displayName": "Gehäusetemperatur",
+            "role": "enclosureTemperature",
             "available": False,
             "status": "unavailable",
             "error": "",

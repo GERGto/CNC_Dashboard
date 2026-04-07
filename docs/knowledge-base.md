@@ -7,6 +7,11 @@ Das Dashboard laeuft auf einem Raspberry Pi 4 mit DietPi und wird lokal im Kiosk
 
 Ziel ist eine zentrale Bedien- und Statusoberflaeche fuer Maschinenzustand, Wartung, Hardware-Steuerung und spaetere Remote-Funktionen.
 
+## Schreibweise
+
+- In UI-Texten, Benutzertexten und Dokumentation verwenden wir echte deutsche Umlaute wie `ä`, `ö`, `ü` und `ß`.
+- Umschriften wie `ae`, `oe`, `ue` oder `ss` nutzen wir nur dort, wo technische Bezeichner ASCII bleiben muessen, zum Beispiel in IDs, Rollen, API-Feldern, Dateipfaden oder Legacy-Endpunkten.
+
 ## Aktueller Produktfokus
 
 Die primaeren Aufgaben des Dashboards sind:
@@ -152,7 +157,7 @@ Letzter bekannter Live-Scan auf `/dev/i2c-1`:
 - `0x44`
 - `0x52`
 
-- `Adafruit AHT20` fuer die Spindeltemperatur auf `0x38`
+- `Adafruit AHT20` fuer die Gehäusetemperatur auf `0x38`
 - `Adafruit INA228` fuer die `X`-Achslast auf `0x40`
 - `GHI GDL-ACRELAYP4-C` 4-Kanal-Relais auf `0x52` (`82` dezimal)
 - `PCF8574`-kompatibles 8-Kanal-Optokoppler-Eingangsmodul auf `0x21`

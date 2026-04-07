@@ -1,10 +1,10 @@
-# Adafruit AHT20 Spindeltemperatur-Sensor
+# Adafruit AHT20 Gehäusetemperatur-Sensor
 
 ## Rolle im System
 
 - Sensor: `Adafruit AHT20`
-- Aufgabe im Projekt: Misst die Spindeltemperatur
-- Zusatznutzen: Der Sensor liefert auch relative Luftfeuchtigkeit, obwohl aktuell primaer die Temperatur der Spindel relevant ist
+- Aufgabe im Projekt: Misst die Gehäusetemperatur
+- Zusatznutzen: Der Sensor liefert auch relative Luftfeuchtigkeit, obwohl aktuell primaer die Temperatur des Gehäuses relevant ist
 
 ## Anschluss und Adresse
 
@@ -18,9 +18,9 @@
 ## Verifikation
 
 - Datum: `2026-04-06`
-- Aussage des Projekts: Die Adresse `0x38` ist der AHT20 fuer die Spindeltemperatur
+- Aussage des Projekts: Die Adresse `0x38` ist der AHT20 fuer die Gehäusetemperatur
 - I2C-Scan auf dem Pi: `0x38` wurde weiterhin auf `/dev/i2c-1` gefunden, gemeinsam mit `0x21`, `0x40`, `0x41`, `0x44` und `0x52`
-- Der Sensor bleibt ueber `GET /api/hardware/spindle-temperature` und eingebettet ueber `GET /api/hardware` verdrahtet
+- Der Sensor bleibt ueber `GET /api/hardware/enclosure-temperature` und eingebettet ueber `GET /api/hardware` verdrahtet
 
 ## Backend-Anbindung
 
@@ -29,19 +29,20 @@
 - Laufzeit: innerhalb von `cnc-dashboard-backend.service`, kein separater eigener Hardware-Service
 - HTTP-Endpunkte:
   - `GET /api/hardware`
-  - `GET /api/hardware/spindle-temperature`
+  - `GET /api/hardware/enclosure-temperature`
+  - `GET /api/hardware/spindle-temperature` als Legacy-Alias
 
 ## API-Ansteuerung
 
-- Primaerer Endpunkt fuer die Spindeltemperatur: `GET /api/hardware/spindle-temperature`
+- Primaerer Endpunkt fuer die Gehäusetemperatur: `GET /api/hardware/enclosure-temperature`
 - Fuer einen direkten Neu-Read ohne Cache: Query `?refresh=1` anhaengen
-- Sammelendpunkt mit eingebetteter Spindeltemperatur: `GET /api/hardware`
+- Sammelendpunkt mit eingebetteter Gehäusetemperatur: `GET /api/hardware`
 
-Typische Rueckgabefelder von `GET /api/hardware/spindle-temperature`:
+Typische Rueckgabefelder von `GET /api/hardware/enclosure-temperature`:
 
 - `available`: Ob der Sensor aktuell erfolgreich gelesen werden konnte
 - `status`: `ok` oder `unavailable`
-- `temperatureC`: Gemessene Spindeltemperatur in Grad Celsius
+- `temperatureC`: Gemessene Gehäusetemperatur in Grad Celsius
 - `humidityPercent`: Relative Luftfeuchtigkeit vom AHT20
 - `measuredAt`: UTC-Zeitpunkt der letzten Messung
 - `error`: Fehlertext bei I2C- oder Sensorproblemen
@@ -49,10 +50,10 @@ Typische Rueckgabefelder von `GET /api/hardware/spindle-temperature`:
 
 ## Lokale Testbefehle auf dem Pi
 
-Direkter Test des Spindeltemperatur-Endpunkts:
+Direkter Test des Gehäusetemperatur-Endpunkts:
 
 ```bash
-curl -fsS "http://127.0.0.1:8080/api/hardware/spindle-temperature?refresh=1"
+curl -fsS "http://127.0.0.1:8080/api/hardware/enclosure-temperature?refresh=1"
 ```
 
 Gesamtuebersicht des Hardware-Backends:
@@ -81,7 +82,7 @@ id dietpi
 
 ## Offene Punkte
 
-- Dauerhafte Grenzwerte und Alarmregeln fuer die Spindeltemperatur definieren
-- Physische Einbauposition am Spindelgehaeuse dokumentieren
+- Dauerhafte Grenzwerte und Alarmregeln fuer die Gehäusetemperatur definieren
+- Physische Einbauposition am Spindelgehäuse dokumentieren
 - Erwartete Temperaturbereiche im Betrieb definieren
 - Spaeter Grenzwerte, Warnungen und Verlaufsspeicherung aufbauen

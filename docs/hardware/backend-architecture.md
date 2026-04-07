@@ -21,7 +21,7 @@ Die aktuelle Ausbaustufe besteht aus sechs Hardware-Modulen plus Backend-Koordin
 1. `backend/cnc_hardware/i2c.py`
    - Linux-I2C-Zugriff ueber `/dev/i2c-*` ohne zusaetzliche Python-Abhaengigkeiten
 2. `backend/cnc_hardware/sensors.py`
-   - Sensortreiber fuer den `AHT20` der Spindeltemperatur und die `INA228`-Achslastsensoren
+   - Sensortreiber fuer den `AHT20` der Gehäusetemperatur und die `INA228`-Achslastsensoren
 3. `backend/cnc_hardware/duelink_relay.py`
    - Aktortreiber fuer das `GHI GDL-ACRELAYP4-C` Relaisboard auf `0x52`
 4. `backend/cnc_hardware/pcf8574_inputs.py`
@@ -44,8 +44,10 @@ aktuell folgende Hardware-Endpunkte bereit:
 
 - `GET /api/hardware`
   - Gesamtuebersicht ueber Sensoren, Aktoren, Safety-Inputs und I2C-Metadaten
+- `GET /api/hardware/enclosure-temperature`
+  - Direkter Zugriff auf den AHT20-Messwert der Gehäusetemperatur
 - `GET /api/hardware/spindle-temperature`
-  - Direkter Zugriff auf den AHT20-Messwert der Spindeltemperatur
+  - Legacy-Alias fuer denselben Temperaturwert
 - `GET /api/hardware/axis-loads`
   - Direkter Zugriff auf die INA228-Messwerte fuer `X`, `Y` und `Z`
 - `GET /api/hardware/relays`
