@@ -6,7 +6,7 @@
   <title>Home</title>
   <link rel="stylesheet" href="../assets/ui-common.css?v=20260326-03" />
   <link rel="stylesheet" href="../assets/app.css?v=20260326-03" />
-  <link rel="stylesheet" href="home.css?v=20260329-02" />
+  <link rel="stylesheet" href="home.css?v=20260407-04" />
 </head>
 <body class="home">
   <main class="home-layout" role="main">
@@ -74,12 +74,7 @@
           <div class="axis-label-x axis-label-x--mid" id="axisLabelMid">30s</div>
           <div class="axis-label-x axis-label-x--right" id="axisLabelRight">0s</div>
         </div>
-        <svg class="axes-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <polyline class="axis-line" id="line-spindle" data-axis="spindle"></polyline>
-          <polyline class="axis-line" id="line-x" data-axis="x"></polyline>
-          <polyline class="axis-line" id="line-y" data-axis="y"></polyline>
-          <polyline class="axis-line" id="line-z" data-axis="z"></polyline>
-        </svg>
+        <canvas class="axes-canvas" id="axesCanvas" aria-hidden="true"></canvas>
       </div>
 
       <div class="axes-field" aria-label="Achsenlasten Legende">
@@ -259,7 +254,6 @@
     const SPINDLE_TEMP_MIN_C = 20;
     const SPINDLE_TEMP_MAX_C = 55;
     const SPINDLE_TEMP_REFRESH_MS = 5000;
-    const RENDER_INTERVAL_MS = 1000 / 20;
     const axisState = {};
 
     const spindleValueEl = document.getElementById("spindleValue");
@@ -276,18 +270,19 @@
       z: document.getElementById("axis-value-z")
     };
 
-    const lineEls = {
-      spindle: document.getElementById("line-spindle"),
-      x: document.getElementById("line-x"),
-      y: document.getElementById("line-y"),
-      z: document.getElementById("line-z")
-    };
-
     const cardEls = {
       spindle: document.querySelector('.axis-card[data-axis="spindle"]'),
       x: document.querySelector('.axis-card[data-axis="x"]'),
       y: document.querySelector('.axis-card[data-axis="y"]'),
       z: document.querySelector('.axis-card[data-axis="z"]')
+    };
+    const axesCanvas = document.getElementById("axesCanvas");
+    const axesContext = axesCanvas ? axesCanvas.getContext("2d") : null;
+    const axisColors = {
+      spindle: "#000000",
+      x: "#0d5b8a",
+      y: "#1c7b35",
+      z: "#8a3d0d"
     };
 
     const axisValues = { spindle: 0, x: 0, y: 0, z: 0 };
@@ -300,19 +295,20 @@
       y: [],
       z: []
     };
-    let spindleDisplayValue = 0;
-    const SPINDLE_SMOOTH = 0.12;
+    let spindleTempAvailable = false;
+    let HISTORY_WINDOW_MS = 60000;
+    let pageActive = true;
+    let chartBatchDepth = 0;
+    let chartDrawQueued = true;
+    let animationFrameId = 0;
+    let lastAnimationTs = 0;
+    let lastChartRenderTs = 0;
+    let axesCanvasWidth = 0;
+    let axesCanvasHeight = 0;
+    let spindleGaugeTargetValue = 0;
+    let spindleGaugeDisplayValue = 0;
     let spindleTempTargetC = SPINDLE_TEMP_MIN_C;
     let spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
-    let spindleTempAvailable = false;
-    const SPINDLE_TEMP_SMOOTH = 0.15;
-    let HISTORY_WINDOW_MS = 60000;
-    const HISTORY_INTERVAL_MS = 250;
-    let animationFrameId = 0;
-    let lastRenderTs = 0;
-    let lastHistoryTs = 0;
-    let chartDirty = true;
-    let pageActive = true;
     let graphPressTimer = null;
     let settingsSaveTimer = null;
     let axisSaveTimer = null;
@@ -371,6 +367,13 @@
     const GAUGE_R = 140;
     const GAUGE_STROKE_W = 52;
     const GAUGE_TOTAL_LEN = Math.PI * GAUGE_R;
+    const CHART_DEVICE_PIXEL_RATIO = 1;
+    const CHART_RENDER_INTERVAL_MS = 1000 / 50;
+    const GAUGE_RESPONSE_MS = 160;
+    const TEMP_GAUGE_RESPONSE_MS = 190;
+    const DISPLAY_EPSILON = 0.05;
+    const CHART_LEFT_FADE_FRACTION = 0.14;
+    const CHART_LEFT_FADE_MIN_PX = 24;
 
     function clampCalibrationAmp(value){
       const v = Number(value);
@@ -481,17 +484,16 @@
     function setSpindleValue(value){
       const v = clampPercent(value);
       spindleValueEl.textContent = `${v}%`;
-      setGaugeProgress(spindleGaugeFill, v);
+      spindleGaugeTargetValue = v;
     }
 
     function setSpindleTemperatureValue(value){
       const clamped = clampSpindleTemperature(value);
-      const progress = temperatureToProgress(clamped);
       spindleTempValueEl.textContent = `${clamped.toLocaleString("de-DE", {
         minimumFractionDigits: 1,
         maximumFractionDigits: 1
       })}\u00B0C`;
-      setGaugeProgress(spindleTempGaugeFill, progress);
+      spindleTempTargetC = clamped;
     }
 
     function temperatureColorFor(value){
@@ -506,21 +508,27 @@
     function applySpindleTemperaturePayload(payload){
       const available = !!(payload && payload.available);
       const temperature = Number(payload && payload.temperatureC);
+      const wasAvailable = spindleTempAvailable;
 
       spindleTempAvailable = available && Number.isFinite(temperature);
       spindleTempGauge.dataset.state = spindleTempAvailable ? "ok" : "error";
 
       if (!spindleTempAvailable){
         spindleTempValueEl.textContent = "--.-\u00B0C";
+        spindleTempTargetC = SPINDLE_TEMP_MIN_C;
+        spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
         setGaugeProgress(spindleTempGaugeFill, 0);
         spindleTempGauge.style.setProperty("--gauge-color", "#9b9b9b");
-        spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
-        spindleTempTargetC = SPINDLE_TEMP_MIN_C;
         return;
       }
 
-      spindleTempTargetC = clampSpindleTemperature(temperature);
-      spindleTempGauge.style.setProperty("--gauge-color", temperatureColorFor(spindleTempTargetC));
+      const nextTemperature = clampSpindleTemperature(temperature);
+      spindleTempGauge.style.setProperty("--gauge-color", temperatureColorFor(nextTemperature));
+      setSpindleTemperatureValue(nextTemperature);
+      if (!wasAvailable){
+        spindleTempDisplayC = nextTemperature;
+        setGaugeProgress(spindleTempGaugeFill, temperatureToProgress(nextTemperature));
+      }
     }
 
     function loadSpindleTemperature(){
@@ -554,29 +562,250 @@
       }
     }
 
-    function renderChart(now){
+    function pruneHistory(now){
       axisKeys.forEach((axis) => {
-        const line = lineEls[axis];
-        if (!line) return;
-        if (axis !== "spindle" && !axisAvailability[axis]){
-          line.setAttribute("points", "");
-          return;
-        }
         const data = history[axis];
-        if (!data.length){
-          line.setAttribute("points", "");
+        while (data.length && data[0].t < now - HISTORY_WINDOW_MS - 1000){
+          data.shift();
+        }
+      });
+    }
+
+    function updateAxesCanvasSize(){
+      if (!axesCanvas || !axesChart) return false;
+      const chartStyles = window.getComputedStyle(axesChart);
+      const paddingLeft = parseFloat(chartStyles.paddingLeft) || 0;
+      const paddingRight = parseFloat(chartStyles.paddingRight) || 0;
+      const paddingTop = parseFloat(chartStyles.paddingTop) || 0;
+      const paddingBottom = parseFloat(chartStyles.paddingBottom) || 0;
+      const width = Math.max(1, Math.round((axesChart.clientWidth - paddingLeft - paddingRight) * CHART_DEVICE_PIXEL_RATIO));
+      const height = Math.max(1, Math.round((axesChart.clientHeight - paddingTop - paddingBottom) * CHART_DEVICE_PIXEL_RATIO));
+
+      if (axesCanvasWidth === width && axesCanvasHeight === height){
+        return false;
+      }
+      axesCanvasWidth = width;
+      axesCanvasHeight = height;
+      axesCanvas.style.width = `${width}px`;
+      axesCanvas.style.height = `${height}px`;
+      axesCanvas.width = width;
+      axesCanvas.height = height;
+      return true;
+    }
+
+    function drawAxisSeries(axis, now, width, height, color, lineWidth){
+      if (!axesContext){
+        return;
+      }
+
+      const data = history[axis];
+      if (!data.length){
+        return;
+      }
+
+      const windowStart = now - HISTORY_WINDOW_MS;
+      let startIndex = 0;
+      while (startIndex < data.length && data[startIndex].t < windowStart){
+        startIndex += 1;
+      }
+      if (startIndex >= data.length){
+        return;
+      }
+
+      const firstPoint = data[startIndex];
+      const firstX = ((firstPoint.t - windowStart) / HISTORY_WINDOW_MS) * width;
+      const firstY = height - ((firstPoint.v / 100) * height);
+
+      axesContext.beginPath();
+      axesContext.moveTo(firstX, firstY);
+
+      if (startIndex === data.length - 1){
+        axesContext.lineTo(width, firstY);
+      } else {
+        for (let index = startIndex + 1; index < data.length - 1; index += 1){
+          const currentPoint = data[index];
+          const nextPoint = data[index + 1];
+          const currentX = ((currentPoint.t - windowStart) / HISTORY_WINDOW_MS) * width;
+          const currentY = height - ((currentPoint.v / 100) * height);
+          const nextX = ((nextPoint.t - windowStart) / HISTORY_WINDOW_MS) * width;
+          const nextY = height - ((nextPoint.v / 100) * height);
+          const controlX = (currentX + nextX) * 0.5;
+          const controlY = (currentY + nextY) * 0.5;
+          axesContext.quadraticCurveTo(currentX, currentY, controlX, controlY);
+        }
+
+        const lastPoint = data[data.length - 1];
+        const lastX = ((lastPoint.t - windowStart) / HISTORY_WINDOW_MS) * width;
+        const lastY = height - ((lastPoint.v / 100) * height);
+        axesContext.lineTo(lastX, lastY);
+        if (lastX < width){
+          axesContext.lineTo(width, lastY);
+        }
+      }
+
+      axesContext.strokeStyle = color;
+      axesContext.lineWidth = lineWidth;
+      axesContext.lineCap = "round";
+      axesContext.lineJoin = "round";
+      axesContext.stroke();
+    }
+
+    function applyChartLeftFade(width, height){
+      if (!axesContext || width <= 0 || height <= 0){
+        return;
+      }
+
+      const fadeWidth = Math.min(
+        width,
+        Math.max(CHART_LEFT_FADE_MIN_PX, Math.round(width * CHART_LEFT_FADE_FRACTION))
+      );
+      if (fadeWidth <= 0){
+        return;
+      }
+
+      const gradient = axesContext.createLinearGradient(0, 0, fadeWidth, 0);
+      gradient.addColorStop(0, "rgba(255, 255, 255, 0.96)");
+      gradient.addColorStop(0.55, "rgba(255, 255, 255, 0.34)");
+      gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+      axesContext.save();
+      axesContext.fillStyle = gradient;
+      axesContext.fillRect(0, 0, fadeWidth, height);
+      axesContext.restore();
+    }
+
+    function drawChart(now = performance.now()){
+      if (!axesCanvas || !axesContext || !pageActive){
+        return;
+      }
+
+      updateAxesCanvasSize();
+      pruneHistory(now);
+      if (!axesCanvasWidth || !axesCanvasHeight){
+        return;
+      }
+
+      const width = axesCanvasWidth;
+      const height = axesCanvasHeight;
+      axesContext.clearRect(0, 0, width, height);
+
+      axisKeys.forEach((axis) => {
+        if (!axisState[axis]){
           return;
         }
-        const windowStart = now - HISTORY_WINDOW_MS;
-        const points = data
-          .filter((p) => p.t >= windowStart)
-          .map((p) => {
-            const x = ((p.t - windowStart) / HISTORY_WINDOW_MS) * 100;
-            const y = 100 - (p.v / 100) * 100;
-            return `${x.toFixed(2)},${y.toFixed(2)}`;
-          });
-        line.setAttribute("points", points.join(" "));
+        if (axis !== "spindle" && !axisAvailability[axis]){
+          return;
+        }
+
+        drawAxisSeries(
+          axis,
+          now,
+          width,
+          height,
+          axisColors[axis],
+          axis === "spindle" ? 3 : 2
+        );
       });
+
+      applyChartLeftFade(width, height);
+    }
+
+    function animateDisplayValue(current, target, deltaMs, responseMs){
+      if (!Number.isFinite(current) || !Number.isFinite(target)){
+        return target;
+      }
+      if (Math.abs(target - current) <= DISPLAY_EPSILON){
+        return target;
+      }
+      const alpha = 1 - Math.exp(-Math.max(0, deltaMs) / responseMs);
+      return current + ((target - current) * alpha);
+    }
+
+    function updateGaugeAnimations(deltaMs){
+      spindleGaugeDisplayValue = animateDisplayValue(
+        spindleGaugeDisplayValue,
+        spindleGaugeTargetValue,
+        deltaMs,
+        GAUGE_RESPONSE_MS
+      );
+      setGaugeProgress(spindleGaugeFill, spindleGaugeDisplayValue);
+
+      if (spindleTempAvailable){
+        spindleTempDisplayC = animateDisplayValue(
+          spindleTempDisplayC,
+          spindleTempTargetC,
+          deltaMs,
+          TEMP_GAUGE_RESPONSE_MS
+        );
+        setGaugeProgress(spindleTempGaugeFill, temperatureToProgress(spindleTempDisplayC));
+      }
+    }
+
+    function animateFrame(now){
+      if (!pageActive){
+        animationFrameId = 0;
+        lastAnimationTs = 0;
+        lastChartRenderTs = 0;
+        return;
+      }
+
+      if (!lastAnimationTs){
+        lastAnimationTs = now;
+        lastChartRenderTs = now - CHART_RENDER_INTERVAL_MS;
+      }
+
+      const deltaMs = Math.min(100, now - lastAnimationTs);
+      lastAnimationTs = now;
+
+      updateGaugeAnimations(deltaMs);
+
+      if (chartDrawQueued || (now - lastChartRenderTs) >= CHART_RENDER_INTERVAL_MS){
+        drawChart(now);
+        chartDrawQueued = false;
+        lastChartRenderTs = now;
+      }
+
+      animationFrameId = requestAnimationFrame((nextNow) => {
+        animateFrame(nextNow);
+      });
+    }
+
+    function ensureAnimationLoop(){
+      if (!pageActive || animationFrameId){
+        return;
+      }
+      animationFrameId = requestAnimationFrame((now) => {
+        animateFrame(now);
+      });
+    }
+
+    function stopAnimationLoop(){
+      if (animationFrameId){
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
+      }
+      lastAnimationTs = 0;
+      lastChartRenderTs = 0;
+    }
+
+    function requestChartDraw(){
+      chartDrawQueued = true;
+      if (chartBatchDepth > 0){
+        return;
+      }
+      ensureAnimationLoop();
+    }
+
+    function runWithChartBatch(callback){
+      chartBatchDepth += 1;
+      try{
+        callback();
+      } finally {
+        chartBatchDepth = Math.max(0, chartBatchDepth - 1);
+        if (chartBatchDepth === 0 && chartDrawQueued){
+          requestChartDraw();
+        }
+      }
     }
 
     function updateAxisLabels(windowMs){
@@ -591,7 +820,7 @@
       const s = Math.max(10, Math.min(120, Number(seconds) || 60));
       HISTORY_WINDOW_MS = s * 1000;
       updateAxisLabels(HISTORY_WINDOW_MS);
-      chartDirty = true;
+      requestChartDraw();
       if (persist){
         scheduleSettingsSave(s);
       }
@@ -613,19 +842,21 @@
         .then((res) => res.ok ? res.json() : null)
         .then((data) => {
           if (!data || typeof data !== "object") return;
-          if (typeof data.graphWindowSec === "number"){
-            updateGraphWindow(data.graphWindowSec, false);
-          }
-          if (data.axisVisibility && typeof data.axisVisibility === "object"){
-            axisKeys.forEach((axis) => {
-              if (data.axisVisibility[axis] !== undefined){
-                setAxisEnabled(axis, !!data.axisVisibility[axis], false);
-              }
-            });
-          }
-          if (data.axisLoadCalibration && typeof data.axisLoadCalibration === "object"){
-            applyAxisCalibrationMap(data.axisLoadCalibration);
-          }
+          runWithChartBatch(() => {
+            if (typeof data.graphWindowSec === "number"){
+              updateGraphWindow(data.graphWindowSec, false);
+            }
+            if (data.axisVisibility && typeof data.axisVisibility === "object"){
+              axisKeys.forEach((axis) => {
+                if (data.axisVisibility[axis] !== undefined){
+                  setAxisEnabled(axis, !!data.axisVisibility[axis], false);
+                }
+              });
+            }
+            if (data.axisLoadCalibration && typeof data.axisLoadCalibration === "object"){
+              applyAxisCalibrationMap(data.axisLoadCalibration);
+            }
+          });
         })
         .catch(() => {});
     }
@@ -645,59 +876,9 @@
 
     function pushHistory(now){
       axisKeys.forEach((axis) => {
-        const data = history[axis];
-        data.push({ t: now, v: axisValues[axis] });
-        while (data.length && data[0].t < now - HISTORY_WINDOW_MS - 1000){
-          data.shift();
-        }
+        history[axis].push({ t: now, v: axisValues[axis] });
       });
-      chartDirty = true;
-    }
-
-    function ensureTickScheduled(){
-      if (animationFrameId){
-        return;
-      }
-      animationFrameId = requestAnimationFrame(tick);
-    }
-
-    function tick(now){
-      animationFrameId = 0;
-
-      if (!pageActive){
-        return;
-      }
-
-      if (!lastRenderTs){
-        lastRenderTs = now;
-      }
-      if ((now - lastRenderTs) < RENDER_INTERVAL_MS){
-        ensureTickScheduled();
-        return;
-      }
-      lastRenderTs = now;
-
-      const spindleTarget = axisValues.spindle;
-      spindleDisplayValue += (spindleTarget - spindleDisplayValue) * SPINDLE_SMOOTH;
-      setSpindleValue(spindleDisplayValue);
-
-      if (spindleTempAvailable){
-        spindleTempDisplayC += (spindleTempTargetC - spindleTempDisplayC) * SPINDLE_TEMP_SMOOTH;
-        setSpindleTemperatureValue(spindleTempDisplayC);
-      }
-
-      if (!lastHistoryTs) lastHistoryTs = now;
-      if (now - lastHistoryTs >= HISTORY_INTERVAL_MS){
-        pushHistory(now);
-        lastHistoryTs = now;
-      }
-
-      if (chartDirty){
-        renderChart(now);
-        chartDirty = false;
-      }
-
-      ensureTickScheduled();
+      pruneHistory(now);
     }
 
     function clearGraphPress(){
@@ -710,9 +891,8 @@
       axisState[axis] = isOn;
 
       if (cardEls[axis]) cardEls[axis].classList.toggle("is-off", !isOn);
-      if (lineEls[axis]) lineEls[axis].classList.toggle("is-off", !isOn);
       if (cardEls[axis]) cardEls[axis].setAttribute("aria-pressed", String(isOn));
-      chartDirty = true;
+      requestChartDraw();
       if (persist) scheduleAxisVisibilitySave();
     }
 
@@ -727,7 +907,7 @@
       if (isAvailable && axisValueEls[axis]){
         axisValueEls[axis].textContent = `${clampPercent(axisValues[axis])}%`;
       }
-      chartDirty = true;
+      requestChartDraw();
       updateAxisCalibrationStatus(axis);
     }
 
@@ -864,14 +1044,16 @@
     }
 
     function applyAxisSensorPayload(sensorPayloads){
-      sensorAxisKeys.forEach((axis) => {
-        const payload = sensorPayloads && typeof sensorPayloads === "object" ? sensorPayloads[axis] : null;
-        setAxisAvailability(axis, !!(payload && payload.available));
-        setAxisCurrentA(axis, payload && payload.currentA);
-        if (payload && payload.calibration && typeof payload.calibration === "object" && activeAxisCalibrationModalAxis !== axis){
-          axisLoadCalibration[axis] = normalizeCalibrationRange(payload.calibration, axisLoadCalibration[axis]);
-          syncAxisCalibrationModal(axis);
-        }
+      runWithChartBatch(() => {
+        sensorAxisKeys.forEach((axis) => {
+          const payload = sensorPayloads && typeof sensorPayloads === "object" ? sensorPayloads[axis] : null;
+          setAxisAvailability(axis, !!(payload && payload.available));
+          setAxisCurrentA(axis, payload && payload.currentA);
+          if (payload && payload.calibration && typeof payload.calibration === "object" && activeAxisCalibrationModalAxis !== axis){
+            axisLoadCalibration[axis] = normalizeCalibrationRange(payload.calibration, axisLoadCalibration[axis]);
+            syncAxisCalibrationModal(axis);
+          }
+        });
       });
     }
 
@@ -924,6 +1106,12 @@
 
     const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
+    spindleGaugeDisplayValue = axisValues.spindle;
+    spindleGaugeTargetValue = axisValues.spindle;
+    setGaugeProgress(spindleGaugeFill, spindleGaugeDisplayValue);
+    spindleTempDisplayC = SPINDLE_TEMP_MIN_C;
+    spindleTempTargetC = SPINDLE_TEMP_MIN_C;
+    setGaugeProgress(spindleTempGaugeFill, 0);
     sensorAxisKeys.forEach((axis) => {
       syncAxisCalibrationModal(axis);
       axisCalibrationUi[axis].minSlider.addEventListener("input", () => updateAxisCalibrationDraft(axis, "min"));
@@ -944,38 +1132,62 @@
     loadSettings();
     loadSpindleTemperature();
     setInterval(loadSpindleTemperature, SPINDLE_TEMP_REFRESH_MS);
-    ensureTickScheduled();
+    updateAxesCanvasSize();
+    requestChartDraw();
+    ensureAnimationLoop();
+
+    if (typeof ResizeObserver === "function" && axesChart){
+      const resizeObserver = new ResizeObserver(() => {
+        if (updateAxesCanvasSize()){
+          requestChartDraw();
+        }
+      });
+      resizeObserver.observe(axesChart);
+    } else {
+      window.addEventListener("resize", () => {
+        if (updateAxesCanvasSize()){
+          requestChartDraw();
+        }
+      });
+    }
 
     function applyAxesPayload(payload){
+      const now = performance.now();
       axisKeys.forEach((key) => {
         if (payload && payload[key] !== undefined){
           setAxisValue(key, payload[key]);
         }
       });
+      pushHistory(now);
+      requestChartDraw();
     }
 
     window.addEventListener("message", (ev) => {
       if (ev.origin !== location.origin) return;
       const msg = ev.data || {};
       if (msg.type === "axes"){
-        const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
-        applyAxesPayload(payload);
-        if (msg.axisLoadSensors && typeof msg.axisLoadSensors === "object"){
-          applyAxisSensorPayload(msg.axisLoadSensors);
-        }
+        runWithChartBatch(() => {
+          const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
+          applyAxesPayload(payload);
+          if (msg.axisLoadSensors && typeof msg.axisLoadSensors === "object"){
+            applyAxisSensorPayload(msg.axisLoadSensors);
+          }
+        });
       }
       if (msg.type === "setGraphWindow"){
         updateGraphWindow(msg.seconds, true);
       }
       if (msg.type === "pageShown"){
         pageActive = true;
-        lastRenderTs = 0;
-        chartDirty = true;
+        lastAnimationTs = 0;
+        lastChartRenderTs = 0;
         loadSpindleTemperature();
-        ensureTickScheduled();
+        requestChartDraw();
+        ensureAnimationLoop();
       }
       if (msg.type === "pageHidden"){
         pageActive = false;
+        stopAnimationLoop();
       }
     });
 

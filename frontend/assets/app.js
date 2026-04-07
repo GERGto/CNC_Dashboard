@@ -33,7 +33,7 @@ function createApiBase(){
 }
 
 const API_BASE = createApiBase();
-const AXES_INTERVAL_MS = 500;
+const AXES_INTERVAL_MS = 250;
 const RUNTIME_SAVE_INTERVAL_MS = 5000;
 const MAINTENANCE_REFRESH_MS = 60000;
 const WIFI_STATUS_REFRESH_MS = 10000;
