@@ -178,6 +178,7 @@ body.home{
 .chart-grid{
   position: absolute;
   inset: 0;
+  z-index: 2;
   background-image:
     linear-gradient(to top, #000 1px, transparent 1px),
     linear-gradient(to right, #000 1px, transparent 1px);
@@ -189,6 +190,7 @@ body.home{
 .axis-labels{
   position: absolute;
   inset: 0;
+  z-index: 3;
   pointer-events: none;
   font-size: 10px;
   color: #000;

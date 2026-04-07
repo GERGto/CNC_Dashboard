@@ -49,9 +49,9 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - Request: `{ engaged: true|false }` or `{ on: true|false }`
   - Response: `{ ok, channel, relayBoard }`
 - GET `/api/settings`
-  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, rgbStripBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - POST `/api/settings`
-  - `{ graphWindowSec, lightBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, rgbStripBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - GET `/api/maintenance/tasks`
   - `{ tasks: [{ id, title, intervalType, intervalValue, effortMin, description, lastCompletedAt, spindleRuntimeSecAtCompletion }] }`
   - `intervalType`: `runtimeHours` | `calendarMonths` | `none`

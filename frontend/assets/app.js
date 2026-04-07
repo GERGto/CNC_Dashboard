@@ -53,7 +53,7 @@ const state = {
   wifiIssue: "",
   wifiIpAddress: "",
   lightOn: true,
-  lightBrightness: 75,
+  rgbStripBrightness: 75,
   fanOn: true,
   fanSpeed: 40,
   fanAuto: false,
@@ -331,11 +331,11 @@ function toggleLight(){
 }
 
 function updateLightBrightness(value){
-  const v = Math.max(0, Math.min(100, Number(value) || 0));
-  state.lightBrightness = v;
+  const v = Math.max(10, Math.min(100, Number(value) || 0));
+  state.rgbStripBrightness = v;
   lightSlider.value = String(v);
   lightValue.textContent = `${v}%`;
-  broadcastToFrames({ type: "lightBrightness", value: v });
+  broadcastToFrames({ type: "rgbStripBrightness", value: v });
   queueUiSettingsSave();
 }
 
@@ -369,8 +369,8 @@ function setFanAuto(isAuto, persist = false){
 }
 
 function openLightModal(){
-  lightSlider.value = String(state.lightBrightness);
-  lightValue.textContent = `${state.lightBrightness}%`;
+  lightSlider.value = String(state.rgbStripBrightness);
+  lightValue.textContent = `${state.rgbStripBrightness}%`;
   lightModal.classList.add("is-open");
   lightModal.setAttribute("aria-hidden", "false");
   lightSlider.focus();
@@ -495,7 +495,7 @@ function persistUiSettings(){
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      lightBrightness: state.lightBrightness,
+      rgbStripBrightness: state.rgbStripBrightness,
       fanSpeed: state.fanSpeed,
       fanAuto: state.fanAuto
     })
@@ -603,12 +603,16 @@ function loadUiSettings(){
         fallbackConnected: false,
         broadcast: true,
       });
-      if (typeof data.lightBrightness === "number"){
-        const v = Math.max(0, Math.min(100, data.lightBrightness));
-        state.lightBrightness = v;
+      const rgbStripBrightness =
+        typeof data.rgbStripBrightness === "number"
+          ? data.rgbStripBrightness
+          : data.lightBrightness;
+      if (typeof rgbStripBrightness === "number"){
+        const v = Math.max(10, Math.min(100, rgbStripBrightness));
+        state.rgbStripBrightness = v;
         lightSlider.value = String(v);
         lightValue.textContent = `${v}%`;
-        broadcastToFrames({ type: "lightBrightness", value: v });
+        broadcastToFrames({ type: "rgbStripBrightness", value: v });
       }
       if (typeof data.fanSpeed === "number"){
         const v = Math.max(0, Math.min(100, data.fanSpeed));

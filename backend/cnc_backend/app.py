@@ -64,6 +64,7 @@ class BackendApp:
     def ensure_storage(self):
         self.store.ensure_split_storage()
         self._load_spindle_runtime_state()
+        self._apply_status_indicator_preferences()
 
     def start_background_tasks(self):
         threading.Thread(target=self.wifi_service.autoconnect_wifi_on_startup, daemon=True).start()
@@ -190,10 +191,11 @@ class BackendApp:
 
     def save_settings(self, patch):
         payload = patch if isinstance(patch, dict) else {}
+        saved_ui_settings = None
 
         ui_keys = {
             "graphWindowSec",
-            "lightBrightness",
+            "rgbStripBrightness",
             "fanSpeed",
             "fanAuto",
             "wifiSsid",
@@ -204,7 +206,9 @@ class BackendApp:
         }
         ui_patch = {key: payload[key] for key in ui_keys if key in payload}
         if ui_patch:
-            self.store.save_ui_settings(ui_patch)
+            saved_ui_settings = self.store.save_ui_settings(ui_patch)
+            if "rgbStripBrightness" in ui_patch:
+                self._apply_status_indicator_preferences(saved_ui_settings)
 
         if "spindleRuntimeSec" in payload:
             self.set_spindle_runtime_sec(payload.get("spindleRuntimeSec"), persist=True)
@@ -312,6 +316,11 @@ class BackendApp:
 
         self.store.save_machine_stats({"spindleRuntimeSec": runtime_to_save})
         return runtime_to_save
+
+    def _apply_status_indicator_preferences(self, ui_settings=None):
+        settings = ui_settings if isinstance(ui_settings, dict) else self.store.load_ui_settings()
+        brightness_percent = settings.get("rgbStripBrightness", 75)
+        self.hardware_backend.set_status_indicator_dynamic_brightness(brightness_percent)
 
     def _status_indicator_worker(self):
         interval_sec = max(0.25, float(self.config.status_indicator_sync_interval_sec))

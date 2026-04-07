@@ -1,6 +1,6 @@
 {
   "graphWindowSec": 30,
-  "lightBrightness": 57,
+  "rgbStripBrightness": 57,
   "fanSpeed": 59,
   "fanAuto": true,
   "wifiSsid": "coppi_homenet",

@@ -71,7 +71,7 @@ class SettingsStore:
     def default_ui_settings(self):
         return {
             "graphWindowSec": 60,
-            "lightBrightness": 75,
+            "rgbStripBrightness": 75,
             "fanSpeed": 40,
             "fanAuto": False,
             "wifiSsid": "",
@@ -266,15 +266,16 @@ class SettingsStore:
         data = raw_data if isinstance(raw_data, dict) else {}
         wifi_ssid = str(data.get("wifiSsid", defaults["wifiSsid"])).strip()
         wifi_password = str(data.get("wifiPassword", defaults["wifiPassword"]))
+        rgb_strip_brightness = data.get("rgbStripBrightness", data.get("lightBrightness", defaults["rgbStripBrightness"]))
         normalized = {
             "graphWindowSec": clamp(
                 to_int(data.get("graphWindowSec", defaults["graphWindowSec"]), defaults["graphWindowSec"]),
                 10,
                 120,
             ),
-            "lightBrightness": clamp(
-                to_int(data.get("lightBrightness", defaults["lightBrightness"]), defaults["lightBrightness"]),
-                0,
+            "rgbStripBrightness": clamp(
+                to_int(rgb_strip_brightness, defaults["rgbStripBrightness"]),
+                10,
                 100,
             ),
             "fanSpeed": clamp(

@@ -413,6 +413,10 @@ class HardwareBackend:
         with self._status_indicator_lock:
             return self.status_indicator_controller.set_state(state_id, reason=reason, source=source)
 
+    def set_status_indicator_dynamic_brightness(self, brightness_percent):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.set_dynamic_brightness(brightness_percent)
+
     def start_status_indicator_boot_sequence(self, on_full_blue_callback=None):
         with self._status_indicator_lock:
             return self.status_indicator_controller.start_boot_sequence(on_full_blue_callback=on_full_blue_callback)

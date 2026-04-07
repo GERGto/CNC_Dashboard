@@ -162,12 +162,17 @@ def create_request_handler(app):
                         updated["graphWindowSec"] = clamp(value, 10, 120)
                     except (ValueError, TypeError):
                         return json_response(self, 400, {"error": "Invalid graphWindowSec"})
-                if "lightBrightness" in payload:
+                brightness_key = None
+                if "rgbStripBrightness" in payload:
+                    brightness_key = "rgbStripBrightness"
+                elif "lightBrightness" in payload:
+                    brightness_key = "lightBrightness"
+                if brightness_key is not None:
                     try:
-                        value = int(payload["lightBrightness"])
-                        updated["lightBrightness"] = clamp(value, 0, 100)
+                        value = int(payload[brightness_key])
+                        updated["rgbStripBrightness"] = clamp(value, 10, 100)
                     except (ValueError, TypeError):
-                        return json_response(self, 400, {"error": "Invalid lightBrightness"})
+                        return json_response(self, 400, {"error": "Invalid rgbStripBrightness"})
                 if "fanSpeed" in payload:
                     try:
                         value = int(payload["fanSpeed"])

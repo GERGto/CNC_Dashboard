@@ -40,6 +40,13 @@ def _clamp_uint8(value, default_value):
         return int(default_value)
 
 
+def _clamp_percent(value, default_value, minimum=0, maximum=100):
+    try:
+        return max(int(minimum), min(int(maximum), int(value)))
+    except (ValueError, TypeError):
+        return max(int(minimum), min(int(maximum), int(default_value)))
+
+
 def _lerp_channel(start_value, end_value, progress):
     factor = max(0.0, min(1.0, float(progress)))
     return int(round(start_value + ((end_value - start_value) * factor)))
@@ -58,6 +65,8 @@ def _scale_color(color, factor):
 class NeoPixelStatusStripController:
     CONTROLLER_ID = "ws2812b-status-strip"
     DISPLAY_NAME = "WS2812B Status-LED-Streifen"
+    DIMMABLE_STATES = frozenset({"idle", "warning", "running"})
+    DYNAMIC_BRIGHTNESS_MIN_PERCENT = 10
     STATIC_STATE_COLORS = {
         "off": (0, 0, 0),
         "on": (255, 255, 255),
@@ -100,6 +109,7 @@ class NeoPixelStatusStripController:
         pwm_channel=0,
         strip_type="GRB",
         enabled=True,
+        dynamic_brightness_percent=100,
     ):
         self.enabled = bool(enabled)
         self.pixel_count = max(1, int(pixel_count))
@@ -110,6 +120,12 @@ class NeoPixelStatusStripController:
         self.brightness = _clamp_uint8(brightness, 64)
         self.pwm_channel = max(0, int(pwm_channel))
         self.strip_type = str(strip_type or "GRB").strip().upper() or "GRB"
+        self._dynamic_brightness_percent = _clamp_percent(
+            dynamic_brightness_percent,
+            100,
+            minimum=self.DYNAMIC_BRIGHTNESS_MIN_PERCENT,
+            maximum=100,
+        )
         self._lock = threading.Lock()
         self._driver_checked = False
         self._driver = None
@@ -169,6 +185,36 @@ class NeoPixelStatusStripController:
                 return self._build_snapshot_locked()
 
             if not self._boot_started and not self._boot_completed:
+                return self._build_snapshot_locked()
+
+            self._ensure_animator_running_locked()
+            self._wake_event.set()
+            return self._build_snapshot_locked()
+
+    def set_dynamic_brightness(self, brightness_percent):
+        normalized_brightness = _clamp_percent(
+            brightness_percent,
+            100,
+            minimum=self.DYNAMIC_BRIGHTNESS_MIN_PERCENT,
+            maximum=100,
+        )
+        command_at = iso_now_utc()
+
+        with self._lock:
+            self._dynamic_brightness_percent = normalized_brightness
+            self._last_command_at = command_at
+            self._last_reason = "brightness-update"
+            self._last_source = "settings"
+
+            if not self._boot_started and not self._boot_completed:
+                return self._build_snapshot_locked()
+
+            driver = self._load_driver_locked()
+            if not self.enabled or driver is None:
+                return self._build_snapshot_locked()
+
+            strip = self._ensure_strip_locked()
+            if strip is None:
                 return self._build_snapshot_locked()
 
             self._ensure_animator_running_locked()
@@ -302,6 +348,8 @@ class NeoPixelStatusStripController:
             "dmaChannel": self.dma_channel,
             "pwmChannel": self.pwm_channel,
             "brightness": self.brightness,
+            "dynamicBrightnessPercent": self._dynamic_brightness_percent,
+            "activeBrightnessPercent": self._get_active_brightness_percent_locked(),
             "stripType": self.strip_type,
             "state": self._render_state,
             "desiredState": self._desired_state,
@@ -501,6 +549,7 @@ class NeoPixelStatusStripController:
 
     def _render_static_frame(self, state_id):
         color = self.STATIC_STATE_COLORS.get(state_id, self.STATIC_STATE_COLORS["on"])
+        color = self._apply_state_brightness(state_id, color)
         return [color for _ in range(self.pixel_count)]
 
     def _render_idle_breathing_frame(self):
@@ -522,7 +571,7 @@ class NeoPixelStatusStripController:
             phase = self._idle_phase - (pixel_index * self.IDLE_PIXEL_PHASE_OFFSET)
             wave = (math.sin(phase) + 1.0) * 0.5
             white = int(round(self.IDLE_WHITE_MIN + (amplitude * wave)))
-            frame.append((white, white, white))
+            frame.append(self._apply_state_brightness("idle", (white, white, white)))
         if advance_phase:
             self._idle_phase = (self._idle_phase + self.IDLE_PHASE_STEP_PER_FRAME) % math.tau
         return frame
@@ -652,6 +701,16 @@ class NeoPixelStatusStripController:
                 self._last_error = f"Shutdown-Callback fuer Statusleiste fehlgeschlagen: {exc}"
         finally:
             self._shutdown_completed_event.set()
+
+    def _get_active_brightness_percent_locked(self):
+        if self._desired_state in self.DIMMABLE_STATES:
+            return self._dynamic_brightness_percent
+        return 100
+
+    def _apply_state_brightness(self, state_id, color):
+        if state_id not in self.DIMMABLE_STATES:
+            return color
+        return _scale_color(color, self._dynamic_brightness_percent / 100.0)
 
     def _build_center_groups(self):
         groups = []

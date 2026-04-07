@@ -8,7 +8,7 @@
 
   <link rel="stylesheet" href="assets/app.css?v=20260326-04" />
   <link rel="stylesheet" href="assets/ui-common.css?v=20260326-04" />
-  <script type="module" src="assets/app.js?v=20260408-01"></script>
+  <script type="module" src="assets/app.js?v=20260408-02"></script>
 </head>
 
 <body>
@@ -103,10 +103,10 @@
     <div class="modal" id="lightModal" role="dialog" aria-modal="true" aria-labelledby="lightTitle" aria-hidden="true">
       <div class="modal__backdrop" data-close="true"></div>
       <div class="modal__panel" role="document">
-        <h2 class="modal__title" id="lightTitle">Beleuchtung</h2>
-        <p class="modal__text">Helligkeit einstellen</p>
+        <h2 class="modal__title" id="lightTitle">RGB-Strip</h2>
+        <p class="modal__text">Helligkeit fuer IDLE, Spindel aktiv und Wartung faellig</p>
         <div class="slider">
-          <input class="slider__input" id="lightSlider" type="range" min="0" max="100" value="75" />
+          <input class="slider__input" id="lightSlider" type="range" min="10" max="100" value="75" />
           <div class="slider__value" id="lightValue">75%</div>
         </div>
         <div class="modal__actions">
