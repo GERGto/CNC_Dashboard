@@ -46,12 +46,16 @@ class AppConfig:
     hardware_estop_poll_interval_sec: float
     camera_enabled: bool
     camera_ffmpeg_path: str
+    camera_mediamtx_path: str
     camera_device_path: str
     camera_width: int
     camera_height: int
     camera_fps: int
     camera_input_format: str
-    camera_jpeg_quality: int
+    camera_video_bitrate: int
+    camera_stream_path: str
+    camera_webrtc_port: int
+    camera_rtsp_port: int
 
 
 def load_app_config():
@@ -91,10 +95,14 @@ def load_app_config():
         hardware_estop_poll_interval_sec=_read_non_negative_float_env("HARDWARE_ESTOP_POLL_INTERVAL_SEC", 0.1),
         camera_enabled=str(os.getenv("CAMERA_ENABLED", "1")).strip().lower() in {"1", "true", "yes", "on"},
         camera_ffmpeg_path=str(os.getenv("CAMERA_FFMPEG_PATH", "ffmpeg")).strip() or "ffmpeg",
+        camera_mediamtx_path=str(os.getenv("CAMERA_MEDIAMTX_PATH", "mediamtx")).strip() or "mediamtx",
         camera_device_path=str(os.getenv("CAMERA_DEVICE_PATH", "/dev/video0")).strip() or "/dev/video0",
         camera_width=_read_non_negative_int_env("CAMERA_WIDTH", 1280),
         camera_height=_read_non_negative_int_env("CAMERA_HEIGHT", 720),
-        camera_fps=_read_non_negative_int_env("CAMERA_FPS", 12),
+        camera_fps=_read_non_negative_int_env("CAMERA_FPS", 15),
         camera_input_format=str(os.getenv("CAMERA_INPUT_FORMAT", "")).strip(),
-        camera_jpeg_quality=_read_non_negative_int_env("CAMERA_JPEG_QUALITY", 5),
+        camera_video_bitrate=_read_non_negative_int_env("CAMERA_VIDEO_BITRATE", 3000000),
+        camera_stream_path=str(os.getenv("CAMERA_STREAM_PATH", "camera")).strip().strip("/") or "camera",
+        camera_webrtc_port=_read_non_negative_int_env("CAMERA_WEBRTC_PORT", 8889),
+        camera_rtsp_port=_read_non_negative_int_env("CAMERA_RTSP_PORT", 8554),
     )

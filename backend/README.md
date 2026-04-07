@@ -4,6 +4,13 @@ This backend provides a simple HTTP + SSE API for Raspberry Pi hardware control
 and streaming axis/spindle load values. The spindle value is currently still
 mocked, while `X/Y/Z` can be backed by INA228 current sensors.
 
+For the camera stack, the backend no longer serves MJPEG itself. Instead:
+
+- `ffmpeg` reads `/dev/video0`
+- `ffmpeg` publishes H.264 to MediaMTX via local RTSP
+- MediaMTX exposes the low-latency browser stream via WebRTC/WHEP
+- the monitor frontend opens MediaMTX directly and only asks the backend for status metadata
+
 ## Endpoints
 
 - GET `/api/health`
@@ -25,9 +32,8 @@ mocked, while `X/Y/Z` can be backed by INA228 current sensors.
 - GET `/api/hardware/relays`
   - `{ controllerId, status, addressHex, channels, ... }`
 - GET `/api/camera/status`
-  - `{ enabled, available, devicePath, ffmpegPath, streamUrl, backend, width, height, fps, inputFormat, error }`
-- GET `/api/camera/stream`
-  - MJPEG stream from the configured USB webcam via `ffmpeg` and `v4l2`
+  - `{ enabled, available, devicePath, ffmpegPath, mediamtxPath, backend, transport, streamPath, whepPath, webrtcPort, rtspPort, width, height, fps, videoBitrate, inputFormat, error }`
+  - The monitor uses this metadata to open the WebRTC stream directly from MediaMTX via `http://<host>:<webrtcPort>/<streamPath>/whep`
 - GET `/api/machine/status`
   - `{ reportedStatus, reportedSource, reportedAt, spindleRuntimeSec, maintenanceDue, maintenanceDueTaskIds, eStopEngaged, hardwareEStopEngaged, hardwareEStopInputIds, eStopResetLocked, spindleRunning, spindleRunningInputIds, effectiveStatus, effectiveReason, indicator }`
 - POST `/api/machine/status`
@@ -208,16 +214,33 @@ set STATUS_INDICATOR_INVERT=0
 set STATUS_INDICATOR_STRIP_TYPE=GRB
 set STATUS_INDICATOR_SYNC_INTERVAL_SEC=2.0
 set CAMERA_ENABLED=1
+set CAMERA_MEDIAMTX_PATH=mediamtx
 set CAMERA_FFMPEG_PATH=ffmpeg
 set CAMERA_DEVICE_PATH=/dev/video0
 set CAMERA_WIDTH=1280
 set CAMERA_HEIGHT=720
-set CAMERA_FPS=12
+set CAMERA_FPS=15
 set CAMERA_INPUT_FORMAT=mjpeg
-set CAMERA_JPEG_QUALITY=5
+set CAMERA_VIDEO_BITRATE=3000000
+set CAMERA_STREAM_PATH=camera
+set CAMERA_WEBRTC_PORT=8889
+set CAMERA_RTSP_PORT=8554
 ```
 
 The server listens on `http://localhost:8080` by default.
+
+## Pi Camera Services
+
+On the Raspberry Pi deployment, the camera path is split across three pieces:
+
+- `cnc-dashboard-backend.service`
+  - serves `/api/camera/status` on `127.0.0.1:8080`
+- `cnc-dashboard-camera-publisher.service`
+  - runs `camera-publisher.sh` and publishes H.264 from `/dev/video0` to `rtsp://127.0.0.1:8554/camera`
+- `cnc-dashboard-mediamtx.service`
+  - runs MediaMTX and exposes WebRTC/WHEP on `:8889`
+
+The shared camera environment lives in `backend/camera-stream.env`.
 
 ## Persisted Files
 

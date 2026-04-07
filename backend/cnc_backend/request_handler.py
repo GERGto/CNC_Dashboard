@@ -54,9 +54,6 @@ def create_request_handler(app):
             if path == "/api/camera/status":
                 return json_response(self, 200, app.get_camera_status())
 
-            if path == "/api/camera/stream":
-                return app.stream_camera(self)
-
             if path == "/api/machine/status":
                 return json_response(self, 200, app.get_machine_status())
 

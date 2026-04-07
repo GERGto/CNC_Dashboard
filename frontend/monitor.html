@@ -6,7 +6,8 @@
   <meta name="color-scheme" content="dark" />
   <title>CNC Controller</title>
   <link rel="stylesheet" href="assets/monitor.css?v=20260406-07" />
-  <script type="module" src="assets/monitor.js?v=20260406-07"></script>
+  <script defer src="assets/vendor/mediamtx-reader.js?v=20260407-03"></script>
+  <script defer src="assets/monitor.js?v=20260407-03"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -80,7 +81,7 @@
     <main class="main-grid">
       <section class="left-column">
         <section class="camera-stage" aria-label="Kamera-Feed">
-          <img class="camera-feed" id="cameraFeed" alt="Kamera-Feed der CNC-Maschine" hidden />
+          <video class="camera-feed" id="cameraFeed" autoplay muted playsinline disablepictureinpicture hidden></video>
 
           <div class="camera-placeholder" id="cameraPlaceholder">
             <div class="camera-placeholder__ring">

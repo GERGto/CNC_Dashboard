@@ -17,13 +17,13 @@
         file_server
     }
 
-    @monitor_static path /monitor.html /assets/monitor.css /assets/monitor.js
+    @monitor_static path /monitor.html /assets/monitor.css /assets/monitor.js /assets/vendor/mediamtx-reader.js
     handle @monitor_static {
         root * /opt/cnc-dashboard/frontend
         file_server
     }
 
-    @monitor_api path /api/health /api/hardware /api/machine/status /api/wifi/status /api/maintenance/tasks* /api/camera/status /api/camera/stream /api/axes/stream /api/hardware/light /api/hardware/fan /api/hardware/e-stop /api/hardware/relay-4
+    @monitor_api path /api/health /api/hardware /api/machine/status /api/wifi/status /api/maintenance/tasks* /api/camera/status /api/axes/stream /api/hardware/light /api/hardware/fan /api/hardware/e-stop /api/hardware/relay-4
     handle @monitor_api {
         reverse_proxy 127.0.0.1:8080 {
             flush_interval -1

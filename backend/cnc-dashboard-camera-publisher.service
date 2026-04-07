@@ -1,0 +1,17 @@
+[Unit]
+Description=CNC Dashboard Camera Publisher
+After=cnc-dashboard-mediamtx.service
+Requires=cnc-dashboard-mediamtx.service
+
+[Service]
+Type=simple
+User=dietpi
+Group=dietpi
+WorkingDirectory=/opt/cnc-dashboard/backend
+EnvironmentFile=-/opt/cnc-dashboard/backend/camera-stream.env
+ExecStart=/bin/sh /opt/cnc-dashboard/backend/camera-publisher.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

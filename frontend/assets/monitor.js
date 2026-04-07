@@ -6,6 +6,7 @@ const AXIS_WARN = {
   spindle: 75,
 };
 const STATIC_REFRESH_MS = 1500;
+const CAMERA_RECONNECT_DELAY_MS = 1500;
 
 const ICONS = {
   rec: `
@@ -117,6 +118,7 @@ const axisMeterEls = {
 
 const state = {
   apiBase: createApiBase(),
+  cameraStreamBase: createCameraStreamBase(),
   machineStatus: "IDLE",
   maintenanceDue: false,
   dueTaskIds: [],
@@ -129,7 +131,8 @@ const state = {
   hardwareEStopEngaged: false,
   eStopResetLocked: false,
   hardwareEStopInputIds: [],
-  cameraAutoUrl: "",
+  cameraTransport: "",
+  cameraWhepUrl: "",
   cameraAvailable: false,
   cameraDevicePath: "",
   cameraError: "",
@@ -139,6 +142,8 @@ const state = {
   spindleRuntimeSec: 0,
   activeTab: "files",
   files: [],
+  cameraReaderSupported:
+    typeof window.MediaMTXWebRTCReader === "function" && typeof window.RTCPeerConnection !== "undefined",
   recordingSupported: typeof window.MediaRecorder !== "undefined",
   recordingActive: false,
   recordingSeconds: 0,
@@ -162,6 +167,10 @@ const completingTaskIds = new Set();
 const completedTaskIds = new Set();
 let axesSource = null;
 let toastTimer = null;
+let cameraReader = null;
+let cameraReaderUrl = "";
+let cameraReconnectTimer = null;
+let cameraConnectionToken = 0;
 
 function createApiBase() {
   const params = new URLSearchParams(window.location.search);
@@ -182,6 +191,30 @@ function createApiBase() {
     apiUrl.search = "";
     apiUrl.hash = "";
     return apiUrl.origin;
+  }
+
+  return window.location.origin;
+}
+
+function createCameraStreamBase() {
+  const params = new URLSearchParams(window.location.search);
+  const fromQuery = params.get("cameraStreamBase");
+  if (fromQuery) {
+    try {
+      return new URL(fromQuery).origin;
+    } catch (_error) {
+      // Fall through to host-based default.
+    }
+  }
+
+  const streamPort = params.get("cameraWebrtcPort");
+  if (streamPort) {
+    const streamUrl = new URL(window.location.origin);
+    streamUrl.port = streamPort;
+    streamUrl.pathname = "";
+    streamUrl.search = "";
+    streamUrl.hash = "";
+    return streamUrl.origin;
   }
 
   return window.location.origin;
@@ -255,6 +288,118 @@ function showToast(message, isError = false) {
   toastTimer = window.setTimeout(() => {
     dom.toast.hidden = true;
   }, 2600);
+}
+
+function clearCameraReconnectTimer() {
+  if (!cameraReconnectTimer) {
+    return;
+  }
+  window.clearTimeout(cameraReconnectTimer);
+  cameraReconnectTimer = null;
+}
+
+function stopCameraReader(clearVideo = true) {
+  cameraConnectionToken += 1;
+  clearCameraReconnectTimer();
+  cameraReaderUrl = "";
+
+  if (cameraReader) {
+    try {
+      cameraReader.close();
+    } catch (_error) {
+      // Ignore cleanup issues while replacing the stream.
+    }
+    cameraReader = null;
+  }
+
+  if (clearVideo) {
+    try {
+      dom.cameraFeed.pause();
+    } catch (_error) {
+      // Ignore browsers that reject pause() during unload.
+    }
+    dom.cameraFeed.srcObject = null;
+  }
+}
+
+function scheduleCameraReconnect() {
+  if (cameraReconnectTimer || !state.cameraAvailable || !state.cameraWhepUrl) {
+    return;
+  }
+
+  cameraReconnectTimer = window.setTimeout(() => {
+    cameraReconnectTimer = null;
+    ensureCameraReader();
+  }, CAMERA_RECONNECT_DELAY_MS);
+}
+
+function attachCameraStream(stream) {
+  if (!stream) {
+    return;
+  }
+
+  dom.cameraFeed.srcObject = stream;
+  const playPromise = dom.cameraFeed.play();
+  if (playPromise && typeof playPromise.catch === "function") {
+    playPromise.catch(() => {
+      // Autoplay can briefly race while the page becomes visible.
+    });
+  }
+  state.cameraLoaded = true;
+  state.cameraError = "";
+  renderCamera();
+}
+
+function ensureCameraReader() {
+  const whepUrl = state.cameraAvailable ? state.cameraWhepUrl.trim() : "";
+  if (!whepUrl) {
+    stopCameraReader(true);
+    return;
+  }
+
+  if (!state.cameraReaderSupported) {
+    state.cameraLoaded = false;
+    state.cameraError = "WebRTC wird in diesem Browser nicht unterstuetzt.";
+    return;
+  }
+
+  if (cameraReconnectTimer) {
+    return;
+  }
+
+  if (cameraReader && cameraReaderUrl === whepUrl) {
+    return;
+  }
+
+  stopCameraReader(false);
+  state.cameraLoaded = false;
+  cameraReaderUrl = whepUrl;
+  const connectionToken = cameraConnectionToken;
+
+  cameraReader = new window.MediaMTXWebRTCReader({
+    url: whepUrl,
+    onTrack: (event) => {
+      if (connectionToken !== cameraConnectionToken || cameraReaderUrl !== whepUrl) {
+        return;
+      }
+      attachCameraStream(event?.streams?.[0]);
+    },
+    onError: (message) => {
+      if (connectionToken !== cameraConnectionToken || cameraReaderUrl !== whepUrl) {
+        return;
+      }
+      if (state.recordingActive) {
+        stopRecording(false);
+      }
+      state.cameraLoaded = false;
+      state.cameraError = message
+        ? `MediaMTX/WebRTC-Verbindung unterbrochen: ${message}`
+        : "MediaMTX/WebRTC-Verbindung unterbrochen.";
+      stopCameraReader(false);
+      scheduleCameraReconnect();
+      renderCamera();
+    },
+  });
 }
 
 function getSpindleActive() {
@@ -337,35 +482,27 @@ function renderToolbar() {
 }
 
 function renderCamera() {
-  const streamUrl = state.cameraAvailable ? state.cameraAutoUrl.trim() : "";
-  if (!streamUrl) {
+  const whepUrl = state.cameraAvailable ? state.cameraWhepUrl.trim() : "";
+  if (!whepUrl) {
+    stopCameraReader(true);
     state.cameraLoaded = false;
     dom.cameraFeed.hidden = true;
-    dom.cameraFeed.removeAttribute("src");
     dom.cameraPlaceholder.hidden = false;
     dom.cameraPlaceholderTitle.textContent = "Kamera-Feed";
     dom.cameraPlaceholderText.textContent = state.cameraError
       ? state.cameraError
-      : "Die USB-Webcam des Pi wird automatisch als Live-Stream eingebunden.";
+      : "Der MediaMTX-WebRTC-Stream der USB-Kamera wird automatisch eingebunden.";
   } else {
-    if (dom.cameraFeed.getAttribute("src") !== streamUrl) {
-      state.cameraLoaded = false;
-      dom.cameraFeed.hidden = true;
-      dom.cameraPlaceholder.hidden = false;
-      dom.cameraPlaceholderTitle.textContent = "Verbinde Kamera";
-      dom.cameraPlaceholderText.textContent = state.cameraDevicePath
-        ? `Live-Stream von ${state.cameraDevicePath} wird geladen.`
-        : "Live-Stream wird geladen.";
-      dom.cameraFeed.src = streamUrl;
-    }
-
+    ensureCameraReader();
     dom.cameraPlaceholder.hidden = state.cameraLoaded;
     dom.cameraFeed.hidden = !state.cameraLoaded;
     if (!state.cameraLoaded) {
-      dom.cameraPlaceholderTitle.textContent = "Verbinde Kamera";
-      dom.cameraPlaceholderText.textContent = state.cameraDevicePath
-        ? `Live-Stream von ${state.cameraDevicePath} wird geladen.`
-        : "Live-Stream wird geladen.";
+      dom.cameraPlaceholderTitle.textContent = state.cameraError ? "Stream nicht erreichbar" : "Verbinde Kamera";
+      dom.cameraPlaceholderText.textContent = state.cameraError
+        ? state.cameraError
+          : state.cameraDevicePath
+          ? `MediaMTX/WebRTC verbindet ${state.cameraDevicePath}.`
+          : "MediaMTX/WebRTC-Stream wird geladen.";
     }
   }
 
@@ -681,23 +818,56 @@ function applyTasks(tasksPayload) {
   state.tasks = Array.isArray(tasksPayload) ? tasksPayload : [];
 }
 
+function buildCameraWhepUrl(snapshot) {
+  const baseUrl = new URL(state.cameraStreamBase || window.location.origin);
+  const webrtcPort = Number(snapshot?.webrtcPort || 0);
+  if (Number.isFinite(webrtcPort) && webrtcPort > 0) {
+    baseUrl.port = String(webrtcPort);
+  }
+  baseUrl.search = "";
+  baseUrl.hash = "";
+
+  const rawWhepPath = String(snapshot?.whepPath || snapshot?.whepUrl || "").trim();
+  if (rawWhepPath) {
+    return new URL(rawWhepPath, baseUrl).toString();
+  }
+
+  const streamPath = String(snapshot?.streamPath || "camera").trim().replace(/^\/+|\/+$/g, "");
+  if (!streamPath) {
+    return "";
+  }
+
+  const encodedPath = streamPath
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  baseUrl.pathname = `/${encodedPath}/whep`;
+  return baseUrl.toString();
+}
+
 function applyCameraStatus(snapshot) {
   if (!snapshot || typeof snapshot !== "object") {
     return;
   }
+  state.cameraTransport = String(snapshot.transport || "").trim();
   state.cameraAvailable = !!snapshot.available;
   state.cameraDevicePath = String(snapshot.devicePath || "").trim();
   state.cameraError = String(snapshot.error || "").trim();
 
-  const rawStreamUrl = state.cameraAvailable ? String(snapshot.streamUrl || "").trim() : "";
-  if (rawStreamUrl) {
-    try {
-      state.cameraAutoUrl = new URL(rawStreamUrl, state.apiBase).toString();
-    } catch (_error) {
-      state.cameraAutoUrl = "";
-    }
-  } else {
-    state.cameraAutoUrl = "";
+  const nextWhepUrl =
+    state.cameraAvailable && state.cameraTransport === "webrtc"
+      ? buildCameraWhepUrl(snapshot)
+      : "";
+
+  if (nextWhepUrl !== state.cameraWhepUrl) {
+    state.cameraWhepUrl = nextWhepUrl;
+    state.cameraLoaded = false;
+    stopCameraReader(!nextWhepUrl);
+  }
+
+  if (!state.cameraWhepUrl && state.recordingActive) {
+    stopRecording(false);
   }
 }
 
@@ -900,7 +1070,7 @@ function drawRecordingFrame() {
   try {
     recording.context.drawImage(dom.cameraFeed, 0, 0, recording.canvas.width, recording.canvas.height);
   } catch (_error) {
-    // Ignore transient draw errors while MJPEG frames update.
+    // Ignore transient draw errors while the video element renegotiates.
   }
 }
 
@@ -939,7 +1109,7 @@ function startRecording() {
     showToast("MediaRecorder wird im Browser nicht unterstuetzt.", true);
     return;
   }
-  if (!state.cameraLoaded || !dom.cameraFeed.getAttribute("src")) {
+  if (!state.cameraLoaded || !dom.cameraFeed.srcObject) {
     showToast("Kamera-Stream muss zuerst geladen sein.", true);
     return;
   }
@@ -951,8 +1121,8 @@ function startRecording() {
   }
 
   const canvas = document.createElement("canvas");
-  const width = Math.max(640, dom.cameraFeed.naturalWidth || 1280);
-  const height = Math.max(360, dom.cameraFeed.naturalHeight || 720);
+  const width = Math.max(640, dom.cameraFeed.videoWidth || 1280);
+  const height = Math.max(360, dom.cameraFeed.videoHeight || 720);
   canvas.width = width;
   canvas.height = height;
   if (typeof canvas.captureStream !== "function") {
@@ -1035,19 +1205,22 @@ function toggleRecording() {
 }
 
 function attachEvents() {
-  dom.cameraFeed.addEventListener("load", () => {
+  dom.cameraFeed.addEventListener("playing", () => {
+    if (!state.cameraAvailable) {
+      return;
+    }
     state.cameraLoaded = true;
+    state.cameraError = "";
     renderCamera();
   });
 
-  dom.cameraFeed.addEventListener("error", () => {
-    state.cameraLoaded = false;
-    if (state.recordingActive) {
-      stopRecording(false);
+  dom.cameraFeed.addEventListener("stalled", () => {
+    if (!state.cameraAvailable || !state.cameraWhepUrl) {
+      return;
     }
+    state.cameraLoaded = false;
+    state.cameraError = "MediaMTX/WebRTC-Stream puffert neu.";
     renderCamera();
-    dom.cameraPlaceholderTitle.textContent = "Stream nicht erreichbar";
-    dom.cameraPlaceholderText.textContent = "Bitte Webcam, ffmpeg und die Pi-Konfiguration pruefen.";
   });
 
   dom.filesTabBtn.addEventListener("click", () => setActiveTab("files"));
@@ -1124,6 +1297,7 @@ function attachEvents() {
       axesSource.close();
       axesSource = null;
     }
+    stopCameraReader(true);
     if (state.recordingActive) {
       stopRecording(false);
     }

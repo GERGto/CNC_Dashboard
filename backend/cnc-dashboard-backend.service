@@ -9,14 +9,7 @@ WorkingDirectory=/opt/cnc-dashboard/backend
 Environment=PORT=8080
 Environment=BIND_HOST=127.0.0.1
 Environment=AXES_INTERVAL_MS=250
-Environment=CAMERA_ENABLED=1
-Environment=CAMERA_FFMPEG_PATH=/usr/bin/ffmpeg
-Environment=CAMERA_DEVICE_PATH=/dev/video0
-Environment=CAMERA_WIDTH=1280
-Environment=CAMERA_HEIGHT=720
-Environment=CAMERA_FPS=15
-Environment=CAMERA_INPUT_FORMAT=mjpeg
-Environment=CAMERA_JPEG_QUALITY=5
+EnvironmentFile=-/opt/cnc-dashboard/backend/camera-stream.env
 Environment=EMERGENCY_INPUT_MODULE_ENABLED=1
 Environment=EMERGENCY_INPUT_MODULE_I2C_ADDRESS=0x21
 Environment=EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS=1,2

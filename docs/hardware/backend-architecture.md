@@ -59,9 +59,7 @@ aktuell folgende Hardware-Endpunkte bereit:
 - `GET /api/axes/stream`
   - SSE-Stream fuer die Frontend-Achsenanzeige mit eingebetteten `axisLoadSensors`
 - `GET /api/camera/status`
-  - Liefert Verfuegbarkeit und Parameter des automatischen USB-Kamerastreams
-- `GET /api/camera/stream`
-  - MJPEG-Livestream der USB-Webcam fuer den Browser-Monitor
+  - Liefert Verfuegbarkeit und Parameter der MediaMTX/WebRTC-Kamerakette fuer den Browser-Monitor
 - `POST /api/hardware/light`
   - Schaltet Relaiskanal 1 fuer das Maschinenlicht
 - `POST /api/hardware/fan`
@@ -71,10 +69,16 @@ aktuell folgende Hardware-Endpunkte bereit:
 
 ## Service-Integration
 
-Die Hardware-API laeuft nicht als eigener separater Systemdienst. Sie ist Teil
-des bestehenden Backend-Dienstes `cnc-dashboard-backend.service`, der `server.py`
-startet. Wenn dieser Dienst beim Booten hochkommt, stehen damit auch die
-Hardware-Endpunkte automatisch zur Verfuegung.
+Die Hardware-API laeuft weiterhin als Teil des bestehenden Backend-Dienstes
+`cnc-dashboard-backend.service`, aber der Kamera-Pfad ist inzwischen in drei
+separate Dienste zerlegt:
+
+- `cnc-dashboard-backend.service`
+  - stellt die Hardware- und Status-API auf `127.0.0.1:8080` bereit
+- `cnc-dashboard-camera-publisher.service`
+  - liest die USB-Kamera via `ffmpeg` und publisht H.264 lokal nach `rtsp://127.0.0.1:8554/camera`
+- `cnc-dashboard-mediamtx.service`
+  - stellt den Browser-Stream per MediaMTX/WebRTC auf `:8889` bereit
 
 Wichtige Betriebsdetails auf dem aktuellen Pi:
 
@@ -82,16 +86,22 @@ Wichtige Betriebsdetails auf dem aktuellen Pi:
 - Startdatei: `/opt/cnc-dashboard/backend/server.py`
 - Service-User: `dietpi`
 - Bind-Adresse: `127.0.0.1:8080`
-- Kamera-Backend: `ffmpeg` auf `/dev/video0`
+- Kamera-Publisher: `ffmpeg` auf `/dev/video0`
+- Video-Router: `MediaMTX`
+- WebRTC-WHEP-Endpunkt: `http://<pi>:8889/camera/whep`
 - I2C-Zugriff laeuft im aktuellen Deployment ueber denselben Backend-Dienst
 
 Nuetzliche Pruefbefehle auf dem Pi:
 
 ```bash
 systemctl status cnc-dashboard-backend.service --no-pager
+systemctl status cnc-dashboard-camera-publisher.service --no-pager
+systemctl status cnc-dashboard-mediamtx.service --no-pager
 systemctl is-enabled cnc-dashboard-backend.service
 systemctl is-active cnc-dashboard-backend.service
 sudo systemctl restart cnc-dashboard-backend.service
+journalctl -u cnc-dashboard-camera-publisher.service -n 80 --no-pager
+journalctl -u cnc-dashboard-mediamtx.service -n 80 --no-pager
 journalctl -u cnc-dashboard-backend.service -n 80 --no-pager
 id dietpi
 ```

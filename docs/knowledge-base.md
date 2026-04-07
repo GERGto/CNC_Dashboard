@@ -55,6 +55,46 @@ Hinweis: Das wirkt wie ein lokal konfigurierter SSH-Alias und kann daher von der
 - Das lokale Maschinen-UI fuer Bedienung und Kiosk bleibt auf `http://127.0.0.1:8081/`.
 - Das Backend bleibt auf `http://127.0.0.1:8080/` gebunden und ist aus dem Heimnetz nicht direkt erreichbar.
 
+### Kamera-Live-Stream via MediaMTX/WebRTC
+
+Der Kamera-Live-Stream laeuft nicht mehr als MJPEG aus dem Backend, sondern als
+eigene MediaMTX/WebRTC-Kette.
+
+Aktuelles Zielbild:
+
+- `ffmpeg` liest die USB-Kamera auf `/dev/video0`
+- `ffmpeg` publisht H.264 lokal nach `rtsp://127.0.0.1:8554/camera`
+- `MediaMTX` stellt daraus WebRTC/WHEP auf `http://192.168.178.61:8889/camera/whep` bereit
+- das Frontend fragt beim Backend nur `GET /api/camera/status` ab und verbindet sich danach direkt mit MediaMTX
+
+Aktive Dateien im Repository:
+
+- `backend/camera-stream.env`
+- `backend/camera-publisher.sh`
+- `backend/mediamtx.yml`
+- `backend/cnc-dashboard-camera-publisher.service`
+- `backend/cnc-dashboard-mediamtx.service`
+
+Aktive Dienste auf dem Pi:
+
+- `cnc-dashboard-backend.service`
+- `cnc-dashboard-camera-publisher.service`
+- `cnc-dashboard-mediamtx.service`
+- `caddy.service`
+
+Wichtige Ports:
+
+- `127.0.0.1:8080` fuer das Backend
+- `127.0.0.1:8554` fuer lokales RTSP-Ingest nach MediaMTX
+- `:8889` fuer MediaMTX-WebRTC/WHEP im Heimnetz
+
+Schnelle Verifikation:
+
+- `curl -s http://127.0.0.1:8080/api/camera/status`
+- `curl -i -X OPTIONS http://127.0.0.1:8889/camera/whep`
+- `systemctl status cnc-dashboard-camera-publisher.service --no-pager`
+- `systemctl status cnc-dashboard-mediamtx.service --no-pager`
+
 ### Ethernet fuer CNC-Controller als lokales Netz
 
 Der Raspberry Pi wurde so umgestellt, dass `eth0` nicht mehr per DHCP im Heimnetz sucht, sondern ein eigenes lokales Netz fuer den CNC-Controller bereitstellt.

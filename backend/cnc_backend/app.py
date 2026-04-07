@@ -133,9 +133,6 @@ class BackendApp:
     def get_camera_status(self):
         return self.camera_service.get_status()
 
-    def stream_camera(self, handler):
-        return self.camera_service.stream_mjpeg(handler)
-
     def set_relay_output(self, output_id, enabled):
         result = self.hardware_backend.set_relay_output(output_id, enabled)
         self.sync_status_indicator()
