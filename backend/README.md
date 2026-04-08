@@ -64,6 +64,11 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - `intervalValue`: number or `"-"` (`intervalType: "none"` means no automatic due date)
 - GET `/api/wifi/networks`
   - `{ networks: [ "<ssid1>", "<ssid2>", ... ] }`
+- GET `/api/wifi/status`
+  - `{ wifiAvailable, wifiInterface, wifiConnected, wifiSsid, wifiIpAddress, wifiState, wifiIssueCode, wifiIssue, wifiAutoConnect }`
+- GET `/api/system/status`
+  - `{ time, spindleRuntimeSec, spindleRuntimeHours, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
+  - `softwareVersion` comes from `SOFTWARE_VERSION`, then Git metadata, then the repo-root `VERSION` file
 - POST `/api/wifi/connect`
   - Request: `{ ssid, password, autoConnect }`
   - Response: `{ ok, connected, ssid, autoConnect }`

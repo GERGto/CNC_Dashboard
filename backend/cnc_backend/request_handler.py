@@ -92,6 +92,9 @@ def create_request_handler(app):
             if path == "/api/wifi/status":
                 return json_response(self, 200, app.get_wifi_status())
 
+            if path == "/api/system/status":
+                return json_response(self, 200, app.get_system_status())
+
             if path == "/api/maintenance/tasks":
                 return json_response(self, 200, {"tasks": app.get_maintenance_tasks()})
 

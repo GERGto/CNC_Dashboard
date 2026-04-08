@@ -10,7 +10,7 @@ from .common import iso_now_utc
 from .config import load_app_config
 from .machine_status import MachineStatusService
 from .settings_store import SettingsStore
-from .system_service import ShutdownService, mock_axes_load
+from .system_service import ShutdownService, SystemInfoService, mock_axes_load
 from .wifi_service import WiFiService
 
 
@@ -48,6 +48,7 @@ class BackendApp:
         store,
         wifi_service,
         shutdown_service,
+        system_info_service,
         hardware_backend,
         machine_status_service,
         camera_service,
@@ -56,9 +57,12 @@ class BackendApp:
         self.store = store
         self.wifi_service = wifi_service
         self.shutdown_service = shutdown_service
+        self.system_info_service = system_info_service
         self.hardware_backend = hardware_backend
         self.machine_status_service = machine_status_service
         self.camera_service = camera_service
+        if self.system_info_service is not None:
+            self.system_info_service.backend_app = self
         self._spindle_runtime_lock = threading.Lock()
         self._fan_control_lock = threading.Lock()
         self._spindle_runtime_sec = None
@@ -218,6 +222,9 @@ class BackendApp:
             "wifiIssue": str(runtime.get("issue", "")).strip(),
             "wifiAutoConnect": bool(saved.get("wifiAutoConnect", False)),
         }
+
+    def get_system_status(self):
+        return self.system_info_service.build_snapshot()
 
     def save_settings(self, patch):
         payload = patch if isinstance(patch, dict) else {}
@@ -610,11 +617,13 @@ def create_backend_app():
     shutdown_service = ShutdownService(config, hardware_backend=hardware_backend)
     machine_status_service = MachineStatusService()
     camera_service = CameraService(config)
+    system_info_service = SystemInfoService(config, hardware_backend, backend_app=None)
     return BackendApp(
         config=config,
         store=store,
         wifi_service=wifi_service,
         shutdown_service=shutdown_service,
+        system_info_service=system_info_service,
         hardware_backend=hardware_backend,
         machine_status_service=machine_status_service,
         camera_service=camera_service,

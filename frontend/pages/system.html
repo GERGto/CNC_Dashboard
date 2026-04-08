@@ -11,12 +11,21 @@
       --bg:#fff;
       --fg:#000;
       --muted:#555;
-      --font: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --muted-soft:#787878;
+      --ok:#0f8f3a;
+      --off:#b61e1e;
+      --bar:#111;
+      --bar-bg:#e8e8e8;
+      --font:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
     }
 
-    html, body{
+    html,
+    body{
+      width:100%;
+      height:100%;
       margin:0;
       padding:0;
+      overflow:hidden;
       background:var(--bg);
       color:var(--fg);
       font-family:var(--font);
@@ -34,194 +43,434 @@
     }
 
     .wrap{
-      padding:16px;
+      height:100vh;
       box-sizing:border-box;
-    }
-
-    .seg{
-      display:inline-flex;
-      border:2px solid var(--line);
-      border-radius:2px;
+      padding:14px;
       overflow:hidden;
-      margin:0 0 14px 0;
-      background:#fff;
     }
 
-    .seg__btn{
-      border:0;
-      border-left:2px solid var(--line);
-      background:#fff;
-      color:#000;
-      font-size:15px;
-      font-weight:700;
-      padding:10px 12px;
-      min-width:160px;
-      cursor:pointer;
+    .system-grid{
+      height:100%;
+      display:grid;
+      grid-template-columns:minmax(0, 1.18fr) minmax(0, 0.92fr) minmax(0, 1fr);
+      gap:12px;
+      align-items:stretch;
     }
 
-    .seg__btn:first-child{
-      border-left:0;
-    }
-
-    .seg__btn.is-active{
-      background:#000;
-      color:#fff;
-    }
-
-    .panel{
-      display:none;
-    }
-
-    .panel.is-active{
-      display:block;
-    }
-
-    .tile{
-      border:2px solid var(--line);
-      border-radius:2px;
-      padding:10px 12px;
+    .sys-card{
+      min-width:0;
+      min-height:0;
+      height:100%;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      gap:10px;
+      padding:14px;
       box-sizing:border-box;
-      width:220px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
     }
 
-    .tile__label{
+    .sys-card__header{
+      display:grid;
+      gap:3px;
+    }
+
+    .sys-card__eyebrow{
       margin:0;
-      font-size:14px;
-      font-weight:700;
-      letter-spacing:0.2px;
-    }
-
-    .tile__value{
-      margin-top:6px;
-      font-size:34px;
-      font-weight:700;
-      letter-spacing:0.8px;
-      line-height:1;
-    }
-
-    .cfg-list{
-      display:grid;
-      gap:10px;
-      max-width:560px;
-    }
-
-    .cfg-card{
-      border:2px solid var(--line);
-      border-radius:2px;
-      padding:12px;
-      display:grid;
-      gap:8px;
-      background:#fff;
-    }
-
-    .cfg-card__head{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      font-size:18px;
+      font-size:11px;
       font-weight:800;
-    }
-
-    .cfg-card__text{
-      font-size:15px;
+      letter-spacing:0.18em;
+      text-transform:uppercase;
       color:var(--muted);
-      font-weight:600;
     }
 
-    .cfg-card__meta{
+    .sys-card__title{
+      margin:0;
+      font-size:22px;
+      line-height:1.05;
+      font-weight:900;
+      letter-spacing:-0.03em;
+    }
+
+    .sys-card__body{
+      min-height:0;
       display:grid;
-      gap:4px;
-      font-size:14px;
-      font-weight:700;
-      color:#000;
+      gap:10px;
+      align-content:start;
     }
 
-    .cfg-card__btn{
+    .sys-card__footer{
+      display:grid;
+      gap:8px;
+      align-content:end;
+    }
+
+    .sys-card__hint{
+      margin:0;
+      font-size:12px;
+      line-height:1.35;
+      font-weight:700;
+      color:var(--muted);
+    }
+
+    .sys-card__btn{
+      width:100%;
+      min-height:50px;
       border:2px solid var(--line);
       border-radius:2px;
       background:#fff;
       color:#000;
       font-size:15px;
-      font-weight:700;
-      padding:8px 12px;
-      justify-self:start;
-    }
-
-    .cfg-card__btn:active{
-      transform: translateY(1px);
-    }
-
-    .cfg-note{
-      border:2px dashed var(--line);
-      border-radius:2px;
+      font-weight:800;
       padding:10px 12px;
-      color:var(--muted);
-      font-size:14px;
-      font-weight:700;
     }
 
-    .cfg__status{
+    .sys-card__btn:active{
+      transform:translateY(1px);
+    }
+
+    .status-pill{
       display:flex;
       align-items:center;
-      gap:8px;
-      font-size:15px;
-      font-weight:700;
+      gap:10px;
+      min-height:52px;
+      padding:0 12px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      box-sizing:border-box;
+      font-size:14px;
+      font-weight:800;
+      line-height:1.25;
+      background:#fff;
     }
 
     .cfg__dot{
       width:10px;
       height:10px;
+      flex:0 0 10px;
       border-radius:50%;
       border:1px solid #000;
       background:#777;
     }
 
     .cfg__dot.is-on{
-      background:#0f8f3a;
+      background:var(--ok);
     }
 
     .cfg__dot.is-off{
-      background:#b61e1e;
+      background:var(--off);
+    }
+
+    .sys-meta{
+      display:grid;
+      gap:8px;
+      align-content:start;
+    }
+
+    .sys-meta__row{
+      display:grid;
+      gap:3px;
+      padding:10px 12px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      min-width:0;
+      box-sizing:border-box;
+    }
+
+    .sys-meta__label{
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:0.14em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .sys-meta__value{
+      min-width:0;
+      font-size:17px;
+      line-height:1.2;
+      font-weight:800;
+      word-break:break-word;
+    }
+
+    .metric-list{
+      display:grid;
+      gap:7px;
+      align-content:start;
+    }
+
+    .metric{
+      display:grid;
+      gap:5px;
+      padding:8px 10px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      min-width:0;
+      box-sizing:border-box;
+    }
+
+    .metric__top{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) auto;
+      gap:10px;
+      align-items:baseline;
+    }
+
+    .metric__label{
+      min-width:0;
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .metric__value{
+      min-width:0;
+      font-size:19px;
+      line-height:1;
+      font-weight:900;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      text-align:right;
+    }
+
+    .metric__value--version{
+      font-size:16px;
+      font-family:Consolas,"Courier New",monospace;
+      letter-spacing:0;
+      text-transform:none;
+    }
+
+    .metric__bar{
+      height:8px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:var(--bar-bg);
+      overflow:hidden;
+      box-sizing:border-box;
+    }
+
+    .metric__bar > div{
+      height:100%;
+      width:0%;
+      background:var(--bar);
+    }
+
+    .metric--plain .metric__bar{
+      display:none;
+    }
+
+    .remote-card__body{
+      display:grid;
+      grid-template-columns:124px minmax(0, 1fr);
+      gap:12px;
+      align-items:start;
+    }
+
+    .remote-card__qr-shell{
+      width:124px;
+      height:124px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+      box-sizing:border-box;
+    }
+
+    .remote-card__qr{
+      width:102px;
+      height:102px;
+      display:grid;
+      place-items:center;
+      line-height:0;
+      text-align:center;
+    }
+
+    .remote-card__qr svg{
+      display:block;
+      width:102px;
+      height:102px;
+    }
+
+    .remote-card__qr.is-placeholder{
+      line-height:1.35;
+      color:var(--muted-soft);
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .remote-card__copy{
+      min-width:0;
+      display:grid;
+      gap:8px;
+      align-content:start;
+    }
+
+    @media (max-width: 930px){
+      .system-grid{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+      }
+
+      .remote-card{
+        grid-column:1 / -1;
+      }
+    }
+
+    @media (max-width: 720px){
+      html,
+      body{
+        overflow:auto;
+      }
+
+      .wrap{
+        height:auto;
+        min-height:100vh;
+      }
+
+      .system-grid{
+        height:auto;
+        grid-template-columns:1fr;
+      }
+
+      .remote-card{
+        grid-column:auto;
+      }
+
+      .remote-card__body{
+        grid-template-columns:1fr;
+      }
+
+      .remote-card__qr-shell{
+        justify-self:start;
+      }
     }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <div class="seg" role="tablist" aria-label="Systembereiche">
-      <button class="seg__btn is-active" id="tabOverview" type="button" role="tab" aria-selected="true" aria-controls="panelOverview">Systemübersicht</button>
-      <button class="seg__btn" id="tabConfig" type="button" role="tab" aria-selected="false" aria-controls="panelConfig">Systemkonfiguration</button>
-    </div>
+    <section class="system-grid" aria-label="Systemübersicht">
+      <article class="sys-card" aria-label="Systemdaten">
+        <header class="sys-card__header">
+          <p class="sys-card__eyebrow">Maschine</p>
+          <h2 class="sys-card__title">Systemdaten</h2>
+        </header>
 
-    <section class="panel is-active" id="panelOverview" role="tabpanel" aria-labelledby="tabOverview">
-      <div class="tile" aria-label="Spindellaufzeit">
-        <p class="tile__label">Spindellaufzeit</p>
-        <div class="tile__value" id="runtimeCompact">0,0 Stunden</div>
-      </div>
-    </section>
+        <div class="sys-card__body">
+          <div class="metric-list">
+            <div class="metric metric--plain">
+              <div class="metric__top">
+                <span class="metric__label">Spindellaufzeit</span>
+                <strong class="metric__value" id="systemRuntimeValue">0,0 h</strong>
+              </div>
+              <div class="metric__bar"><div></div></div>
+            </div>
 
-    <section class="panel" id="panelConfig" role="tabpanel" aria-labelledby="tabConfig">
-      <div class="cfg-list">
-        <div class="cfg-card">
-          <div class="cfg-card__head">
-            <span>WLAN</span>
-            <div class="cfg__status">
-              <span class="cfg__dot" id="wifiStateDot" aria-hidden="true"></span>
-              <span id="wifiStateText">Status: Unbekannt</span>
+            <div class="metric">
+              <div class="metric__top">
+                <span class="metric__label">Gehäuse Temp</span>
+                <strong class="metric__value" id="systemEnclosureValue">-</strong>
+              </div>
+              <div class="metric__bar"><div id="systemEnclosureBar"></div></div>
+            </div>
+
+            <div class="metric">
+              <div class="metric__top">
+                <span class="metric__label">CPU Temp</span>
+                <strong class="metric__value" id="systemCpuValue">-</strong>
+              </div>
+              <div class="metric__bar"><div id="systemCpuBar"></div></div>
+            </div>
+
+            <div class="metric">
+              <div class="metric__top">
+                <span class="metric__label">RAM Auslastung</span>
+                <strong class="metric__value" id="systemRamValue">-</strong>
+              </div>
+              <div class="metric__bar"><div id="systemRamBar"></div></div>
+            </div>
+
+            <div class="metric">
+              <div class="metric__top">
+                <span class="metric__label">Speicher Auslastung</span>
+                <strong class="metric__value" id="systemStorageValue">-</strong>
+              </div>
+              <div class="metric__bar"><div id="systemStorageBar"></div></div>
+            </div>
+
+            <div class="metric metric--plain">
+              <div class="metric__top">
+                <span class="metric__label">Softwareversion</span>
+                <strong class="metric__value metric__value--version" id="systemVersionValue">-</strong>
+              </div>
+              <div class="metric__bar"><div></div></div>
             </div>
           </div>
-          <div class="cfg-card__text">Netzwerk auswählen, Zugangsdaten speichern und Verbindung steuern.</div>
-          <div class="cfg-card__meta">
-            <div id="wifiIpText">IP: -</div>
+        </div>
+      </article>
+
+      <article class="sys-card sys-card--wifi" aria-label="WLAN">
+        <header class="sys-card__header">
+          <p class="sys-card__eyebrow">Netzwerk</p>
+          <h2 class="sys-card__title">WLAN</h2>
+        </header>
+
+        <div class="sys-card__body">
+          <div class="status-pill">
+            <span class="cfg__dot" id="wifiStateDot" aria-hidden="true"></span>
+            <span id="wifiStateText">Nicht verbunden</span>
           </div>
-          <button class="cfg-card__btn" id="openWifiConfigBtn" type="button">WLAN konfigurieren</button>
+
+          <div class="sys-meta">
+            <div class="sys-meta__row">
+              <span class="sys-meta__label">Netzwerk</span>
+              <strong class="sys-meta__value" id="wifiNetworkText">Kein aktives WLAN</strong>
+            </div>
+            <div class="sys-meta__row">
+              <span class="sys-meta__label">IP-Adresse</span>
+              <strong class="sys-meta__value" id="wifiIpText">-</strong>
+            </div>
+          </div>
         </div>
 
-        <div class="cfg-note">Platzhalter für weitere Systemkonfigurationen.</div>
-      </div>
+        <footer class="sys-card__footer">
+          <button class="sys-card__btn" id="openWifiConfigBtn" type="button">WLAN konfigurieren</button>
+        </footer>
+      </article>
+
+      <article class="sys-card remote-card" id="remoteCard" aria-label="Remote-Dashboard">
+        <header class="sys-card__header">
+          <p class="sys-card__eyebrow">Zugriff</p>
+          <h2 class="sys-card__title">Remote-Dashboard</h2>
+        </header>
+
+        <div class="sys-card__body remote-card__body">
+          <div class="remote-card__qr-shell" aria-hidden="true">
+            <div class="remote-card__qr is-placeholder" id="qrContainer">WLAN verbinden</div>
+          </div>
+
+          <div class="remote-card__copy">
+            <div class="sys-meta">
+              <div class="sys-meta__row">
+                <span class="sys-meta__label">Adresse</span>
+                <strong class="sys-meta__value" id="remoteUrl">Noch nicht verfügbar</strong>
+              </div>
+            </div>
+
+            <p class="sys-card__hint" id="remoteHint">QR-Code für den Direktzugriff im Heimnetz.</p>
+          </div>
+        </div>
+      </article>
     </section>
   </main>
 
+  <script src="../assets/vendor/qrcode.min.js"></script>
   <script>
     function createApiBase(){
       const params = new URLSearchParams(window.location.search);
@@ -230,7 +479,6 @@
         try{
           return new URL(fromQuery).origin;
         }catch (_error){
-          // Ignore invalid override and fall back to host-based resolution.
         }
       }
 
@@ -243,37 +491,112 @@
     }
 
     const API_BASE = createApiBase();
-    const runtimeCompactEl = document.getElementById("runtimeCompact");
-    const tabOverview = document.getElementById("tabOverview");
-    const tabConfig = document.getElementById("tabConfig");
-    const panelOverview = document.getElementById("panelOverview");
-    const panelConfig = document.getElementById("panelConfig");
+    const runtimeCompactEl = document.getElementById("systemRuntimeValue");
+    const systemEnclosureValue = document.getElementById("systemEnclosureValue");
+    const systemEnclosureBar = document.getElementById("systemEnclosureBar");
+    const systemCpuValue = document.getElementById("systemCpuValue");
+    const systemCpuBar = document.getElementById("systemCpuBar");
+    const systemRamValue = document.getElementById("systemRamValue");
+    const systemRamBar = document.getElementById("systemRamBar");
+    const systemStorageValue = document.getElementById("systemStorageValue");
+    const systemStorageBar = document.getElementById("systemStorageBar");
+    const systemVersionValue = document.getElementById("systemVersionValue");
     const openWifiConfigBtn = document.getElementById("openWifiConfigBtn");
     const wifiStateDot = document.getElementById("wifiStateDot");
     const wifiStateText = document.getElementById("wifiStateText");
+    const wifiNetworkText = document.getElementById("wifiNetworkText");
     const wifiIpText = document.getElementById("wifiIpText");
+    const remoteCard = document.getElementById("remoteCard");
+    const qrContainer = document.getElementById("qrContainer");
+    const remoteUrlEl = document.getElementById("remoteUrl");
+    const remoteHint = document.getElementById("remoteHint");
 
     let spindleRuntimeSec = 0;
     let wifiConnected = false;
     let wifiSsid = "";
     let wifiIssue = "";
     let wifiIpAddress = "";
+    let lastQrIp = "";
 
-    function setActiveTab(name){
-      const overview = name === "overview";
-      tabOverview.classList.toggle("is-active", overview);
-      tabConfig.classList.toggle("is-active", !overview);
-      tabOverview.setAttribute("aria-selected", String(overview));
-      tabConfig.setAttribute("aria-selected", String(!overview));
-      panelOverview.classList.toggle("is-active", overview);
-      panelConfig.classList.toggle("is-active", !overview);
+    function setBar(el, percent){
+      if (!el) return;
+      const value = Math.max(0, Math.min(100, Number(percent) || 0));
+      el.style.width = `${value}%`;
     }
 
-    function renderSpindleRuntime(seconds){
+    function formatHours(seconds){
       const sec = Math.max(0, Math.floor(Number(seconds) || 0));
-      spindleRuntimeSec = sec;
-      const hours = (sec / 3600).toFixed(1).replace(".", ",");
-      runtimeCompactEl.textContent = `${hours} Stunden`;
+      return `${(sec / 3600).toFixed(1).replace(".", ",")} h`;
+    }
+
+    function formatTemperature(value, available){
+      if (!available || !Number.isFinite(Number(value))){
+        return "-";
+      }
+      return `${Number(value).toFixed(1).replace(".", ",")} °C`;
+    }
+
+    function formatPercent(value, available){
+      if (!available || !Number.isFinite(Number(value))){
+        return "-";
+      }
+      return `${Math.round(Number(value))} %`;
+    }
+
+    function applySystemStatus(snapshot){
+      const data = snapshot && typeof snapshot === "object" ? snapshot : {};
+      spindleRuntimeSec = Math.max(0, Math.floor(Number(data.spindleRuntimeSec) || 0));
+      runtimeCompactEl.textContent = formatHours(spindleRuntimeSec);
+
+      systemEnclosureValue.textContent = formatTemperature(
+        data.enclosureTemperatureC,
+        !!data.enclosureTemperatureAvailable
+      );
+      systemCpuValue.textContent = formatTemperature(
+        data.cpuTemperatureC,
+        !!data.cpuTemperatureAvailable
+      );
+      systemRamValue.textContent = formatPercent(data.ramUsedPercent, !!data.ramAvailable);
+      systemStorageValue.textContent = formatPercent(data.storageUsedPercent, !!data.storageAvailable);
+      systemVersionValue.textContent = String(data.softwareVersion || "-").trim() || "-";
+
+      const bars = data.bars && typeof data.bars === "object" ? data.bars : {};
+      setBar(systemEnclosureBar, bars.enclosureTemperaturePercent);
+      setBar(systemCpuBar, bars.cpuTemperaturePercent);
+      setBar(systemRamBar, bars.ramUsedPercent);
+      setBar(systemStorageBar, bars.storageUsedPercent);
+    }
+
+    function setRemotePlaceholder(qrText, hintText, urlText){
+      lastQrIp = "";
+      remoteCard.classList.remove("is-ready");
+      qrContainer.classList.add("is-placeholder");
+      qrContainer.textContent = qrText;
+      remoteHint.textContent = hintText;
+      remoteUrlEl.textContent = urlText;
+    }
+
+    function renderQrCode(ip){
+      if (!ip){
+        setRemotePlaceholder("IP wird ermittelt", "Die Netzwerkadresse wird noch aufgebaut.", "Wird ermittelt…");
+        return;
+      }
+
+      const url = `http://${ip}`;
+      remoteCard.classList.add("is-ready");
+      remoteHint.textContent = "QR-Code für den Direktzugriff im Heimnetz.";
+      remoteUrlEl.textContent = url;
+
+      if (ip === lastQrIp){
+        return;
+      }
+
+      lastQrIp = ip;
+      const qr = qrcode(0, "L");
+      qr.addData(url, "Byte");
+      qr.make();
+      qrContainer.classList.remove("is-placeholder");
+      qrContainer.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
     }
 
     function openWifiConfigModal(){
@@ -282,60 +605,60 @@
 
     function setWifiStatus(connected, ssid = "", issue = "", ipAddress = ""){
       wifiConnected = !!connected;
-      if (typeof ssid === "string"){
-        wifiSsid = ssid.trim();
-      }
-      if (typeof issue === "string"){
-        wifiIssue = issue.trim();
-      }
-      if (typeof ipAddress === "string"){
-        wifiIpAddress = ipAddress.trim();
-      }
+      if (typeof ssid === "string") wifiSsid = ssid.trim();
+      if (typeof issue === "string") wifiIssue = issue.trim();
+      if (typeof ipAddress === "string") wifiIpAddress = ipAddress.trim();
+
       wifiStateDot.classList.toggle("is-on", wifiConnected);
       wifiStateDot.classList.toggle("is-off", !wifiConnected);
-      const networkName = wifiSsid;
+
       if (wifiConnected){
-        wifiStateText.textContent = networkName ? `Status: Verbunden mit ${networkName}` : "Status: Verbunden";
-        wifiIpText.textContent = wifiIpAddress ? `IP: ${wifiIpAddress}` : "IP: Wird ermittelt...";
+        wifiStateText.textContent = wifiSsid ? `Verbunden mit ${wifiSsid}` : "Verbunden";
+        wifiNetworkText.textContent = wifiSsid || "Aktives WLAN";
+        wifiIpText.textContent = wifiIpAddress ? wifiIpAddress : "Wird ermittelt…";
+        renderQrCode(wifiIpAddress);
       } else {
-        wifiStateText.textContent = wifiIssue ? `Status: ${wifiIssue}` : "Status: Nicht verbunden";
-        wifiIpText.textContent = "IP: -";
+        wifiStateText.textContent = wifiIssue ? wifiIssue : "Nicht verbunden";
+        wifiNetworkText.textContent = wifiSsid ? wifiSsid : "Kein aktives WLAN";
+        wifiIpText.textContent = "-";
+        setRemotePlaceholder(
+          "WLAN verbinden",
+          "QR-Code für den Direktzugriff im Heimnetz.",
+          "Noch nicht verfügbar"
+        );
       }
     }
 
     function toBool(value){
-      if (typeof value === "boolean"){
-        return value;
-      }
-      if (typeof value === "number" && (value === 0 || value === 1)){
-        return Boolean(value);
-      }
+      if (typeof value === "boolean") return value;
+      if (typeof value === "number" && (value === 0 || value === 1)) return Boolean(value);
       return null;
     }
 
-    function loadSystemSettings(){
-      Promise.all([
-        fetch(`${API_BASE}/api/settings`).then((res) => res.ok ? res.json() : null).catch(() => null),
-        fetch(`${API_BASE}/api/wifi/status`).then((res) => res.ok ? res.json() : null).catch(() => null),
-      ]).then(([settings, wifiStatus]) => {
-        const settingsData = settings && typeof settings === "object" ? settings : null;
-        const wifiData = wifiStatus && typeof wifiStatus === "object" ? wifiStatus : null;
+    async function fetchJson(path){
+      const response = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+      if (!response.ok){
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    }
 
-        if (settingsData && typeof settingsData.spindleRuntimeSec === "number"){
-          renderSpindleRuntime(settingsData.spindleRuntimeSec);
-        }
+    async function loadSystemPageData(){
+      try{
+        const [systemStatus, wifiStatus] = await Promise.all([
+          fetchJson("/api/system/status"),
+          fetchJson("/api/wifi/status"),
+        ]);
 
-        const currentSsid = typeof wifiData?.wifiSsid === "string"
-          ? wifiData.wifiSsid
-          : (typeof settingsData?.wifiSsid === "string" ? settingsData.wifiSsid : "");
-        const connected = toBool(wifiData?.wifiConnected ?? settingsData?.wifiConnected);
-        const issue = typeof wifiData?.wifiIssue === "string"
-          ? wifiData.wifiIssue
-          : (typeof settingsData?.wifiIssue === "string" ? settingsData.wifiIssue : "");
-        const ipAddress = typeof wifiData?.wifiIpAddress === "string" ? wifiData.wifiIpAddress : "";
+        applySystemStatus(systemStatus);
 
-        setWifiStatus(connected === null ? false : connected, currentSsid, issue, ipAddress);
-      });
+        const connected = toBool(wifiStatus?.wifiConnected);
+        const ssid = typeof wifiStatus?.wifiSsid === "string" ? wifiStatus.wifiSsid : "";
+        const issue = typeof wifiStatus?.wifiIssue === "string" ? wifiStatus.wifiIssue : "";
+        const ipAddress = typeof wifiStatus?.wifiIpAddress === "string" ? wifiStatus.wifiIpAddress : "";
+        setWifiStatus(connected === null ? false : connected, ssid, issue, ipAddress);
+      }catch (_error){
+      }
     }
 
     window.addEventListener("message", (ev) => {
@@ -344,10 +667,12 @@
       if (typeof msg !== "object") return;
 
       if (msg.type === "init" && typeof msg.spindleRuntimeSec === "number"){
-        renderSpindleRuntime(msg.spindleRuntimeSec);
+        spindleRuntimeSec = Math.max(0, Math.floor(Number(msg.spindleRuntimeSec) || 0));
+        runtimeCompactEl.textContent = formatHours(spindleRuntimeSec);
       }
       if (msg.type === "spindleRuntime" && typeof msg.seconds === "number"){
-        renderSpindleRuntime(msg.seconds);
+        spindleRuntimeSec = Math.max(0, Math.floor(Number(msg.seconds) || 0));
+        runtimeCompactEl.textContent = formatHours(spindleRuntimeSec);
       }
       if (msg.type === "init"){
         const connected = toBool(msg.wifiConnected);
@@ -367,24 +692,20 @@
           setWifiStatus(connected, ssid, issue, ipAddress);
         }
       }
-      if (msg.type === "openWifiConfig"){
-        setActiveTab("config");
-        if (msg.openModal !== false){
-          openWifiConfigModal();
-        }
+      if (msg.type === "openWifiConfig" && msg.openModal !== false){
+        openWifiConfigModal();
+      }
+      if (msg.type === "pageShown"){
+        loadSystemPageData();
       }
     });
 
-    tabOverview.addEventListener("click", () => setActiveTab("overview"));
-    tabConfig.addEventListener("click", () => setActiveTab("config"));
-    openWifiConfigBtn.addEventListener("click", () => {
-      setActiveTab("config");
-      openWifiConfigModal();
-    });
+    openWifiConfigBtn.addEventListener("click", openWifiConfigModal);
 
-    renderSpindleRuntime(spindleRuntimeSec);
+    applySystemStatus({});
     setWifiStatus(wifiConnected);
-    loadSystemSettings();
+    loadSystemPageData();
+    window.setInterval(loadSystemPageData, 15000);
   </script>
 </body>
 </html>

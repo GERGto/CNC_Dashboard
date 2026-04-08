@@ -60,6 +60,41 @@ Hinweis: Das wirkt wie ein lokal konfigurierter SSH-Alias und kann daher von der
 - Das lokale Maschinen-UI fuer Bedienung und Kiosk bleibt auf `http://127.0.0.1:8081/`.
 - Das Backend bleibt auf `http://127.0.0.1:8080/` gebunden und ist aus dem Heimnetz nicht direkt erreichbar.
 
+### Lokale Seite „Systemkonfiguration“
+
+Die lokale Seite `frontend/pages/system.html` ist die kompakte Systemübersicht des Maschinen-Dashboards auf dem Pi.
+
+Aktueller Aufbau:
+
+- ein festes, nicht scrollendes Drei-Kachel-Layout für `Systemdaten`, `WLAN` und `Remote-Dashboard`
+- das Design ist bewusst kantig und orientiert sich an den schwarzen Konturen und rechteckigen Kacheln des restlichen lokalen Systems
+- es gibt keine zusätzliche Seitenüberschrift oder erklärende Hero-Fläche auf dieser Seite
+
+Inhalt der Kacheln:
+
+- `Systemdaten`: Spindellaufzeit, Gehäusetemperatur, CPU-Temperatur, RAM-Auslastung, Speicher-Auslastung und Softwareversion
+- für Gehäusetemperatur, CPU-Temperatur, RAM und Speicher werden einfache Balkenanzeigen verwendet
+- `WLAN`: Verbindungsstatus, SSID, IP-Adresse und der Button zum bestehenden WLAN-Modal
+- `Remote-Dashboard`: QR-Code und Zieladresse ohne separate Status-Unterkachel
+
+Datenquellen der Seite:
+
+- `GET /api/system/status` für Spindellaufzeit, Gehäusetemperatur, CPU-Temperatur, RAM-Auslastung, Speicher-Auslastung und Softwareversion
+- `GET /api/wifi/status` für Live-Status wie `wifiConnected`, `wifiSsid`, `wifiIpAddress` und `wifiIssue`
+- die Softwareversion nutzt bevorzugt `SOFTWARE_VERSION`, danach Git-Metadaten und ohne `.git` als Fallback die Datei `VERSION` im Repo-Root
+
+Interaktion:
+
+- der Button `WLAN konfigurieren` öffnet weiterhin das vorhandene WLAN-Modal des Parent-Dashboards
+- die Seite hört zusätzlich auf `postMessage`-Events vom Parent, insbesondere `init`, `spindleRuntime`, `wifi`, `pageShown` und `openWifiConfig`
+- die Systemdaten werden zusätzlich in einem Intervall nachgeladen, damit CPU-, RAM- und Speicherwerte aktuell bleiben
+
+Remote-Dashboard:
+
+- der QR-Code wird clientseitig über `frontend/assets/vendor/qrcode.min.js` erzeugt
+- als Ziel wird aktuell `http://<wifiIpAddress>` verwendet
+- ohne aktives WLAN oder ohne vergebene IP zeigt die Karte einen kompakten Platzhalterzustand
+
 ### Kamera-Live-Stream via MediaMTX/WebRTC
 
 Der Kamera-Live-Stream laeuft nicht mehr als MJPEG aus dem Backend, sondern als
