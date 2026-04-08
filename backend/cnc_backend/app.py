@@ -37,6 +37,7 @@ class BackendApp:
     SPINDLE_RUNTIME_POLL_INTERVAL_SEC = 0.25
     SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC = 5.0
     SPINDLE_RUNTIME_DELTA_CLAMP_SEC = 5.0
+    AXIS_RUNTIME_MOVING_THRESHOLD_PERCENT = 5.0
     FAN_CONTROL_POLL_INTERVAL_SEC = 0.5
     STATUS_INDICATOR_RUNNING_REFRESH_INTERVAL_SEC = 0.25
     ENCLOSURE_FAN_HYSTERESIS_C = 1.0
@@ -66,9 +67,14 @@ class BackendApp:
         self._spindle_runtime_lock = threading.Lock()
         self._fan_control_lock = threading.Lock()
         self._spindle_runtime_sec = None
+        self._axis_runtime_sec = None
         self._spindle_runtime_last_sample_monotonic = None
         self._spindle_runtime_last_persist_monotonic = 0.0
         self._spindle_runtime_last_running = False
+        self._axis_runtime_last_moving = {
+            axis: False
+            for axis in ("x", "y", "z")
+        }
         self._spindle_fan_last_running = False
         self._spindle_fan_last_stop_monotonic = None
         self._fan_manual_overrides = {
@@ -329,6 +335,15 @@ class BackendApp:
                 self._load_spindle_runtime_state_locked()
             return max(0, int(self._spindle_runtime_sec or 0))
 
+    def get_axis_runtime_snapshot(self):
+        with self._spindle_runtime_lock:
+            if self._axis_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            return {
+                axis: max(0, int((self._axis_runtime_sec or {}).get(axis, 0) or 0))
+                for axis in ("x", "y", "z")
+            }
+
     def set_spindle_runtime_sec(self, value, persist=False):
         normalized = max(0, int(value or 0))
         with self._spindle_runtime_lock:
@@ -347,22 +362,44 @@ class BackendApp:
     def _load_spindle_runtime_state_locked(self):
         machine_stats = self.store.load_machine_stats()
         self._spindle_runtime_sec = float(max(0, int(machine_stats.get("spindleRuntimeSec", 0) or 0)))
+        axis_runtime_sec = machine_stats.get("axisRuntimeSec", {})
+        self._axis_runtime_sec = {
+            axis: float(max(0, int(axis_runtime_sec.get(axis, 0) or 0)))
+            for axis in ("x", "y", "z")
+        }
         self._spindle_runtime_last_sample_monotonic = time.monotonic()
         self._spindle_runtime_last_persist_monotonic = self._spindle_runtime_last_sample_monotonic
+        self._spindle_runtime_last_running = False
+        self._axis_runtime_last_moving = {
+            axis: False
+            for axis in ("x", "y", "z")
+        }
 
     def _persist_spindle_runtime(self, force=False):
-        runtime_to_save = None
+        machine_stats_to_save = None
         now = time.monotonic()
         with self._spindle_runtime_lock:
             if self._spindle_runtime_sec is None:
                 self._load_spindle_runtime_state_locked()
             if not force and (now - self._spindle_runtime_last_persist_monotonic) < self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC:
-                return max(0, int(self._spindle_runtime_sec or 0))
-            runtime_to_save = max(0, int(self._spindle_runtime_sec or 0))
+                return {
+                    "spindleRuntimeSec": max(0, int(self._spindle_runtime_sec or 0)),
+                    "axisRuntimeSec": {
+                        axis: max(0, int((self._axis_runtime_sec or {}).get(axis, 0) or 0))
+                        for axis in ("x", "y", "z")
+                    },
+                }
+            machine_stats_to_save = {
+                "spindleRuntimeSec": max(0, int(self._spindle_runtime_sec or 0)),
+                "axisRuntimeSec": {
+                    axis: max(0, int((self._axis_runtime_sec or {}).get(axis, 0) or 0))
+                    for axis in ("x", "y", "z")
+                },
+            }
             self._spindle_runtime_last_persist_monotonic = now
 
-        self.store.save_machine_stats({"spindleRuntimeSec": runtime_to_save})
-        return runtime_to_save
+        self.store.save_machine_stats(machine_stats_to_save)
+        return machine_stats_to_save
 
     def _apply_status_indicator_preferences(self, ui_settings=None):
         settings = ui_settings if isinstance(ui_settings, dict) else self.store.load_ui_settings()
@@ -568,12 +605,28 @@ class BackendApp:
                 print(f"Hardware E-Stop monitor failed: {exc}", flush=True)
             time.sleep(interval_sec)
 
+    def _get_axis_movement_states(self):
+        axis_loads = self.get_axis_loads(force_refresh=False)
+        axes = axis_loads.get("axes", {}) if isinstance(axis_loads, dict) else {}
+        movement_states = {}
+        for axis in ("x", "y", "z"):
+            payload = axes.get(axis, {}) if isinstance(axes, dict) else {}
+            try:
+                calibrated_load_percent = float(payload.get("calibratedLoadPercent"))
+            except (ValueError, TypeError):
+                calibrated_load_percent = 0.0
+            movement_states[axis] = bool(payload.get("available")) and (
+                calibrated_load_percent > self.AXIS_RUNTIME_MOVING_THRESHOLD_PERCENT
+            )
+        return movement_states
+
     def _spindle_runtime_worker(self):
         interval_sec = self.SPINDLE_RUNTIME_POLL_INTERVAL_SEC
         while True:
             try:
                 spindle_running_info = self.hardware_backend.get_spindle_running(force_refresh=False)
                 spindle_running = bool(spindle_running_info.get("spindleRunning", False))
+                axis_moving = self._get_axis_movement_states()
                 now = time.monotonic()
                 persist_required = False
                 status_sync_required = False
@@ -583,22 +636,34 @@ class BackendApp:
                         self._load_spindle_runtime_state_locked()
 
                     previous_running = bool(self._spindle_runtime_last_running)
+                    previous_axis_moving = dict(self._axis_runtime_last_moving)
                     last_sample = self._spindle_runtime_last_sample_monotonic
                     delta_sec = now - last_sample if last_sample is not None else 0.0
                     self._spindle_runtime_last_sample_monotonic = now
 
-                    if spindle_running and 0.0 < delta_sec <= self.SPINDLE_RUNTIME_DELTA_CLAMP_SEC:
-                        self._spindle_runtime_sec += delta_sec
+                    if 0.0 < delta_sec <= self.SPINDLE_RUNTIME_DELTA_CLAMP_SEC:
+                        if spindle_running:
+                            self._spindle_runtime_sec += delta_sec
+                        for axis in ("x", "y", "z"):
+                            if axis_moving.get(axis, False):
+                                self._axis_runtime_sec[axis] += delta_sec
 
                     if spindle_running != previous_running:
                         status_sync_required = True
 
-                    if spindle_running:
+                    any_runtime_active = spindle_running or any(axis_moving.values())
+                    any_runtime_was_active = previous_running or any(previous_axis_moving.values())
+
+                    if any_runtime_active:
                         persist_required = (now - self._spindle_runtime_last_persist_monotonic) >= self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC
-                    elif previous_running:
+                    elif any_runtime_was_active:
                         persist_required = True
 
                     self._spindle_runtime_last_running = spindle_running
+                    self._axis_runtime_last_moving = {
+                        axis: bool(axis_moving.get(axis, False))
+                        for axis in ("x", "y", "z")
+                    }
 
                 if persist_required:
                     self._persist_spindle_runtime(force=True)

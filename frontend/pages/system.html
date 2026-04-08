@@ -45,14 +45,14 @@
     .wrap{
       height:100vh;
       box-sizing:border-box;
-      padding:14px;
+      padding:12px;
       overflow:hidden;
     }
 
     .system-grid{
       height:100%;
       display:grid;
-      grid-template-columns:minmax(0, 1.18fr) minmax(0, 0.92fr) minmax(0, 1fr);
+      grid-template-columns:minmax(0, 1.22fr) minmax(0, 0.9fr) minmax(0, 1fr);
       gap:12px;
       align-items:stretch;
     }
@@ -64,7 +64,7 @@
       display:grid;
       grid-template-rows:auto 1fr auto;
       gap:10px;
-      padding:14px;
+      padding:13px;
       box-sizing:border-box;
       border:2px solid var(--line);
       border-radius:2px;
@@ -73,21 +73,12 @@
 
     .sys-card__header{
       display:grid;
-      gap:3px;
-    }
-
-    .sys-card__eyebrow{
-      margin:0;
-      font-size:11px;
-      font-weight:800;
-      letter-spacing:0.18em;
-      text-transform:uppercase;
-      color:var(--muted);
+      gap:0;
     }
 
     .sys-card__title{
       margin:0;
-      font-size:22px;
+      font-size:23px;
       line-height:1.05;
       font-weight:900;
       letter-spacing:-0.03em;
@@ -116,7 +107,7 @@
 
     .sys-card__btn{
       width:100%;
-      min-height:50px;
+      min-height:48px;
       border:2px solid var(--line);
       border-radius:2px;
       background:#fff;
@@ -134,15 +125,13 @@
       display:flex;
       align-items:center;
       gap:10px;
-      min-height:52px;
-      padding:0 12px;
-      border:2px solid var(--line);
-      border-radius:2px;
+      min-height:0;
+      padding:0;
       box-sizing:border-box;
       font-size:14px;
       font-weight:800;
       line-height:1.25;
-      background:#fff;
+      background:transparent;
     }
 
     .cfg__dot{
@@ -164,17 +153,14 @@
 
     .sys-meta{
       display:grid;
-      gap:8px;
+      gap:12px;
       align-content:start;
     }
 
     .sys-meta__row{
       display:grid;
       gap:3px;
-      padding:10px 12px;
-      border:2px solid var(--line);
-      border-radius:2px;
-      background:#fff;
+      padding:0;
       min-width:0;
       box-sizing:border-box;
     }
@@ -195,42 +181,133 @@
       word-break:break-word;
     }
 
-    .metric-list{
+    .system-clusters{
       display:grid;
-      gap:7px;
+      grid-template-columns:1fr;
+      gap:8px;
       align-content:start;
     }
 
-    .metric{
+    .system-cluster{
       display:grid;
-      gap:5px;
-      padding:8px 10px;
-      border:2px solid var(--line);
-      border-radius:2px;
-      background:#fff;
-      min-width:0;
+      gap:8px;
+      padding:0;
       box-sizing:border-box;
     }
 
-    .metric__top{
+    .system-cluster--runtime,
+    .system-cluster--metrics{
+      grid-column:1 / -1;
+    }
+
+    .system-cluster__title{
+      margin:0;
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:0.16em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .runtime-cluster__layout{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) minmax(0, 1.1fr);
+      gap:12px;
+      align-items:stretch;
+    }
+
+    .runtime-hero{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) auto;
+      gap:8px;
+      align-content:center;
+      padding-right:10px;
+      border-right:2px solid var(--line);
+      min-width:0;
+    }
+
+    .runtime-hero__label{
+      font-size:12px;
+      font-weight:800;
+      letter-spacing:0.1em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .runtime-hero__value{
+      font-size:25px;
+      line-height:1.1;
+      font-weight:900;
+      letter-spacing:-0.02em;
+      font-variant-numeric:tabular-nums;
+      white-space:nowrap;
+      text-align:right;
+    }
+
+    .axis-runtime-grid{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:0;
+      align-items:center;
+    }
+
+    .axis-runtime{
+      min-width:0;
+      display:grid;
+      gap:1px;
+    }
+
+    .axis-runtime:not(:first-child){
+      padding-left:8px;
+      border-left:2px solid var(--line);
+    }
+
+    .axis-runtime__label{
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:0.14em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .axis-runtime__value{
+      font-size:17px;
+      line-height:1.1;
+      font-weight:900;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .metric-stack{
+      display:grid;
+      gap:8px;
+    }
+
+    .metric-line{
+      display:grid;
+      gap:5px;
+    }
+
+    .metric-line__top{
       display:grid;
       grid-template-columns:minmax(0, 1fr) auto;
       gap:10px;
       align-items:baseline;
     }
 
-    .metric__label{
+    .metric-line__label{
       min-width:0;
-      font-size:12px;
+      font-size:11px;
       font-weight:800;
-      letter-spacing:0.08em;
+      letter-spacing:0.14em;
       text-transform:uppercase;
       color:var(--muted);
     }
 
-    .metric__value{
+    .metric-line__value{
       min-width:0;
-      font-size:19px;
+      font-size:18px;
       line-height:1;
       font-weight:900;
       white-space:nowrap;
@@ -239,45 +316,45 @@
       text-align:right;
     }
 
-    .metric__value--version{
-      font-size:16px;
+    .metric-line__value--version{
+      font-size:14px;
       font-family:Consolas,"Courier New",monospace;
       letter-spacing:0;
       text-transform:none;
+      white-space:normal;
+      word-break:break-word;
     }
 
-    .metric__bar{
-      height:8px;
-      border:2px solid var(--line);
-      border-radius:2px;
+    .metric-line__bar{
+      height:9px;
+      border:0;
+      border-radius:0;
       background:var(--bar-bg);
       overflow:hidden;
       box-sizing:border-box;
     }
 
-    .metric__bar > div{
+    .metric-line__bar > div{
       height:100%;
       width:0%;
       background:var(--bar);
     }
 
-    .metric--plain .metric__bar{
+    .metric-line--plain .metric-line__bar{
       display:none;
     }
 
     .remote-card__body{
       display:grid;
-      grid-template-columns:124px minmax(0, 1fr);
-      gap:12px;
+      grid-template-columns:108px minmax(0, 1fr);
+      gap:10px;
       align-items:start;
     }
 
     .remote-card__qr-shell{
-      width:124px;
-      height:124px;
-      border:2px solid var(--line);
-      border-radius:2px;
-      background:#fff;
+      width:108px;
+      height:108px;
+      justify-self:start;
       display:grid;
       place-items:center;
       overflow:hidden;
@@ -285,8 +362,8 @@
     }
 
     .remote-card__qr{
-      width:102px;
-      height:102px;
+      width:104px;
+      height:104px;
       display:grid;
       place-items:center;
       line-height:0;
@@ -295,8 +372,8 @@
 
     .remote-card__qr svg{
       display:block;
-      width:102px;
-      height:102px;
+      width:104px;
+      height:104px;
     }
 
     .remote-card__qr.is-placeholder{
@@ -309,8 +386,13 @@
     .remote-card__copy{
       min-width:0;
       display:grid;
-      gap:8px;
+      gap:6px;
       align-content:start;
+    }
+
+    .sys-card--system .system-cluster + .system-cluster{
+      padding-top:8px;
+      border-top:2px solid var(--line);
     }
 
     @media (max-width: 930px){
@@ -320,6 +402,15 @@
 
       .remote-card{
         grid-column:1 / -1;
+      }
+
+      .system-clusters{
+        grid-template-columns:1fr;
+      }
+
+      .system-cluster--runtime,
+      .system-cluster--metrics{
+        grid-column:auto;
       }
     }
 
@@ -350,74 +441,113 @@
       .remote-card__qr-shell{
         justify-self:start;
       }
+
+      .runtime-cluster__layout{
+        grid-template-columns:1fr;
+        gap:8px;
+      }
+
+      .runtime-hero{
+        padding-right:0;
+        padding-bottom:8px;
+        border-right:0;
+        border-bottom:2px solid var(--line);
+      }
     }
   </style>
 </head>
 <body>
   <main class="wrap">
     <section class="system-grid" aria-label="Systemübersicht">
-      <article class="sys-card" aria-label="Systemdaten">
+      <article class="sys-card sys-card--system" aria-label="Systemdaten">
         <header class="sys-card__header">
-          <p class="sys-card__eyebrow">Maschine</p>
           <h2 class="sys-card__title">Systemdaten</h2>
         </header>
 
         <div class="sys-card__body">
-          <div class="metric-list">
-            <div class="metric metric--plain">
-              <div class="metric__top">
-                <span class="metric__label">Spindellaufzeit</span>
-                <strong class="metric__value" id="systemRuntimeValue">0,0 h</strong>
-              </div>
-              <div class="metric__bar"><div></div></div>
-            </div>
+          <div class="system-clusters">
+            <section class="system-cluster system-cluster--runtime" aria-label="Laufzeiten">
+              <p class="system-cluster__title">Laufzeiten</p>
 
-            <div class="metric">
-              <div class="metric__top">
-                <span class="metric__label">Gehäuse Temp</span>
-                <strong class="metric__value" id="systemEnclosureValue">-</strong>
-              </div>
-              <div class="metric__bar"><div id="systemEnclosureBar"></div></div>
-            </div>
+              <div class="runtime-cluster__layout">
+                <div class="runtime-hero">
+                  <span class="runtime-hero__label">Spindel</span>
+                  <strong class="runtime-hero__value" id="systemRuntimeSpindleValue">0,0h</strong>
+                </div>
 
-            <div class="metric">
-              <div class="metric__top">
-                <span class="metric__label">CPU Temp</span>
-                <strong class="metric__value" id="systemCpuValue">-</strong>
+                <div class="axis-runtime-grid">
+                  <div class="axis-runtime">
+                    <span class="axis-runtime__label">X</span>
+                    <strong class="axis-runtime__value" id="systemRuntimeXValue">0,0h</strong>
+                  </div>
+                  <div class="axis-runtime">
+                    <span class="axis-runtime__label">Y</span>
+                    <strong class="axis-runtime__value" id="systemRuntimeYValue">0,0h</strong>
+                  </div>
+                  <div class="axis-runtime">
+                    <span class="axis-runtime__label">Z</span>
+                    <strong class="axis-runtime__value" id="systemRuntimeZValue">0,0h</strong>
+                  </div>
+                </div>
               </div>
-              <div class="metric__bar"><div id="systemCpuBar"></div></div>
-            </div>
+            </section>
 
-            <div class="metric">
-              <div class="metric__top">
-                <span class="metric__label">RAM Auslastung</span>
-                <strong class="metric__value" id="systemRamValue">-</strong>
-              </div>
-              <div class="metric__bar"><div id="systemRamBar"></div></div>
-            </div>
+            <section class="system-cluster system-cluster--metrics" aria-label="Systemwerte">
+              <div class="metric-stack">
+                <div class="metric-line">
+                  <div class="metric-line__top">
+                    <span class="metric-line__label">Gehäuse</span>
+                    <strong class="metric-line__value" id="systemEnclosureValue">-</strong>
+                  </div>
+                  <div class="metric-line__bar"><div id="systemEnclosureBar"></div></div>
+                </div>
 
-            <div class="metric">
-              <div class="metric__top">
-                <span class="metric__label">Speicher Auslastung</span>
-                <strong class="metric__value" id="systemStorageValue">-</strong>
-              </div>
-              <div class="metric__bar"><div id="systemStorageBar"></div></div>
-            </div>
+                <div class="metric-line">
+                  <div class="metric-line__top">
+                    <span class="metric-line__label">CPU Temp</span>
+                    <strong class="metric-line__value" id="systemCpuTempValue">-</strong>
+                  </div>
+                  <div class="metric-line__bar"><div id="systemCpuTempBar"></div></div>
+                </div>
 
-            <div class="metric metric--plain">
-              <div class="metric__top">
-                <span class="metric__label">Softwareversion</span>
-                <strong class="metric__value metric__value--version" id="systemVersionValue">-</strong>
+                <div class="metric-line">
+                  <div class="metric-line__top">
+                    <span class="metric-line__label">CPU Last</span>
+                    <strong class="metric-line__value" id="systemCpuLoadValue">-</strong>
+                  </div>
+                  <div class="metric-line__bar"><div id="systemCpuLoadBar"></div></div>
+                </div>
+                <div class="metric-line">
+                  <div class="metric-line__top">
+                    <span class="metric-line__label">RAM</span>
+                    <strong class="metric-line__value" id="systemRamValue">-</strong>
+                  </div>
+                  <div class="metric-line__bar"><div id="systemRamBar"></div></div>
+                </div>
+
+                <div class="metric-line">
+                  <div class="metric-line__top">
+                    <span class="metric-line__label">Speicher</span>
+                    <strong class="metric-line__value" id="systemStorageValue">-</strong>
+                  </div>
+                  <div class="metric-line__bar"><div id="systemStorageBar"></div></div>
+                </div>
+
+                <div class="metric-line metric-line--plain">
+                  <div class="metric-line__top">
+                    <span class="metric-line__label">Softwareversion</span>
+                    <strong class="metric-line__value metric-line__value--version" id="systemVersionValue">-</strong>
+                  </div>
+                  <div class="metric-line__bar"><div></div></div>
+                </div>
               </div>
-              <div class="metric__bar"><div></div></div>
-            </div>
+            </section>
           </div>
         </div>
       </article>
 
       <article class="sys-card sys-card--wifi" aria-label="WLAN">
         <header class="sys-card__header">
-          <p class="sys-card__eyebrow">Netzwerk</p>
           <h2 class="sys-card__title">WLAN</h2>
         </header>
 
@@ -428,10 +558,6 @@
           </div>
 
           <div class="sys-meta">
-            <div class="sys-meta__row">
-              <span class="sys-meta__label">Netzwerk</span>
-              <strong class="sys-meta__value" id="wifiNetworkText">Kein aktives WLAN</strong>
-            </div>
             <div class="sys-meta__row">
               <span class="sys-meta__label">IP-Adresse</span>
               <strong class="sys-meta__value" id="wifiIpText">-</strong>
@@ -446,7 +572,6 @@
 
       <article class="sys-card remote-card" id="remoteCard" aria-label="Remote-Dashboard">
         <header class="sys-card__header">
-          <p class="sys-card__eyebrow">Zugriff</p>
           <h2 class="sys-card__title">Remote-Dashboard</h2>
         </header>
 
@@ -491,11 +616,16 @@
     }
 
     const API_BASE = createApiBase();
-    const runtimeCompactEl = document.getElementById("systemRuntimeValue");
+    const systemRuntimeSpindleValue = document.getElementById("systemRuntimeSpindleValue");
+    const systemRuntimeXValue = document.getElementById("systemRuntimeXValue");
+    const systemRuntimeYValue = document.getElementById("systemRuntimeYValue");
+    const systemRuntimeZValue = document.getElementById("systemRuntimeZValue");
     const systemEnclosureValue = document.getElementById("systemEnclosureValue");
     const systemEnclosureBar = document.getElementById("systemEnclosureBar");
-    const systemCpuValue = document.getElementById("systemCpuValue");
-    const systemCpuBar = document.getElementById("systemCpuBar");
+    const systemCpuTempValue = document.getElementById("systemCpuTempValue");
+    const systemCpuTempBar = document.getElementById("systemCpuTempBar");
+    const systemCpuLoadValue = document.getElementById("systemCpuLoadValue");
+    const systemCpuLoadBar = document.getElementById("systemCpuLoadBar");
     const systemRamValue = document.getElementById("systemRamValue");
     const systemRamBar = document.getElementById("systemRamBar");
     const systemStorageValue = document.getElementById("systemStorageValue");
@@ -504,7 +634,6 @@
     const openWifiConfigBtn = document.getElementById("openWifiConfigBtn");
     const wifiStateDot = document.getElementById("wifiStateDot");
     const wifiStateText = document.getElementById("wifiStateText");
-    const wifiNetworkText = document.getElementById("wifiNetworkText");
     const wifiIpText = document.getElementById("wifiIpText");
     const remoteCard = document.getElementById("remoteCard");
     const qrContainer = document.getElementById("qrContainer");
@@ -512,6 +641,7 @@
     const remoteHint = document.getElementById("remoteHint");
 
     let spindleRuntimeSec = 0;
+    let axisRuntimeSec = { x: 0, y: 0, z: 0 };
     let wifiConnected = false;
     let wifiSsid = "";
     let wifiIssue = "";
@@ -526,7 +656,7 @@
 
     function formatHours(seconds){
       const sec = Math.max(0, Math.floor(Number(seconds) || 0));
-      return `${(sec / 3600).toFixed(1).replace(".", ",")} h`;
+      return `${(sec / 3600).toFixed(1).replace(".", ",")}h`;
     }
 
     function formatTemperature(value, available){
@@ -543,18 +673,39 @@
       return `${Math.round(Number(value))} %`;
     }
 
+    function normalizeAxisRuntimeSnapshot(raw){
+      const source = raw && typeof raw === "object" ? raw : {};
+      return {
+        x: Math.max(0, Math.floor(Number(source.x) || 0)),
+        y: Math.max(0, Math.floor(Number(source.y) || 0)),
+        z: Math.max(0, Math.floor(Number(source.z) || 0)),
+      };
+    }
+
+    function renderRuntimeValues(){
+      systemRuntimeSpindleValue.textContent = formatHours(spindleRuntimeSec);
+      systemRuntimeXValue.textContent = formatHours(axisRuntimeSec.x);
+      systemRuntimeYValue.textContent = formatHours(axisRuntimeSec.y);
+      systemRuntimeZValue.textContent = formatHours(axisRuntimeSec.z);
+    }
+
     function applySystemStatus(snapshot){
       const data = snapshot && typeof snapshot === "object" ? snapshot : {};
       spindleRuntimeSec = Math.max(0, Math.floor(Number(data.spindleRuntimeSec) || 0));
-      runtimeCompactEl.textContent = formatHours(spindleRuntimeSec);
+      axisRuntimeSec = normalizeAxisRuntimeSnapshot(data.axisRuntimeSec);
+      renderRuntimeValues();
 
       systemEnclosureValue.textContent = formatTemperature(
         data.enclosureTemperatureC,
         !!data.enclosureTemperatureAvailable
       );
-      systemCpuValue.textContent = formatTemperature(
+      systemCpuTempValue.textContent = formatTemperature(
         data.cpuTemperatureC,
         !!data.cpuTemperatureAvailable
+      );
+      systemCpuLoadValue.textContent = formatPercent(
+        data.cpuUsagePercent,
+        !!data.cpuUsageAvailable
       );
       systemRamValue.textContent = formatPercent(data.ramUsedPercent, !!data.ramAvailable);
       systemStorageValue.textContent = formatPercent(data.storageUsedPercent, !!data.storageAvailable);
@@ -562,7 +713,8 @@
 
       const bars = data.bars && typeof data.bars === "object" ? data.bars : {};
       setBar(systemEnclosureBar, bars.enclosureTemperaturePercent);
-      setBar(systemCpuBar, bars.cpuTemperaturePercent);
+      setBar(systemCpuTempBar, bars.cpuTemperaturePercent);
+      setBar(systemCpuLoadBar, bars.cpuUsagePercent);
       setBar(systemRamBar, bars.ramUsedPercent);
       setBar(systemStorageBar, bars.storageUsedPercent);
     }
@@ -614,12 +766,10 @@
 
       if (wifiConnected){
         wifiStateText.textContent = wifiSsid ? `Verbunden mit ${wifiSsid}` : "Verbunden";
-        wifiNetworkText.textContent = wifiSsid || "Aktives WLAN";
         wifiIpText.textContent = wifiIpAddress ? wifiIpAddress : "Wird ermittelt…";
         renderQrCode(wifiIpAddress);
       } else {
         wifiStateText.textContent = wifiIssue ? wifiIssue : "Nicht verbunden";
-        wifiNetworkText.textContent = wifiSsid ? wifiSsid : "Kein aktives WLAN";
         wifiIpText.textContent = "-";
         setRemotePlaceholder(
           "WLAN verbinden",
@@ -668,11 +818,11 @@
 
       if (msg.type === "init" && typeof msg.spindleRuntimeSec === "number"){
         spindleRuntimeSec = Math.max(0, Math.floor(Number(msg.spindleRuntimeSec) || 0));
-        runtimeCompactEl.textContent = formatHours(spindleRuntimeSec);
+        renderRuntimeValues();
       }
       if (msg.type === "spindleRuntime" && typeof msg.seconds === "number"){
         spindleRuntimeSec = Math.max(0, Math.floor(Number(msg.seconds) || 0));
-        runtimeCompactEl.textContent = formatHours(spindleRuntimeSec);
+        renderRuntimeValues();
       }
       if (msg.type === "init"){
         const connected = toBool(msg.wifiConnected);
@@ -705,7 +855,7 @@
     applySystemStatus({});
     setWifiStatus(wifiConnected);
     loadSystemPageData();
-    window.setInterval(loadSystemPageData, 15000);
+    window.setInterval(loadSystemPageData, 5000);
   </script>
 </body>
 </html>

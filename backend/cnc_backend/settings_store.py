@@ -95,6 +95,11 @@ class SettingsStore:
     def default_machine_stats(self):
         return {
             "spindleRuntimeSec": 0,
+            "axisRuntimeSec": {
+                "x": 0,
+                "y": 0,
+                "z": 0,
+            },
         }
 
     def normalize_axis_visibility(self, raw_value):
@@ -146,6 +151,14 @@ class SettingsStore:
         except (ValueError, TypeError):
             value = 0
         return max(0, value)
+
+    def normalize_axis_runtime_sec(self, raw_value):
+        defaults = self.default_machine_stats()["axisRuntimeSec"]
+        data = raw_value if isinstance(raw_value, dict) else {}
+        return {
+            axis: self.sanitize_spindle_runtime_sec(data.get(axis, defaults[axis]))
+            for axis in ("x", "y", "z")
+        }
 
     def normalize_maintenance_tasks(self, raw_tasks):
         defaults = self.default_maintenance_tasks()
@@ -323,18 +336,25 @@ class SettingsStore:
         defaults = self.default_machine_stats()
         raw = read_json_dict(self.config.machine_stats_path)
         if not raw and isinstance(fallback, dict):
-            raw = {"spindleRuntimeSec": fallback.get("spindleRuntimeSec", defaults["spindleRuntimeSec"])}
+            raw = {
+                "spindleRuntimeSec": fallback.get("spindleRuntimeSec", defaults["spindleRuntimeSec"]),
+                "axisRuntimeSec": fallback.get("axisRuntimeSec", defaults["axisRuntimeSec"]),
+            }
         return {
             "spindleRuntimeSec": self.sanitize_spindle_runtime_sec(
                 raw.get("spindleRuntimeSec", defaults["spindleRuntimeSec"])
-            )
+            ),
+            "axisRuntimeSec": self.normalize_axis_runtime_sec(
+                raw.get("axisRuntimeSec", defaults["axisRuntimeSec"])
+            ),
         }
 
     def save_machine_stats(self, patch):
         current = self.load_machine_stats()
         merged = {**current, **(patch if isinstance(patch, dict) else {})}
         normalized = {
-            "spindleRuntimeSec": self.sanitize_spindle_runtime_sec(merged.get("spindleRuntimeSec", 0))
+            "spindleRuntimeSec": self.sanitize_spindle_runtime_sec(merged.get("spindleRuntimeSec", 0)),
+            "axisRuntimeSec": self.normalize_axis_runtime_sec(merged.get("axisRuntimeSec", {})),
         }
         write_json_dict(self.config.machine_stats_path, normalized)
         return normalized
@@ -371,6 +391,7 @@ class SettingsStore:
                 {
                     "spindleRuntimeSec": legacy.get(
                         "spindleRuntimeSec", self.default_machine_stats()["spindleRuntimeSec"]
-                    )
+                    ),
+                    "axisRuntimeSec": self.default_machine_stats()["axisRuntimeSec"],
                 }
             )

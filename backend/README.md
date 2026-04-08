@@ -67,7 +67,7 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
 - GET `/api/wifi/status`
   - `{ wifiAvailable, wifiInterface, wifiConnected, wifiSsid, wifiIpAddress, wifiState, wifiIssueCode, wifiIssue, wifiAutoConnect }`
 - GET `/api/system/status`
-  - `{ time, spindleRuntimeSec, spindleRuntimeHours, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
+  - `{ time, spindleRuntimeSec, spindleRuntimeHours, axisRuntimeSec, axisRuntimeHours, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, cpuUsagePercent, cpuUsageAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
   - `softwareVersion` comes from `SOFTWARE_VERSION`, then Git metadata, then the repo-root `VERSION` file
 - POST `/api/wifi/connect`
   - Request: `{ ssid, password, autoConnect }`
@@ -262,4 +262,4 @@ The shared camera environment lives in `backend/camera-stream.env`.
 
 - `settings.json`: UI settings (`graphWindowSec`, RGB strip, spindle/enclosure fan settings, Wi-Fi, `axisVisibility`)
 - `tasks.json`: maintenance tasks (`maintenanceTasks`)
-- `machine_stats.json`: machine statistics (`spindleRuntimeSec`)
+- `machine_stats.json`: machine statistics (`spindleRuntimeSec`, `axisRuntimeSec`)

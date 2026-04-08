@@ -69,17 +69,22 @@ Aktueller Aufbau:
 - ein festes, nicht scrollendes Drei-Kachel-Layout für `Systemdaten`, `WLAN` und `Remote-Dashboard`
 - das Design ist bewusst kantig und orientiert sich an den schwarzen Konturen und rechteckigen Kacheln des restlichen lokalen Systems
 - es gibt keine zusätzliche Seitenüberschrift oder erklärende Hero-Fläche auf dieser Seite
+- innerhalb der Seite bleiben nur die drei Hauptkacheln `Systemdaten`, `WLAN` und `Remote-Dashboard`; innere Unterboxen werden vermieden
+- die Kacheln nutzen direkt ihre Haupttitel; kleine Oberüberschriften wie `Maschine`, `Netzwerk` oder `Zugriff` werden nicht zusätzlich gezeigt
 
 Inhalt der Kacheln:
 
-- `Systemdaten`: Spindellaufzeit, Gehäusetemperatur, CPU-Temperatur, RAM-Auslastung, Speicher-Auslastung und Softwareversion
-- für Gehäusetemperatur, CPU-Temperatur, RAM und Speicher werden einfache Balkenanzeigen verwendet
+- `Systemdaten`: drei kompakte Gruppen statt vieler Einzelboxen
+- Laufzeiten: oben als flacher Vollbreiten-Block mit Spindellaufzeit sowie Achsenlaufzeiten für `X`, `Y` und `Z`
+- unterhalb der Laufzeiten folgt ein einzelner Vollbreiten-Block mit Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion untereinander
+- für Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM und Speicher werden einfache Balkenanzeigen verwendet
+- unnötige Beschreibungstexte innerhalb der Kacheln werden vermieden, um die Höhe für `1024x600` klein zu halten
 - `WLAN`: Verbindungsstatus, SSID, IP-Adresse und der Button zum bestehenden WLAN-Modal
 - `Remote-Dashboard`: QR-Code und Zieladresse ohne separate Status-Unterkachel
 
 Datenquellen der Seite:
 
-- `GET /api/system/status` für Spindellaufzeit, Gehäusetemperatur, CPU-Temperatur, RAM-Auslastung, Speicher-Auslastung und Softwareversion
+- `GET /api/system/status` für Spindellaufzeit, X/Y/Z-Laufzeiten, Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion
 - `GET /api/wifi/status` für Live-Status wie `wifiConnected`, `wifiSsid`, `wifiIpAddress` und `wifiIssue`
 - die Softwareversion nutzt bevorzugt `SOFTWARE_VERSION`, danach Git-Metadaten und ohne `.git` als Fallback die Datei `VERSION` im Repo-Root
 
@@ -87,7 +92,7 @@ Interaktion:
 
 - der Button `WLAN konfigurieren` öffnet weiterhin das vorhandene WLAN-Modal des Parent-Dashboards
 - die Seite hört zusätzlich auf `postMessage`-Events vom Parent, insbesondere `init`, `spindleRuntime`, `wifi`, `pageShown` und `openWifiConfig`
-- die Systemdaten werden zusätzlich in einem Intervall nachgeladen, damit CPU-, RAM- und Speicherwerte aktuell bleiben
+- die Systemdaten werden zusätzlich in einem kurzen Intervall nachgeladen, damit CPU-, RAM-, Speicher- und Laufzeitwerte aktuell bleiben
 
 Remote-Dashboard:
 
@@ -207,6 +212,7 @@ Letzter bekannter Live-Scan auf `/dev/i2c-1`:
   - Sobald `Input 1` oder `Input 2` aktiv wird, loest das Backend sofort einen System-E-Stop aus
   - Dieser Hardware-E-Stop kann nicht im Frontend quittiert werden; er bleibt aktiv, bis der mechanische Taster real geloest wurde
   - Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist, und wird im Backend nach `machine_stats.json` persistiert
+  - Die Achsenlaufzeiten fuer `X`, `Y` und `Z` werden separat gezaehlt, sobald die kalibrierte Achslast der jeweiligen Achse ueber `5 %` liegt
 
 Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
 

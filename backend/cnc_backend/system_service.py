@@ -36,20 +36,42 @@ class SystemInfoService:
         self.config = config
         self.hardware_backend = hardware_backend
         self.backend_app = backend_app
+        self._cpu_usage_lock = threading.Lock()
+        self._cpu_usage_previous_sample = self._read_cpu_stat_sample()
 
     def build_snapshot(self):
         spindle_runtime_sec = 0
+        axis_runtime_sec = {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+        }
         if self.backend_app is not None and hasattr(self.backend_app, "get_spindle_runtime_sec"):
             try:
                 spindle_runtime_sec = max(0, int(self.backend_app.get_spindle_runtime_sec() or 0))
             except (ValueError, TypeError):
                 spindle_runtime_sec = 0
+        if self.backend_app is not None and hasattr(self.backend_app, "get_axis_runtime_snapshot"):
+            try:
+                axis_runtime_snapshot = self.backend_app.get_axis_runtime_snapshot()
+                if isinstance(axis_runtime_snapshot, dict):
+                    axis_runtime_sec = {
+                        axis: max(0, int(axis_runtime_snapshot.get(axis, 0) or 0))
+                        for axis in ("x", "y", "z")
+                    }
+            except (ValueError, TypeError):
+                axis_runtime_sec = {
+                    "x": 0,
+                    "y": 0,
+                    "z": 0,
+                }
 
         enclosure = self.hardware_backend.get_enclosure_temperature(force_refresh=False)
         enclosure_temp_c = enclosure.get("temperatureC") if isinstance(enclosure, dict) else None
         enclosure_available = bool(isinstance(enclosure, dict) and enclosure.get("available"))
 
         cpu_temp_c = self._read_cpu_temperature_c()
+        cpu_usage_percent = self._read_cpu_used_percent()
         ram_used_percent = self._read_memory_used_percent()
         storage_used_percent = self._read_storage_used_percent()
         software_version, version_source = self._read_software_version()
@@ -58,10 +80,17 @@ class SystemInfoService:
             "time": iso_now_utc(),
             "spindleRuntimeSec": spindle_runtime_sec,
             "spindleRuntimeHours": round(spindle_runtime_sec / 3600.0, 1),
+            "axisRuntimeSec": axis_runtime_sec,
+            "axisRuntimeHours": {
+                axis: round(axis_runtime_sec[axis] / 3600.0, 1)
+                for axis in ("x", "y", "z")
+            },
             "enclosureTemperatureC": enclosure_temp_c if enclosure_available else None,
             "enclosureTemperatureAvailable": enclosure_available,
             "cpuTemperatureC": cpu_temp_c,
             "cpuTemperatureAvailable": cpu_temp_c is not None,
+            "cpuUsagePercent": cpu_usage_percent,
+            "cpuUsageAvailable": cpu_usage_percent is not None,
             "ramUsedPercent": ram_used_percent,
             "ramAvailable": ram_used_percent is not None,
             "storageUsedPercent": storage_used_percent,
@@ -71,6 +100,7 @@ class SystemInfoService:
             "bars": {
                 "enclosureTemperaturePercent": self._temperature_to_percent(enclosure_temp_c, 20.0, 55.0),
                 "cpuTemperaturePercent": self._temperature_to_percent(cpu_temp_c, 35.0, 85.0),
+                "cpuUsagePercent": _clamp_percent(cpu_usage_percent) if cpu_usage_percent is not None else None,
                 "ramUsedPercent": _clamp_percent(ram_used_percent) if ram_used_percent is not None else None,
                 "storageUsedPercent": _clamp_percent(storage_used_percent) if storage_used_percent is not None else None,
             },
@@ -111,6 +141,52 @@ class SystemInfoService:
                 except ValueError:
                     return None
         return None
+
+    def _read_cpu_stat_sample(self):
+        try:
+            with open("/proc/stat", "r", encoding="utf-8") as handle:
+                first_line = handle.readline().strip()
+        except OSError:
+            return None
+
+        if not first_line.startswith("cpu "):
+            return None
+
+        parts = first_line.split()
+        try:
+            values = [int(value) for value in parts[1:]]
+        except ValueError:
+            return None
+        if len(values) < 4:
+            return None
+
+        idle_ticks = values[3]
+        if len(values) > 4:
+            idle_ticks += values[4]
+        total_ticks = sum(values)
+        if total_ticks <= 0:
+            return None
+        return total_ticks, idle_ticks
+
+    def _read_cpu_used_percent(self):
+        current_sample = self._read_cpu_stat_sample()
+        if current_sample is None:
+            return None
+
+        with self._cpu_usage_lock:
+            previous_sample = self._cpu_usage_previous_sample
+            self._cpu_usage_previous_sample = current_sample
+
+        if previous_sample is None:
+            return None
+
+        total_delta = current_sample[0] - previous_sample[0]
+        idle_delta = current_sample[1] - previous_sample[1]
+        if total_delta <= 0:
+            return None
+
+        used_percent = ((float(total_delta) - float(idle_delta)) / float(total_delta)) * 100.0
+        return round(_clamp_percent(used_percent), 1)
 
     def _read_memory_used_percent(self):
         meminfo = {}
