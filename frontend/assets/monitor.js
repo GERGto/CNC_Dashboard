@@ -459,8 +459,8 @@ function renderToolbar() {
   dom.enclosureFanToggleBtn.classList.toggle("is-disabled", !state.enclosureFanAvailable);
   dom.enclosureFanToggleBtn.disabled = !state.enclosureFanAvailable;
   dom.enclosureFanToggleBtn.title = state.enclosureFanAvailable
-    ? "Gehaeuse-Luefter schalten"
-    : "Gehaeuse-Luefter ist aktuell nicht konfiguriert";
+    ? "Gehäuse-Lüfter schalten"
+    : "Gehäuse-Lüfter ist aktuell nicht konfiguriert";
 
   dom.recordToggleBtn.classList.toggle("is-recording", state.recordingActive);
   dom.recordToggleBtn.classList.toggle("is-disabled", !state.recordingSupported);
@@ -790,8 +790,8 @@ function applyHardwareSnapshot(snapshot) {
   if (channels && typeof channels === "object") {
     state.lightOn = !!channels.light?.on;
     state.spindleFanOn = !!channels.fan?.on;
-    state.enclosureFanOn = !!channels.relay4?.on;
-    state.enclosureFanAvailable = !!channels.relay4?.available;
+    state.enclosureFanOn = !!(channels.enclosureFan?.on ?? channels.relay3?.on);
+    state.enclosureFanAvailable = !!(channels.enclosureFan?.available ?? channels.relay3?.available);
     state.eStopEngaged = !!(channels.eStop?.engaged ?? channels.eStop?.on);
     state.hardwareEStopEngaged = !!channels.eStop?.hardwareInputEngaged;
     state.eStopResetLocked = !!channels.eStop?.resetLocked;
@@ -1255,19 +1255,19 @@ function attachEvents() {
     void postRelay(
       "/api/hardware/fan",
       { on: !state.spindleFanOn },
-      state.spindleFanOn ? "Spindel-Luefter ausgeschaltet." : "Spindel-Luefter eingeschaltet."
+      state.spindleFanOn ? "Spindel-Lüfter ausgeschaltet." : "Spindel-Lüfter eingeschaltet."
     );
   });
 
   dom.enclosureFanToggleBtn.addEventListener("click", () => {
     if (!state.enclosureFanAvailable) {
-      showToast("Gehaeuse-Luefter ist aktuell nicht konfiguriert.", true);
+      showToast("Gehäuse-Lüfter ist aktuell nicht konfiguriert.", true);
       return;
     }
     void postRelay(
-      "/api/hardware/relay-4",
+      "/api/hardware/enclosure-fan",
       { on: !state.enclosureFanOn },
-      state.enclosureFanOn ? "Gehaeuse-Luefter ausgeschaltet." : "Gehaeuse-Luefter eingeschaltet."
+      state.enclosureFanOn ? "Gehäuse-Lüfter ausgeschaltet." : "Gehäuse-Lüfter eingeschaltet."
     );
   });
 

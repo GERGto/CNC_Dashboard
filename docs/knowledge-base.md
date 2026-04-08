@@ -181,9 +181,16 @@ Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
 Aktuelle Relaisbelegung im Dashboard:
 
 - Kanal 1: Maschinenlicht
-- Kanal 2: Spindelluefter
-- Kanal 3: Reserve
+- Kanal 2: Spindel-Lüfter
+- Kanal 3: Gehäuse-Lüfter
 - Kanal 4: E-Stop
+
+Aktuelle Lüfterlogik:
+
+- Der Spindel-Lüfter auf Kanal `2` startet automatisch, sobald das Hardware-Signal `Spindel läuft` aktiv ist.
+- Nach dem Abschalten der Spindel läuft der Spindel-Lüfter um die konfigurierte Nachkühlzeit weiter.
+- Der Gehäuse-Lüfter auf Kanal `3` kann manuell geschaltet werden und optional automatisch über die Gehäusetemperatur geregelt werden.
+- Die Einschalt-Schwelle des Gehäuse-Lüfters ist im lokalen Dashboard einstellbar und wird persistent in den Settings gespeichert.
 
 Aktuelle E-Stop-Logik:
 
@@ -203,6 +210,7 @@ Aktuelle E-Stop-Logik:
   - Aktuelle Laenge: `59` LEDs
   - Startup-Sequenz: blau von der Mitte nach aussen, danach Systemcheck auf Weiss
   - Idle-Sequenz: langsame wandernde weisse Wellen zwischen `RGB 28` und `127`, gedeckelt auf `50%` Maximalhelligkeit
+  - Warn-Sequenz: langsames Pulsieren in tieferem Orange mit leichtem Rotanteil
 
 ## Getesteter Systemzustand auf DietPi
 

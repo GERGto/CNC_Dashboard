@@ -421,6 +421,10 @@ class HardwareBackend:
         with self._status_indicator_lock:
             return self.status_indicator_controller.set_dynamic_brightness(brightness_percent)
 
+    def set_status_indicator_running_load_percent(self, load_percent):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.set_running_load_percent(load_percent)
+
     def start_status_indicator_boot_sequence(self, on_full_blue_callback=None):
         with self._status_indicator_lock:
             return self.status_indicator_controller.start_boot_sequence(on_full_blue_callback=on_full_blue_callback)
@@ -539,6 +543,12 @@ class HardwareBackend:
         aliases = {
             "light": "light",
             "fan": "fan",
+            "spindlefan": "fan",
+            "spindle-fan": "fan",
+            "enclosurefan": "enclosureFan",
+            "enclosure-fan": "enclosureFan",
+            "relay3": "enclosureFan",
+            "relay-3": "enclosureFan",
             "estop": "eStop",
             "e-stop": "eStop",
         }

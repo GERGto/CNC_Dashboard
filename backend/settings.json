@@ -1,8 +1,9 @@
 {
   "graphWindowSec": 30,
   "rgbStripBrightness": 57,
-  "fanSpeed": 59,
-  "fanAuto": true,
+  "spindleFanAftercoolSeconds": 60,
+  "enclosureFanThresholdC": 40,
+  "enclosureFanAuto": true,
   "wifiSsid": "coppi_homenet",
   "wifiPassword": "",
   "wifiAutoConnect": false,

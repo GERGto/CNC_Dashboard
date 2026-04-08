@@ -7,7 +7,7 @@
 - Aktuelle Kanalbelegung im CNC-Dashboard:
   - `K1`: Maschinenlicht
   - `K2`: Spindelluefter
-  - `K3`: frei / Reserve
+  - `K3`: Gehäuse-Lüfter
   - `K4`: E-Stop
 
 ## Anschluss und Kommunikation
@@ -96,6 +96,8 @@ Initialisierung im Backend:
   - Request: `{ "on": true|false }`
 - `POST /api/hardware/fan`
   - Request: `{ "on": true|false }`
+- `POST /api/hardware/enclosure-fan`
+  - Request: `{ "on": true|false }`
 - `POST /api/hardware/e-stop`
   - Request: `{ "engaged": true|false }` oder `{ "on": true|false }`
 
@@ -103,6 +105,7 @@ Initialisierung im Backend:
 
 - Das Haupt-Frontend schaltet das Maschinenlicht ueber `/api/hardware/light`
 - Das Haupt-Frontend schaltet den Spindelluefter ueber `/api/hardware/fan`
+- Das Haupt-Frontend schaltet den Gehäuse-Lüfter ueber `/api/hardware/enclosure-fan`
 - Der Web-Monitor nutzt fuer den manuellen Not-Halt `/api/hardware/e-stop`
 - Bei aktivem mechanischem Hardware-E-Stop sperrt das Backend das Ruecksetzen von `K4`, bis der reale Taster geloest wurde
 - Der aktuelle Relaisstatus wird ueber den Hardware-Snapshot wieder in die UIs gespiegelt
@@ -111,4 +114,4 @@ Initialisierung im Backend:
 
 - Physische Verdrahtung am Pi und am Relaisboard abschliessend dokumentieren
 - Rueckmeldung des echten Board-Status nach erster erfolgreicher Schaltung auf dem Pi verifizieren
-- Falls spaeter ein weiterer Verbraucher hinzukommt: Nutzung von `K3` gezielt festlegen und dokumentieren
+- Physische Verdrahtung des Gehäuse-Lüfters auf `K3` bei Gelegenheit mit Foto dokumentieren

@@ -8,7 +8,7 @@
 
   <link rel="stylesheet" href="assets/app.css?v=20260326-04" />
   <link rel="stylesheet" href="assets/ui-common.css?v=20260326-04" />
-  <script type="module" src="assets/app.js?v=20260408-02"></script>
+  <script type="module" src="assets/app.js?v=20260408-04"></script>
 </head>
 
 <body>
@@ -34,9 +34,14 @@
           <img class="icon" id="lightImg" src="assets/svg/bulb-on.svg" alt="" aria-hidden="true">
         </button>
 
-        <!-- Lüfter -->
-        <button class="icon-btn" id="fanBtn" type="button" aria-label="Lüfter an">
-          <img class="icon" id="fanImg" src="assets/svg/fan-on.svg" alt="" aria-hidden="true">
+        <!-- Spindel-Lüfter -->
+        <button class="icon-btn" id="spindleFanBtn" type="button" aria-label="Spindel-Lüfter an">
+          <img class="icon" id="spindleFanImg" src="assets/svg/fan-on.svg" alt="" aria-hidden="true">
+        </button>
+
+        <!-- Gehäuse-Lüfter -->
+        <button class="icon-btn" id="enclosureFanBtn" type="button" aria-label="Gehäuse-Lüfter an">
+          <img class="icon" id="enclosureFanImg" src="assets/svg/fan-on.svg" alt="" aria-hidden="true">
         </button>
 
         <!-- Herunterfahren -->
@@ -115,21 +120,36 @@
       </div>
     </div>
 
-    <div class="modal" id="fanModal" role="dialog" aria-modal="true" aria-labelledby="fanTitle" aria-hidden="true">
+    <div class="modal" id="spindleFanModal" role="dialog" aria-modal="true" aria-labelledby="spindleFanTitle" aria-hidden="true">
       <div class="modal__backdrop" data-close="true"></div>
       <div class="modal__panel" role="document">
-        <h2 class="modal__title" id="fanTitle">Lüfter</h2>
-        <p class="modal__text">Lüftergeschwindigkeit einstellen</p>
+        <h2 class="modal__title" id="spindleFanTitle">Spindel-Lüfter</h2>
+        <p class="modal__text">Nachkühlzeit nach dem Ausschalten der Spindel</p>
         <div class="slider">
-          <input class="slider__input" id="fanSlider" type="range" min="0" max="100" value="40" />
-          <div class="slider__value" id="fanValue">40%</div>
+          <input class="slider__input" id="spindleFanAftercoolSlider" type="range" min="0" max="300" step="5" value="60" />
+          <div class="slider__value" id="spindleFanAftercoolValue">60s</div>
         </div>
-        <label class="switch-row" for="fanAuto">
+        <div class="modal__actions">
+          <button class="btn" id="spindleFanClose" type="button">Schließen</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="enclosureFanModal" role="dialog" aria-modal="true" aria-labelledby="enclosureFanTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close="true"></div>
+      <div class="modal__panel" role="document">
+        <h2 class="modal__title" id="enclosureFanTitle">Gehäuse-Lüfter</h2>
+        <p class="modal__text">Temperatur für die automatische Lüftersteuerung</p>
+        <div class="slider">
+          <input class="slider__input" id="enclosureFanThresholdSlider" type="range" min="30" max="65" step="1" value="40" />
+          <div class="slider__value" id="enclosureFanThresholdValue">40°C</div>
+        </div>
+        <label class="switch-row" for="enclosureFanAuto">
           <span>Automatisches Ein/Aus</span>
-          <input class="switch-row__check" id="fanAuto" type="checkbox" />
+          <input class="switch-row__check" id="enclosureFanAuto" type="checkbox" />
         </label>
         <div class="modal__actions">
-          <button class="btn" id="fanClose" type="button">Schließen</button>
+          <button class="btn" id="enclosureFanClose" type="button">Schließen</button>
         </div>
       </div>
     </div>

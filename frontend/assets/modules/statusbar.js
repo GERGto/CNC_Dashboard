@@ -12,7 +12,7 @@ export function createStatusbarController({ state, statusEl, statusBarEl }) {
       statusEl.textContent = "ERROR";
       statusEl.style.letterSpacing = "0.8px";
     } else if (isMaintenance) {
-      statusEl.textContent = "WARTUNG FAELLIG";
+      statusEl.textContent = "WARTUNG FÄLLIG";
       statusEl.style.letterSpacing = "0.4px";
     } else {
       statusEl.textContent = state.machineStatus;

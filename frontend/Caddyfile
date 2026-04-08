@@ -23,7 +23,7 @@
         file_server
     }
 
-    @monitor_api path /api/health /api/hardware /api/machine/status /api/wifi/status /api/maintenance/tasks* /api/camera/status /api/axes/stream /api/hardware/light /api/hardware/fan /api/hardware/e-stop /api/hardware/relay-4
+    @monitor_api path /api/health /api/hardware /api/machine/status /api/wifi/status /api/maintenance/tasks* /api/camera/status /api/axes/stream /api/hardware/light /api/hardware/fan /api/hardware/enclosure-fan /api/hardware/relay-3 /api/hardware/e-stop
     handle @monitor_api {
         reverse_proxy 127.0.0.1:8080 {
             flush_interval -1

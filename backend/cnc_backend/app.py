@@ -37,6 +37,10 @@ class BackendApp:
     SPINDLE_RUNTIME_POLL_INTERVAL_SEC = 0.25
     SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC = 5.0
     SPINDLE_RUNTIME_DELTA_CLAMP_SEC = 5.0
+    FAN_CONTROL_POLL_INTERVAL_SEC = 0.5
+    STATUS_INDICATOR_RUNNING_REFRESH_INTERVAL_SEC = 0.25
+    ENCLOSURE_FAN_HYSTERESIS_C = 1.0
+    AUTOMATED_FAN_OUTPUTS = frozenset({"fan", "enclosureFan"})
 
     def __init__(
         self,
@@ -56,10 +60,21 @@ class BackendApp:
         self.machine_status_service = machine_status_service
         self.camera_service = camera_service
         self._spindle_runtime_lock = threading.Lock()
+        self._fan_control_lock = threading.Lock()
         self._spindle_runtime_sec = None
         self._spindle_runtime_last_sample_monotonic = None
         self._spindle_runtime_last_persist_monotonic = 0.0
         self._spindle_runtime_last_running = False
+        self._spindle_fan_last_running = False
+        self._spindle_fan_last_stop_monotonic = None
+        self._fan_manual_overrides = {
+            output_id: {
+                "active": False,
+                "manualOn": False,
+                "lastAutoDesiredOn": None,
+            }
+            for output_id in self.AUTOMATED_FAN_OUTPUTS
+        }
 
     def ensure_storage(self):
         self.store.ensure_split_storage()
@@ -71,6 +86,7 @@ class BackendApp:
         threading.Thread(target=self.hardware_backend.initialize_outputs_on_startup, daemon=True).start()
         threading.Thread(target=self._hardware_estop_worker, daemon=True).start()
         threading.Thread(target=self._spindle_runtime_worker, daemon=True).start()
+        threading.Thread(target=self._fan_control_worker, daemon=True).start()
         threading.Thread(target=self._status_indicator_worker, daemon=True).start()
         self.camera_service.start_background_tasks()
 
@@ -138,8 +154,16 @@ class BackendApp:
     def get_camera_status(self, ensure_active=False):
         return self.camera_service.get_status(ensure_active=ensure_active)
 
-    def set_relay_output(self, output_id, enabled):
+    def set_relay_output(self, output_id, enabled, source="manual"):
+        normalized_output_id = self._normalize_automated_fan_output_id(output_id)
+        manual_auto_desired_on = None
+        if source != "automation":
+            manual_auto_desired_on = self._get_manual_override_auto_desired_on(normalized_output_id)
+
         result = self.hardware_backend.set_relay_output(output_id, enabled)
+
+        if source != "automation":
+            self._update_manual_fan_override(normalized_output_id, enabled, manual_auto_desired_on)
         self.sync_status_indicator()
         return result
 
@@ -164,6 +188,9 @@ class BackendApp:
         state = str(indicator.get("state", "idle")).strip() or "idle"
         reason = str(indicator.get("reason", "")).strip()
         self.hardware_backend.set_status_indicator_state(state, reason=reason, source="machine-status")
+        self.hardware_backend.set_status_indicator_running_load_percent(
+            self._get_status_indicator_running_load_percent(machine_status)
+        )
         return machine_status
 
     def get_settings(self):
@@ -199,8 +226,9 @@ class BackendApp:
         ui_keys = {
             "graphWindowSec",
             "rgbStripBrightness",
-            "fanSpeed",
-            "fanAuto",
+            "spindleFanAftercoolSeconds",
+            "enclosureFanThresholdC",
+            "enclosureFanAuto",
             "wifiSsid",
             "wifiPassword",
             "wifiAutoConnect",
@@ -212,6 +240,15 @@ class BackendApp:
             saved_ui_settings = self.store.save_ui_settings(ui_patch)
             if "rgbStripBrightness" in ui_patch:
                 self._apply_status_indicator_preferences(saved_ui_settings)
+            if any(
+                key in ui_patch
+                for key in ("spindleFanAftercoolSeconds", "enclosureFanThresholdC", "enclosureFanAuto")
+            ):
+                try:
+                    self._sync_spindle_fan_automation(saved_ui_settings)
+                    self._sync_enclosure_fan_automation(saved_ui_settings)
+                except Exception as exc:  # pragma: no cover - hardware may not be ready during settings save
+                    print(f"Immediate fan settings sync failed: {exc}", flush=True)
 
         if "spindleRuntimeSec" in payload:
             self.set_spindle_runtime_sec(payload.get("spindleRuntimeSec"), persist=True)
@@ -326,13 +363,190 @@ class BackendApp:
         self.hardware_backend.set_status_indicator_dynamic_brightness(brightness_percent)
 
     def _status_indicator_worker(self):
-        interval_sec = max(0.25, float(self.config.status_indicator_sync_interval_sec))
+        default_interval_sec = max(0.25, float(self.config.status_indicator_sync_interval_sec))
         while True:
+            interval_sec = default_interval_sec
             try:
-                self.sync_status_indicator()
+                machine_status = self.sync_status_indicator()
+                indicator = machine_status.get("indicator", {}) if isinstance(machine_status, dict) else {}
+                if str(indicator.get("state", "")).strip() == "running":
+                    interval_sec = min(
+                        default_interval_sec,
+                        self.STATUS_INDICATOR_RUNNING_REFRESH_INTERVAL_SEC,
+                    )
             except Exception as exc:  # pragma: no cover - background safety net
                 print(f"Status indicator sync failed: {exc}", flush=True)
             time.sleep(interval_sec)
+
+    def _get_status_indicator_running_load_percent(self, machine_status=None):
+        status_snapshot = machine_status if isinstance(machine_status, dict) else self.get_machine_status()
+        indicator = status_snapshot.get("indicator", {}) if isinstance(status_snapshot, dict) else {}
+        if str(indicator.get("state", "")).strip() != "running":
+            return 0.0
+
+        axes = mock_axes_load(int(time.time() * 1000))
+        try:
+            return max(0.0, min(100.0, float(axes.get("spindle", 0.0))))
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _fan_control_worker(self):
+        while True:
+            try:
+                settings = self.store.load_ui_settings()
+                self._sync_spindle_fan_automation(settings)
+                self._sync_enclosure_fan_automation(settings)
+            except Exception as exc:  # pragma: no cover - background safety net
+                print(f"Fan control worker failed: {exc}", flush=True)
+            time.sleep(self.FAN_CONTROL_POLL_INTERVAL_SEC)
+
+    def _sync_spindle_fan_automation(self, settings=None):
+        desired_on = self._get_spindle_fan_automation_desired_on(settings)
+        desired_on = self._resolve_manual_fan_override("fan", desired_on)
+        relay_board = self.hardware_backend.get_relay_board()
+        current_on = self._get_relay_channel_state(relay_board, "fan")
+
+        if current_on == desired_on:
+            return
+        self.set_relay_output("fan", desired_on, source="automation")
+
+    def _get_spindle_fan_automation_desired_on(self, settings=None):
+        ui_settings = settings if isinstance(settings, dict) else self.store.load_ui_settings()
+        aftercool_seconds = max(0, int(ui_settings.get("spindleFanAftercoolSeconds", 0) or 0))
+        spindle_running_info = self.hardware_backend.get_spindle_running(force_refresh=False)
+        spindle_running = bool(spindle_running_info.get("spindleRunning", False))
+        now = time.monotonic()
+
+        with self._fan_control_lock:
+            previous_running = bool(self._spindle_fan_last_running)
+            if spindle_running:
+                self._spindle_fan_last_stop_monotonic = None
+            elif previous_running:
+                self._spindle_fan_last_stop_monotonic = now
+
+            stop_monotonic = self._spindle_fan_last_stop_monotonic
+            self._spindle_fan_last_running = spindle_running
+
+        aftercool_active = (
+            stop_monotonic is not None
+            and aftercool_seconds > 0
+            and (now - stop_monotonic) < aftercool_seconds
+        )
+        return spindle_running or aftercool_active
+
+    def _sync_enclosure_fan_automation(self, settings=None):
+        desired_on = self._get_enclosure_fan_automation_desired_on(settings)
+        if desired_on is None:
+            return
+
+        desired_on = self._resolve_manual_fan_override("enclosureFan", desired_on)
+        relay_board = self.hardware_backend.get_relay_board()
+        current_on = self._get_relay_channel_state(relay_board, "enclosureFan")
+
+        if current_on == desired_on:
+            return
+        self.set_relay_output("enclosureFan", desired_on, source="automation")
+
+    def _get_enclosure_fan_automation_desired_on(self, settings=None, relay_board=None):
+        ui_settings = settings if isinstance(settings, dict) else self.store.load_ui_settings()
+        if not bool(ui_settings.get("enclosureFanAuto", False)):
+            return None
+
+        relay_board = relay_board if isinstance(relay_board, dict) else self.hardware_backend.get_relay_board()
+        current_on = self._get_relay_channel_state(relay_board, "enclosureFan")
+        temperature_payload = self.hardware_backend.get_enclosure_temperature(force_refresh=False)
+        if not bool(temperature_payload.get("available")):
+            return None
+
+        temperature_c = temperature_payload.get("temperatureC")
+        if temperature_c is None:
+            return None
+
+        threshold_c = float(ui_settings.get("enclosureFanThresholdC", 40) or 40)
+        threshold_to_switch_on = threshold_c
+        threshold_to_switch_off = threshold_c - self.ENCLOSURE_FAN_HYSTERESIS_C
+        return float(temperature_c) >= (threshold_to_switch_off if current_on else threshold_to_switch_on)
+
+    def _get_manual_override_auto_desired_on(self, output_id):
+        if output_id == "fan":
+            return self._get_spindle_fan_automation_desired_on()
+        if output_id == "enclosureFan":
+            relay_board = self.hardware_backend.get_relay_board()
+            return self._get_enclosure_fan_automation_desired_on(relay_board=relay_board)
+        return None
+
+    def _update_manual_fan_override(self, output_id, manual_on, auto_desired_on):
+        if output_id not in self.AUTOMATED_FAN_OUTPUTS:
+            return
+
+        manual_on = bool(manual_on)
+        allow_conflicting_override = False
+        if auto_desired_on is not None:
+            auto_desired_on = bool(auto_desired_on)
+            if output_id == "enclosureFan":
+                allow_conflicting_override = manual_on != auto_desired_on
+            elif output_id == "fan":
+                allow_conflicting_override = manual_on and not auto_desired_on
+
+        with self._fan_control_lock:
+            state = self._fan_manual_overrides[output_id]
+            state["manualOn"] = manual_on
+            state["lastAutoDesiredOn"] = auto_desired_on
+            state["active"] = bool(allow_conflicting_override)
+
+    def _resolve_manual_fan_override(self, output_id, auto_desired_on):
+        if output_id not in self.AUTOMATED_FAN_OUTPUTS:
+            return bool(auto_desired_on)
+
+        auto_desired_on = bool(auto_desired_on)
+        with self._fan_control_lock:
+            state = self._fan_manual_overrides[output_id]
+            last_auto_desired_on = state.get("lastAutoDesiredOn")
+
+            if not state.get("active", False):
+                state["lastAutoDesiredOn"] = auto_desired_on
+                return auto_desired_on
+
+            if last_auto_desired_on is None:
+                state["lastAutoDesiredOn"] = auto_desired_on
+                return bool(state.get("manualOn", False))
+
+            manual_on = bool(state.get("manualOn", False))
+            auto_changed = auto_desired_on != bool(last_auto_desired_on)
+            state["lastAutoDesiredOn"] = auto_desired_on
+
+            if auto_changed and auto_desired_on != manual_on:
+                state["active"] = False
+                return auto_desired_on
+
+            return manual_on
+
+    @staticmethod
+    def _normalize_automated_fan_output_id(output_id):
+        key = str(output_id or "").strip().lower()
+        aliases = {
+            "fan": "fan",
+            "spindlefan": "fan",
+            "spindle-fan": "fan",
+            "enclosurefan": "enclosureFan",
+            "enclosure-fan": "enclosureFan",
+            "relay3": "enclosureFan",
+            "relay-3": "enclosureFan",
+        }
+        return aliases.get(key, str(output_id or "").strip())
+
+    @staticmethod
+    def _get_relay_channel_state(relay_board, channel_id):
+        channels = relay_board.get("channels", {}) if isinstance(relay_board, dict) else {}
+        if not isinstance(channels, dict):
+            return False
+
+        if channel_id == "enclosureFan":
+            channel = channels.get("enclosureFan") or channels.get("relay3") or {}
+        else:
+            channel = channels.get(channel_id, {})
+
+        return bool(channel.get("on", False))
 
     def _hardware_estop_worker(self):
         interval_sec = max(0.05, float(self.config.hardware_estop_poll_interval_sec))

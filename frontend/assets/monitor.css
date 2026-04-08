@@ -9,7 +9,14 @@
   --accent-soft: rgba(34, 211, 238, 0.12);
   --green: #22c55e;
   --amber: #f59e0b;
+  --maintenance-orange: #e58a00;
+  --warning-strip: var(--maintenance-orange);
+  --warning-strip-soft: rgba(229, 138, 0, 0.82);
+  --warning-strip-glow: rgba(229, 138, 0, 0.42);
   --red: #ef4444;
+  --estop-strip: #ff2424;
+  --estop-strip-soft: rgba(255, 36, 36, 0.92);
+  --estop-strip-glow: rgba(255, 36, 36, 0.52);
   --red-soft: rgba(239, 68, 68, 0.14);
   --white: #f4f4f5;
   --mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, monospace;
@@ -99,8 +106,8 @@ svg{
 }
 
 .topbar__status-dot.is-maintenance{
-  background: var(--amber);
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.75);
+  background: var(--maintenance-orange);
+  box-shadow: 0 0 8px rgba(229, 138, 0, 0.75);
 }
 
 .topbar__status-dot.is-estop{
@@ -143,7 +150,10 @@ svg{
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 0 10px rgba(255, 255, 255, 0.45), 0 0 3px rgba(255, 255, 255, 0.25);
-  transition: background 0.4s ease, box-shadow 0.4s ease;
+  transition: background 0.4s ease, box-shadow 0.4s ease, filter 0.25s ease;
+  animation: none;
+  transform: translateZ(0);
+  will-change: filter, box-shadow;
 }
 
 .led-strip__label{
@@ -168,26 +178,57 @@ svg{
 
 /* Wartung fällig → orange */
 .led-strip[data-tone="maintenance"] .led-strip__bar{
-  background: var(--amber);
-  box-shadow: 0 0 14px rgba(245, 158, 11, 0.82), 0 0 5px rgba(245, 158, 11, 0.45);
+  background: var(--warning-strip);
+  box-shadow: 0 0 12px var(--warning-strip-soft), 0 0 4px var(--warning-strip-glow);
+  animation: led-warning-pulse 2.6s ease-in-out infinite;
 }
 .led-strip[data-tone="maintenance"] .led-strip__label{
-  color: var(--amber);
+  color: var(--warning-strip);
 }
 
-/* E-Stop aktiv → rot, blinkend */
+/* E-Stop aktiv → rot, Doppelpuls */
 .led-strip[data-tone="estop"] .led-strip__bar{
-  background: var(--red);
-  box-shadow: 0 0 18px rgba(239, 68, 68, 0.9), 0 0 6px rgba(239, 68, 68, 0.55);
-  animation: led-pulse 1s ease infinite;
+  background: var(--estop-strip);
+  box-shadow: 0 0 12px var(--estop-strip-soft), 0 0 4px var(--estop-strip-glow);
+  animation: led-estop-double-pulse 1.35s linear infinite;
 }
 .led-strip[data-tone="estop"] .led-strip__label{
   color: var(--red);
 }
 
-@keyframes led-pulse{
-  0%, 100%{ opacity: 1; }
-  50%{ opacity: 0.45; }
+@keyframes led-warning-pulse{
+  0%,
+  100%{
+    filter: brightness(0.52) saturate(0.96);
+    box-shadow: 0 0 8px rgba(229, 138, 0, 0.30), 0 0 3px rgba(229, 138, 0, 0.16);
+  }
+  50%{
+    filter: brightness(1) saturate(1.05);
+    box-shadow: 0 0 18px rgba(229, 138, 0, 0.86), 0 0 6px rgba(229, 138, 0, 0.42);
+  }
+}
+
+@keyframes led-estop-double-pulse{
+  0%,
+  5%,
+  21%,
+  24%,
+  100%{
+    filter: brightness(0.42) saturate(0.96);
+    box-shadow: 0 0 9px rgba(255, 36, 36, 0.34), 0 0 3px rgba(255, 36, 36, 0.18);
+  }
+  8%,
+  14%,
+  27%,
+  34%{
+    filter: brightness(0.72) saturate(1.02);
+    box-shadow: 0 0 14px rgba(255, 36, 36, 0.62), 0 0 5px rgba(255, 36, 36, 0.3);
+  }
+  11%,
+  31%{
+    filter: brightness(1) saturate(1.08);
+    box-shadow: 0 0 22px rgba(255, 36, 36, 0.96), 0 0 8px rgba(255, 36, 36, 0.52);
+  }
 }
 
 .topbar__controls{
@@ -649,11 +690,18 @@ svg{
 }
 
 .file-row__icon,
-.file-row__action-icon,
 .task-row__check-icon{
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
+  display: block;
+}
+
+.file-row__action-icon{
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: block;
 }
 
 .file-row__icon{
@@ -695,9 +743,18 @@ svg{
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.row-icon-btn{
+  width: 32px;
+  height: 32px;
+  padding: 4px;
+  flex: 0 0 auto;
 }
 
 .row-icon-btn:hover{

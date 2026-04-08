@@ -62,6 +62,15 @@ def _scale_color(color, factor):
     )
 
 
+def _blend_color(start_color, end_color, factor):
+    blend = max(0.0, min(1.0, float(factor)))
+    return (
+        _lerp_channel(start_color[0], end_color[0], blend),
+        _lerp_channel(start_color[1], end_color[1], blend),
+        _lerp_channel(start_color[2], end_color[2], blend),
+    )
+
+
 class NeoPixelStatusStripController:
     CONTROLLER_ID = "ws2812b-status-strip"
     DISPLAY_NAME = "WS2812B Status-LED-Streifen"
@@ -70,14 +79,14 @@ class NeoPixelStatusStripController:
     STATIC_STATE_COLORS = {
         "off": (0, 0, 0),
         "on": (255, 255, 255),
-        "warning": (255, 128, 0),
+        "warning": (255, 96, 0),
         "running": (0, 255, 0),
         "eStop": (255, 0, 0),
     }
     STARTUP_BLUE = (0, 96, 255)
     IDLE_WHITE_MIN = 28
     IDLE_WHITE_MAX = 127
-    IDLE_PHASE_STEP_PER_FRAME = 0.036
+    IDLE_PHASE_STEP_PER_FRAME = 0.012
     IDLE_PIXEL_PHASE_OFFSET = 0.12
     ESTOP_RED_BASE = 96
     ESTOP_RED_PEAK = 255
@@ -85,7 +94,14 @@ class NeoPixelStatusStripController:
     ESTOP_PULSE_WIDTH_SEC = 0.18
     ESTOP_FIRST_PULSE_CENTER_SEC = 0.16
     ESTOP_SECOND_PULSE_CENTER_SEC = 0.42
-    ANIMATION_FPS = 20.0
+    WARNING_PULSE_PERIOD_SEC = 2.6
+    WARNING_PULSE_MIN_FACTOR = 0.28
+    WARNING_PULSE_MAX_FACTOR = 0.92
+    RUNNING_BASE_GREEN = (0, 56, 0)
+    RUNNING_HOTSPOT_GREEN = (0, 255, 0)
+    RUNNING_TAIL_PIXELS = 44.0
+    RUNNING_SMOOTHING_TIME_SEC = 0.28
+    ANIMATION_FPS = 60.0
     BOOT_EXPAND_DURATION_SEC = 1.8
     SYSTEM_CHECK_FADE_DURATION_SEC = 1.2
     IDLE_BLEND_DURATION_SEC = 1.6
@@ -94,6 +110,8 @@ class NeoPixelStatusStripController:
     STARTUP_RENDER_STATE = "startupExpand"
     SYSTEM_CHECK_RENDER_STATE = "systemCheck"
     IDLE_BLEND_RENDER_STATE = "idleBlend"
+    RUNNING_RENDER_STATE = "runningLoadHotspot"
+    WARNING_RENDER_STATE = "warningPulse"
     ESTOP_RENDER_STATE = "eStopPulse"
     SHUTDOWN_RENDER_STATE = "shutdownCollapse"
     SHUTDOWN_OFF_RENDER_STATE = "shutdownOff"
@@ -156,6 +174,9 @@ class NeoPixelStatusStripController:
         self._last_pixels = None
         self._center_groups = self._build_center_groups()
         self._idle_phase = 0.0
+        self._running_load_percent = 0.0
+        self._running_display_position = 0.0
+        self._running_last_frame_monotonic = None
         self._last_command_at = None
         self._last_success_at = None
         self._last_error = ""
@@ -219,6 +240,36 @@ class NeoPixelStatusStripController:
 
             self._ensure_animator_running_locked()
             self._wake_event.set()
+            return self._build_snapshot_locked()
+
+    def set_running_load_percent(self, load_percent):
+        try:
+            normalized_load = max(0.0, min(100.0, float(load_percent)))
+        except (ValueError, TypeError):
+            normalized_load = 0.0
+
+        target_position = self._running_load_percent_to_position(normalized_load)
+
+        with self._lock:
+            self._running_load_percent = normalized_load
+            if self._desired_state != "running" and self._render_state != self.RUNNING_RENDER_STATE:
+                self._running_display_position = target_position
+                self._running_last_frame_monotonic = None
+
+            driver = self._load_driver_locked()
+            if not self.enabled or driver is None:
+                return self._build_snapshot_locked()
+
+            strip = self._ensure_strip_locked()
+            if strip is None:
+                return self._build_snapshot_locked()
+
+            if not self._boot_started and not self._boot_completed:
+                return self._build_snapshot_locked()
+
+            if self._desired_state == "running" or self._render_state == self.RUNNING_RENDER_STATE:
+                self._ensure_animator_running_locked()
+                self._wake_event.set()
             return self._build_snapshot_locked()
 
     def start_boot_sequence(self, on_full_blue_callback=None):
@@ -367,6 +418,12 @@ class NeoPixelStatusStripController:
                 "shutdownActive": self._shutdown_active,
                 "shutdownPhase": self._shutdown_phase,
                 "frameRateFps": self.ANIMATION_FPS,
+                "runningLoadPercent": round(self._running_load_percent, 2),
+                "runningDisplayLoadPercent": round(
+                    self._running_position_to_percent(self._running_display_position),
+                    2,
+                ),
+                "runningHotspotPixel": round(self._running_display_position, 2),
             },
             "lastCommandAt": self._last_command_at,
             "lastSuccessAt": self._last_success_at,
@@ -545,6 +602,12 @@ class NeoPixelStatusStripController:
         if self._desired_state == "idle":
             return self._render_idle_breathing_frame(), "idle", None, 1.0 / self.ANIMATION_FPS
 
+        if self._desired_state == "running":
+            return self._render_running_load_frame(now), self.RUNNING_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
+
+        if self._desired_state == "warning":
+            return self._render_warning_pulse_frame(now), self.WARNING_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
+
         return self._render_static_frame(self._desired_state), self._desired_state, None, self.STATIC_REFRESH_SEC
 
     def _render_static_frame(self, state_id):
@@ -574,6 +637,55 @@ class NeoPixelStatusStripController:
             frame.append(self._apply_state_brightness("idle", (white, white, white)))
         if advance_phase:
             self._idle_phase = (self._idle_phase + self.IDLE_PHASE_STEP_PER_FRAME) % math.tau
+        return frame
+
+    def _render_warning_pulse_frame(self, now):
+        base_warning = self.STATIC_STATE_COLORS["warning"]
+        if self.WARNING_PULSE_PERIOD_SEC <= 0:
+            pulse_progress = 1.0
+        else:
+            cycle_progress = (max(0.0, float(now)) % self.WARNING_PULSE_PERIOD_SEC) / self.WARNING_PULSE_PERIOD_SEC
+            pulse_progress = 0.5 - (0.5 * math.cos(math.tau * cycle_progress))
+
+        factor = self.WARNING_PULSE_MIN_FACTOR + (
+            (self.WARNING_PULSE_MAX_FACTOR - self.WARNING_PULSE_MIN_FACTOR) * pulse_progress
+        )
+        color = self._apply_state_brightness("warning", _scale_color(base_warning, factor))
+        return [color for _ in range(self.pixel_count)]
+
+    def _render_running_load_frame(self, now):
+        target_position = self._running_load_percent_to_position(self._running_load_percent)
+        if self._running_last_frame_monotonic is None:
+            self._running_display_position = target_position
+        else:
+            delta_sec = max(0.0, min(0.25, float(now) - float(self._running_last_frame_monotonic)))
+            if delta_sec > 0.0 and self.RUNNING_SMOOTHING_TIME_SEC > 0.0:
+                blend = 1.0 - math.exp(-delta_sec / self.RUNNING_SMOOTHING_TIME_SEC)
+                self._running_display_position += (target_position - self._running_display_position) * blend
+            else:
+                self._running_display_position = target_position
+
+        self._running_last_frame_monotonic = float(now)
+        hotspot_position = max(0.0, min(float(self.pixel_count - 1), self._running_display_position))
+        frame = []
+        for pixel_index in range(self.pixel_count):
+            distance = hotspot_position - float(pixel_index)
+            if distance < -0.5:
+                highlight_strength = 0.0
+            elif distance < 0.0:
+                highlight_strength = 1.0 - (abs(distance) / 0.5)
+            elif self.RUNNING_TAIL_PIXELS > 0.0 and distance <= self.RUNNING_TAIL_PIXELS:
+                tail_progress = distance / self.RUNNING_TAIL_PIXELS
+                highlight_strength = math.cos(tail_progress * (math.pi * 0.5)) ** 2
+            else:
+                highlight_strength = 0.0
+
+            color = _blend_color(
+                self.RUNNING_BASE_GREEN,
+                self.RUNNING_HOTSPOT_GREEN,
+                highlight_strength,
+            )
+            frame.append(self._apply_state_brightness("running", color))
         return frame
 
     def _render_estop_double_pulse_frame(self, now):
@@ -685,6 +797,12 @@ class NeoPixelStatusStripController:
         if self._desired_state == "idle":
             return self._render_idle_wave_frame(advance_phase=False)
 
+        if self._desired_state == "running":
+            return self._render_running_load_frame(time.monotonic())
+
+        if self._desired_state == "warning":
+            return self._render_warning_pulse_frame(time.monotonic())
+
         return self._render_static_frame(self._desired_state)
 
     def _complete_shutdown_sequence(self):
@@ -711,6 +829,18 @@ class NeoPixelStatusStripController:
         if state_id not in self.DIMMABLE_STATES:
             return color
         return _scale_color(color, self._dynamic_brightness_percent / 100.0)
+
+    def _running_load_percent_to_position(self, load_percent):
+        if self.pixel_count <= 1:
+            return 0.0
+        normalized_load = max(0.0, min(100.0, float(load_percent)))
+        return (normalized_load / 100.0) * float(self.pixel_count - 1)
+
+    def _running_position_to_percent(self, position):
+        if self.pixel_count <= 1:
+            return 0.0
+        normalized_position = max(0.0, min(float(self.pixel_count - 1), float(position)))
+        return (normalized_position / float(self.pixel_count - 1)) * 100.0
 
     def _build_center_groups(self):
         groups = []

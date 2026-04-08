@@ -103,7 +103,7 @@ class MachineStatusService:
     STATUS_COLORS = {
         "idle": {"r": 127, "g": 127, "b": 127},
         "on": {"r": 255, "g": 255, "b": 255},
-        "warning": {"r": 255, "g": 128, "b": 0},
+        "warning": {"r": 255, "g": 96, "b": 0},
         "running": {"r": 0, "g": 255, "b": 0},
         "eStop": {"r": 255, "g": 0, "b": 0},
     }

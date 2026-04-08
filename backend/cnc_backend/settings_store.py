@@ -72,8 +72,9 @@ class SettingsStore:
         return {
             "graphWindowSec": 60,
             "rgbStripBrightness": 75,
-            "fanSpeed": 40,
-            "fanAuto": False,
+            "spindleFanAftercoolSeconds": 60,
+            "enclosureFanThresholdC": 40,
+            "enclosureFanAuto": False,
             "wifiSsid": "",
             "wifiPassword": "",
             "wifiAutoConnect": False,
@@ -267,6 +268,7 @@ class SettingsStore:
         wifi_ssid = str(data.get("wifiSsid", defaults["wifiSsid"])).strip()
         wifi_password = str(data.get("wifiPassword", defaults["wifiPassword"]))
         rgb_strip_brightness = data.get("rgbStripBrightness", data.get("lightBrightness", defaults["rgbStripBrightness"]))
+        enclosure_fan_auto = data.get("enclosureFanAuto", data.get("fanAuto", defaults["enclosureFanAuto"]))
         normalized = {
             "graphWindowSec": clamp(
                 to_int(data.get("graphWindowSec", defaults["graphWindowSec"]), defaults["graphWindowSec"]),
@@ -278,12 +280,23 @@ class SettingsStore:
                 10,
                 100,
             ),
-            "fanSpeed": clamp(
-                to_int(data.get("fanSpeed", defaults["fanSpeed"]), defaults["fanSpeed"]),
+            "spindleFanAftercoolSeconds": clamp(
+                to_int(
+                    data.get("spindleFanAftercoolSeconds", defaults["spindleFanAftercoolSeconds"]),
+                    defaults["spindleFanAftercoolSeconds"],
+                ),
                 0,
-                100,
+                300,
             ),
-            "fanAuto": bool(data.get("fanAuto", defaults["fanAuto"])),
+            "enclosureFanThresholdC": clamp(
+                to_int(
+                    data.get("enclosureFanThresholdC", defaults["enclosureFanThresholdC"]),
+                    defaults["enclosureFanThresholdC"],
+                ),
+                30,
+                65,
+            ),
+            "enclosureFanAuto": bool(enclosure_fan_auto),
             "wifiSsid": wifi_ssid,
             "wifiPassword": wifi_password,
             "wifiAutoConnect": bool(data.get("wifiAutoConnect", defaults["wifiAutoConnect"])),

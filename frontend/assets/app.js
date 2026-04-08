@@ -1,4 +1,4 @@
-import { createStatusbarController } from "./modules/statusbar.js?v=20260406-02";
+import { createStatusbarController } from "./modules/statusbar.js?v=20260408-07";
 import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
@@ -54,9 +54,12 @@ const state = {
   wifiIpAddress: "",
   lightOn: true,
   rgbStripBrightness: 75,
-  fanOn: true,
-  fanSpeed: 40,
-  fanAuto: false,
+  spindleFanOn: false,
+  spindleFanAftercoolSeconds: 60,
+  enclosureFanOn: false,
+  enclosureFanAuto: false,
+  enclosureFanThresholdC: 40,
+  enclosureFanAvailable: true,
   spindleRuntimeSec: 0,
 };
 
@@ -77,12 +80,14 @@ const statusBarEl = document.querySelector(".statusbar");
 
 const wifiBtn = document.getElementById("wifiBtn");
 const lightBtn = document.getElementById("lightBtn");
-const fanBtn = document.getElementById("fanBtn");
+const spindleFanBtn = document.getElementById("spindleFanBtn");
+const enclosureFanBtn = document.getElementById("enclosureFanBtn");
 const shutdownBtn = document.getElementById("shutdownBtn");
 
 const wifiImg = document.getElementById("wifiImg");
 const lightImg = document.getElementById("lightImg");
-const fanImg = document.getElementById("fanImg");
+const spindleFanImg = document.getElementById("spindleFanImg");
+const enclosureFanImg = document.getElementById("enclosureFanImg");
 const wifiEastereggOverlay = document.getElementById("wifiEastereggOverlay");
 const wifiEastereggGif = document.getElementById("wifiEastereggGif");
 const shutdownModal = document.getElementById("shutdownModal");
@@ -97,11 +102,15 @@ const lightModal = document.getElementById("lightModal");
 const lightClose = document.getElementById("lightClose");
 const lightSlider = document.getElementById("lightSlider");
 const lightValue = document.getElementById("lightValue");
-const fanModal = document.getElementById("fanModal");
-const fanClose = document.getElementById("fanClose");
-const fanSlider = document.getElementById("fanSlider");
-const fanValue = document.getElementById("fanValue");
-const fanAutoInput = document.getElementById("fanAuto");
+const spindleFanModal = document.getElementById("spindleFanModal");
+const spindleFanClose = document.getElementById("spindleFanClose");
+const spindleFanAftercoolSlider = document.getElementById("spindleFanAftercoolSlider");
+const spindleFanAftercoolValue = document.getElementById("spindleFanAftercoolValue");
+const enclosureFanModal = document.getElementById("enclosureFanModal");
+const enclosureFanClose = document.getElementById("enclosureFanClose");
+const enclosureFanThresholdSlider = document.getElementById("enclosureFanThresholdSlider");
+const enclosureFanThresholdValue = document.getElementById("enclosureFanThresholdValue");
+const enclosureFanAutoInput = document.getElementById("enclosureFanAuto");
 const wifiConfigModal = document.getElementById("wifiConfigModal");
 const wifiModalClose = document.getElementById("wifiModalClose");
 const wifiSsidSelect = document.getElementById("wifiSsidSelect");
@@ -161,7 +170,8 @@ let navSuppressClickUntilMs = 0;
 let shutdownRecoveryTimer = null;
 let shutdownInProgress = false;
 let lightRequestInFlight = false;
-let fanRequestInFlight = false;
+let spindleFanRequestInFlight = false;
+let enclosureFanRequestInFlight = false;
 
 const statusbarController = createStatusbarController({
   state,
@@ -339,32 +349,62 @@ function updateLightBrightness(value){
   queueUiSettingsSave();
 }
 
-function setFanOn(isOn, broadcast = false){
-  state.fanOn = !!isOn;
-  fanImg.src = state.fanOn ? ICONS.fanOn : ICONS.fanOff;
-  fanBtn.setAttribute("aria-label", state.fanOn ? "Luefter an" : "Luefter aus");
+function setSpindleFanOn(isOn, broadcast = false){
+  state.spindleFanOn = !!isOn;
+  spindleFanImg.src = state.spindleFanOn ? ICONS.fanOn : ICONS.fanOff;
+  spindleFanBtn.setAttribute("aria-label", state.spindleFanOn ? "Spindel-Lüfter an" : "Spindel-Lüfter aus");
   if (broadcast){
-    broadcastToFrames({ type: "fan", on: state.fanOn });
+    broadcastToFrames({ type: "spindleFan", on: state.spindleFanOn });
   }
 }
 
-function toggleFan(){
-  void setFanPower(!state.fanOn);
+function setEnclosureFanOn(isOn, broadcast = false){
+  state.enclosureFanOn = !!isOn;
+  enclosureFanImg.src = state.enclosureFanOn ? ICONS.fanOn : ICONS.fanOff;
+  enclosureFanBtn.setAttribute(
+    "aria-label",
+    state.enclosureFanOn ? "Gehäuse-Lüfter an" : "Gehäuse-Lüfter aus"
+  );
+  if (broadcast){
+    broadcastToFrames({ type: "enclosureFan", on: state.enclosureFanOn });
+  }
 }
 
-function updateFanSpeed(value){
-  const v = Math.max(0, Math.min(100, Number(value) || 0));
-  state.fanSpeed = v;
-  fanSlider.value = String(v);
-  fanValue.textContent = `${v}%`;
-  broadcastToFrames({ type: "fanSpeed", value: v });
+function setEnclosureFanAvailable(isAvailable){
+  state.enclosureFanAvailable = !!isAvailable;
+  enclosureFanBtn.dataset.available = state.enclosureFanAvailable ? "true" : "false";
+}
+
+function toggleSpindleFan(){
+  void setSpindleFanPower(!state.spindleFanOn);
+}
+
+function toggleEnclosureFan(){
+  void setEnclosureFanPower(!state.enclosureFanOn);
+}
+
+function updateSpindleFanAftercoolSeconds(value){
+  const v = Math.max(0, Math.min(300, Number(value) || 0));
+  state.spindleFanAftercoolSeconds = v;
+  spindleFanAftercoolSlider.value = String(v);
+  spindleFanAftercoolValue.textContent = `${v}s`;
+  broadcastToFrames({ type: "spindleFanAftercoolSeconds", value: v });
   queueUiSettingsSave();
 }
 
-function setFanAuto(isAuto, persist = false){
-  state.fanAuto = !!isAuto;
-  fanAutoInput.checked = state.fanAuto;
-  broadcastToFrames({ type: "fanAuto", enabled: state.fanAuto });
+function updateEnclosureFanThresholdC(value){
+  const v = Math.max(30, Math.min(65, Number(value) || 0));
+  state.enclosureFanThresholdC = v;
+  enclosureFanThresholdSlider.value = String(v);
+  enclosureFanThresholdValue.textContent = `${v}°C`;
+  broadcastToFrames({ type: "enclosureFanThresholdC", value: v });
+  queueUiSettingsSave();
+}
+
+function setEnclosureFanAuto(isAuto, persist = false){
+  state.enclosureFanAuto = !!isAuto;
+  enclosureFanAutoInput.checked = state.enclosureFanAuto;
+  broadcastToFrames({ type: "enclosureFanAuto", enabled: state.enclosureFanAuto });
   if (persist) queueUiSettingsSave();
 }
 
@@ -382,13 +422,21 @@ function closeLightModal(){
   lightBtn.focus();
 }
 
-function openFanModal(){
-  fanSlider.value = String(state.fanSpeed);
-  fanValue.textContent = `${state.fanSpeed}%`;
-  setFanAuto(state.fanAuto);
-  fanModal.classList.add("is-open");
-  fanModal.setAttribute("aria-hidden", "false");
-  fanSlider.focus();
+function openSpindleFanModal(){
+  spindleFanAftercoolSlider.value = String(state.spindleFanAftercoolSeconds);
+  spindleFanAftercoolValue.textContent = `${state.spindleFanAftercoolSeconds}s`;
+  spindleFanModal.classList.add("is-open");
+  spindleFanModal.setAttribute("aria-hidden", "false");
+  spindleFanAftercoolSlider.focus();
+}
+
+function openEnclosureFanModal(){
+  enclosureFanThresholdSlider.value = String(state.enclosureFanThresholdC);
+  enclosureFanThresholdValue.textContent = `${state.enclosureFanThresholdC}°C`;
+  setEnclosureFanAuto(state.enclosureFanAuto);
+  enclosureFanModal.classList.add("is-open");
+  enclosureFanModal.setAttribute("aria-hidden", "false");
+  enclosureFanThresholdSlider.focus();
 }
 
 function updateGraphWindowModal(seconds, emitToHome = false){
@@ -440,9 +488,11 @@ function buildInitMessage(){
     wifiIssue: state.wifiIssue,
     wifiIpAddress: state.wifiIpAddress,
     lightOn: state.lightOn,
-    fanOn: state.fanOn,
-    fanSpeed: state.fanSpeed,
-    fanAuto: state.fanAuto,
+    spindleFanOn: state.spindleFanOn,
+    spindleFanAftercoolSeconds: state.spindleFanAftercoolSeconds,
+    enclosureFanOn: state.enclosureFanOn,
+    enclosureFanAuto: state.enclosureFanAuto,
+    enclosureFanThresholdC: state.enclosureFanThresholdC,
     spindleRuntimeSec: state.spindleRuntimeSec,
     spindleRunning: state.spindleRunning
   };
@@ -496,8 +546,9 @@ function persistUiSettings(){
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       rgbStripBrightness: state.rgbStripBrightness,
-      fanSpeed: state.fanSpeed,
-      fanAuto: state.fanAuto
+      spindleFanAftercoolSeconds: state.spindleFanAftercoolSeconds,
+      enclosureFanThresholdC: state.enclosureFanThresholdC,
+      enclosureFanAuto: state.enclosureFanAuto,
     })
   }).catch(() => {});
 }
@@ -520,7 +571,14 @@ function applyRelayBoardSnapshot(relayBoard){
     setLightOn(channels.light.on, true);
   }
   if (channels.fan && typeof channels.fan.on === "boolean"){
-    setFanOn(channels.fan.on, true);
+    setSpindleFanOn(channels.fan.on, true);
+  }
+  const enclosureFanChannel = channels.enclosureFan || channels.relay3;
+  if (enclosureFanChannel && typeof enclosureFanChannel.on === "boolean"){
+    setEnclosureFanOn(enclosureFanChannel.on, true);
+    setEnclosureFanAvailable(enclosureFanChannel.available !== false);
+  } else {
+    setEnclosureFanAvailable(false);
   }
   if (channels.eStop){
     state.eStopEngaged = !!(channels.eStop.engaged ?? channels.eStop.on);
@@ -532,7 +590,9 @@ function applyHardwareSnapshot(data){
   const relayBoard = data && data.actuators && data.actuators.relayBoard;
   if (relayBoard && typeof relayBoard === "object" && (relayBoard.available || relayBoard.status === "ok")){
     applyRelayBoardSnapshot(relayBoard);
+    return;
   }
+  setEnclosureFanAvailable(false);
 }
 
 async function postRelayOutput(endpoint, payload){
@@ -565,20 +625,37 @@ async function setLightPower(isOn){
   }
 }
 
-async function setFanPower(isOn){
-  if (fanRequestInFlight) return;
-  fanRequestInFlight = true;
+async function setSpindleFanPower(isOn){
+  if (spindleFanRequestInFlight) return;
+  spindleFanRequestInFlight = true;
   try {
     const data = await postRelayOutput("/api/hardware/fan", { on: !!isOn });
     if (data && data.relayBoard){
       applyRelayBoardSnapshot(data.relayBoard);
     } else if (data && data.channel && typeof data.channel.on === "boolean"){
-      setFanOn(data.channel.on, true);
+      setSpindleFanOn(data.channel.on, true);
     }
   } catch (error){
-    console.error("Fan relay request failed:", error);
+    console.error("Spindle fan relay request failed:", error);
   } finally {
-    fanRequestInFlight = false;
+    spindleFanRequestInFlight = false;
+  }
+}
+
+async function setEnclosureFanPower(isOn){
+  if (enclosureFanRequestInFlight) return;
+  enclosureFanRequestInFlight = true;
+  try {
+    const data = await postRelayOutput("/api/hardware/enclosure-fan", { on: !!isOn });
+    if (data && data.relayBoard){
+      applyRelayBoardSnapshot(data.relayBoard);
+    } else if (data && data.channel && typeof data.channel.on === "boolean"){
+      setEnclosureFanOn(data.channel.on, true);
+    }
+  } catch (error){
+    console.error("Enclosure fan relay request failed:", error);
+  } finally {
+    enclosureFanRequestInFlight = false;
   }
 }
 
@@ -614,17 +691,32 @@ function loadUiSettings(){
         lightValue.textContent = `${v}%`;
         broadcastToFrames({ type: "rgbStripBrightness", value: v });
       }
-      if (typeof data.fanSpeed === "number"){
-        const v = Math.max(0, Math.min(100, data.fanSpeed));
-        state.fanSpeed = v;
-        fanSlider.value = String(v);
-        fanValue.textContent = `${v}%`;
-        broadcastToFrames({ type: "fanSpeed", value: v });
+      if (typeof data.spindleFanAftercoolSeconds === "number"){
+        const v = Math.max(0, Math.min(300, data.spindleFanAftercoolSeconds));
+        state.spindleFanAftercoolSeconds = v;
+        spindleFanAftercoolSlider.value = String(v);
+        spindleFanAftercoolValue.textContent = `${v}s`;
+        broadcastToFrames({ type: "spindleFanAftercoolSeconds", value: v });
       }
-      if (typeof data.fanAuto === "boolean"){
-        setFanAuto(data.fanAuto);
-      } else if (typeof data.fanAuto === "number" && (data.fanAuto === 0 || data.fanAuto === 1)){
-        setFanAuto(Boolean(data.fanAuto));
+      if (typeof data.enclosureFanThresholdC === "number"){
+        const v = Math.max(30, Math.min(65, data.enclosureFanThresholdC));
+        state.enclosureFanThresholdC = v;
+        enclosureFanThresholdSlider.value = String(v);
+        enclosureFanThresholdValue.textContent = `${v}°C`;
+        broadcastToFrames({ type: "enclosureFanThresholdC", value: v });
+      }
+      const enclosureFanAutoValue =
+        typeof data.enclosureFanAuto === "boolean"
+          ? data.enclosureFanAuto
+          : typeof data.enclosureFanAuto === "number" && (data.enclosureFanAuto === 0 || data.enclosureFanAuto === 1)
+            ? Boolean(data.enclosureFanAuto)
+            : typeof data.fanAuto === "boolean"
+              ? data.fanAuto
+              : typeof data.fanAuto === "number" && (data.fanAuto === 0 || data.fanAuto === 1)
+                ? Boolean(data.fanAuto)
+                : null;
+      if (typeof enclosureFanAutoValue === "boolean"){
+        setEnclosureFanAuto(enclosureFanAutoValue);
       }
       if (typeof data.spindleRuntimeSec === "number"){
         setSpindleRuntimeSec(data.spindleRuntimeSec);
@@ -670,10 +762,16 @@ function loadMachineStatus(){
     .catch(() => {});
 }
 
-function closeFanModal(){
-  fanModal.classList.remove("is-open");
-  fanModal.setAttribute("aria-hidden", "true");
-  fanBtn.focus();
+function closeSpindleFanModal(){
+  spindleFanModal.classList.remove("is-open");
+  spindleFanModal.setAttribute("aria-hidden", "true");
+  spindleFanBtn.focus();
+}
+
+function closeEnclosureFanModal(){
+  enclosureFanModal.classList.remove("is-open");
+  enclosureFanModal.setAttribute("aria-hidden", "true");
+  enclosureFanBtn.focus();
 }
 
 function setShutdownError(message = ""){
@@ -784,8 +882,10 @@ function confirmShutdown(){
 
 let lightPressTimer = null;
 let lightLongPress = false;
-let fanPressTimer = null;
-let fanLongPress = false;
+let spindleFanPressTimer = null;
+let spindleFanLongPress = false;
+let enclosureFanPressTimer = null;
+let enclosureFanLongPress = false;
 let wifiPressTimer = null;
 let wifiLongPress = false;
 
@@ -839,29 +939,54 @@ lightBtn.addEventListener("click", () => {
   toggleLight();
 });
 
-fanBtn.addEventListener("pointerdown", (ev) => {
+spindleFanBtn.addEventListener("pointerdown", (ev) => {
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
-  fanLongPress = false;
-  fanPressTimer = setTimeout(() => {
-    fanLongPress = true;
-    openFanModal();
+  spindleFanLongPress = false;
+  spindleFanPressTimer = setTimeout(() => {
+    spindleFanLongPress = true;
+    openSpindleFanModal();
   }, 600);
 });
 
-const clearFanPress = () => {
-  if (fanPressTimer) clearTimeout(fanPressTimer);
-  fanPressTimer = null;
+const clearSpindleFanPress = () => {
+  if (spindleFanPressTimer) clearTimeout(spindleFanPressTimer);
+  spindleFanPressTimer = null;
 };
 
-fanBtn.addEventListener("pointerup", clearFanPress);
-fanBtn.addEventListener("pointerleave", clearFanPress);
-fanBtn.addEventListener("pointercancel", clearFanPress);
-fanBtn.addEventListener("click", () => {
-  if (fanLongPress){
-    fanLongPress = false;
+spindleFanBtn.addEventListener("pointerup", clearSpindleFanPress);
+spindleFanBtn.addEventListener("pointerleave", clearSpindleFanPress);
+spindleFanBtn.addEventListener("pointercancel", clearSpindleFanPress);
+spindleFanBtn.addEventListener("click", () => {
+  if (spindleFanLongPress){
+    spindleFanLongPress = false;
     return;
   }
-  toggleFan();
+  toggleSpindleFan();
+});
+
+enclosureFanBtn.addEventListener("pointerdown", (ev) => {
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  enclosureFanLongPress = false;
+  enclosureFanPressTimer = setTimeout(() => {
+    enclosureFanLongPress = true;
+    openEnclosureFanModal();
+  }, 600);
+});
+
+const clearEnclosureFanPress = () => {
+  if (enclosureFanPressTimer) clearTimeout(enclosureFanPressTimer);
+  enclosureFanPressTimer = null;
+};
+
+enclosureFanBtn.addEventListener("pointerup", clearEnclosureFanPress);
+enclosureFanBtn.addEventListener("pointerleave", clearEnclosureFanPress);
+enclosureFanBtn.addEventListener("pointercancel", clearEnclosureFanPress);
+enclosureFanBtn.addEventListener("click", () => {
+  if (enclosureFanLongPress){
+    enclosureFanLongPress = false;
+    return;
+  }
+  toggleEnclosureFan();
 });
 shutdownBtn.addEventListener("click", openShutdownModal);
 shutdownCancel.addEventListener("click", closeShutdownModal);
@@ -884,14 +1009,21 @@ lightModal.addEventListener("click", (ev) => {
   }
 });
 lightSlider.addEventListener("input", (ev) => updateLightBrightness(ev.target.value));
-fanClose.addEventListener("click", closeFanModal);
-fanModal.addEventListener("click", (ev) => {
+spindleFanClose.addEventListener("click", closeSpindleFanModal);
+spindleFanModal.addEventListener("click", (ev) => {
   if (ev.target && ev.target.dataset && ev.target.dataset.close){
-    closeFanModal();
+    closeSpindleFanModal();
   }
 });
-fanSlider.addEventListener("input", (ev) => updateFanSpeed(ev.target.value));
-fanAutoInput.addEventListener("change", (ev) => setFanAuto(ev.target.checked, true));
+spindleFanAftercoolSlider.addEventListener("input", (ev) => updateSpindleFanAftercoolSeconds(ev.target.value));
+enclosureFanClose.addEventListener("click", closeEnclosureFanModal);
+enclosureFanModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.close){
+    closeEnclosureFanModal();
+  }
+});
+enclosureFanThresholdSlider.addEventListener("input", (ev) => updateEnclosureFanThresholdC(ev.target.value));
+enclosureFanAutoInput.addEventListener("change", (ev) => setEnclosureFanAuto(ev.target.checked, true));
 wifiController.attachEventHandlers();
 keyboardController.attachEventHandlers();
 graphClose.addEventListener("click", closeGraphModal);
@@ -919,8 +1051,11 @@ window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && lightModal.classList.contains("is-open")){
     closeLightModal();
   }
-  if (ev.key === "Escape" && fanModal.classList.contains("is-open")){
-    closeFanModal();
+  if (ev.key === "Escape" && spindleFanModal.classList.contains("is-open")){
+    closeSpindleFanModal();
+  }
+  if (ev.key === "Escape" && enclosureFanModal.classList.contains("is-open")){
+    closeEnclosureFanModal();
   }
   if (ev.key === "Escape" && wifiConfigModal.classList.contains("is-open")){
     closeWifiConfigModal();
@@ -934,8 +1069,9 @@ window.addEventListener("keydown", (ev) => {
 setMachineStatus(state.machineStatus);
 setWifiConnected(state.wifiConnected);
 setLightOn(state.lightOn);
-setFanOn(state.fanOn);
-setFanAuto(state.fanAuto);
+setSpindleFanOn(state.spindleFanOn);
+setEnclosureFanOn(state.enclosureFanOn);
+setEnclosureFanAuto(state.enclosureFanAuto);
 
 // -----------------------------
 // iFrames erstellen & vorladen
@@ -1124,10 +1260,30 @@ window.addEventListener("message", (ev) => {
       break;
     case "setLight":   void setLightPower(!!msg.on); break;
     case "toggleLight":toggleLight(); break;
-    case "setFan":     void setFanPower(!!msg.on); break;
-    case "toggleFan":  toggleFan(); break;
-    case "setFanSpeed":updateFanSpeed(msg.value); break;
-    case "setFanAuto": setFanAuto(!!msg.enabled); break;
+    case "setFan":
+    case "setSpindleFan":
+      void setSpindleFanPower(!!msg.on);
+      break;
+    case "toggleFan":
+    case "toggleSpindleFan":
+      toggleSpindleFan();
+      break;
+    case "setEnclosureFan":
+      void setEnclosureFanPower(!!msg.on);
+      break;
+    case "toggleEnclosureFan":
+      toggleEnclosureFan();
+      break;
+    case "setSpindleFanAftercoolSeconds":
+      updateSpindleFanAftercoolSeconds(msg.value);
+      break;
+    case "setFanAuto":
+    case "setEnclosureFanAuto":
+      setEnclosureFanAuto(!!msg.enabled);
+      break;
+    case "setEnclosureFanThresholdC":
+      updateEnclosureFanThresholdC(msg.value);
+      break;
     case "setSpindleRuntime": setSpindleRuntimeSec(msg.seconds, true); break;
     case "openGraphSettingsModal": openGraphModal(msg.seconds); break;
     case "openMaintenanceTaskModal": openMaintenanceTaskModal(msg); break;

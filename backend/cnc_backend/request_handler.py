@@ -173,20 +173,26 @@ def create_request_handler(app):
                         updated["rgbStripBrightness"] = clamp(value, 10, 100)
                     except (ValueError, TypeError):
                         return json_response(self, 400, {"error": "Invalid rgbStripBrightness"})
-                if "fanSpeed" in payload:
+                if "spindleFanAftercoolSeconds" in payload:
                     try:
-                        value = int(payload["fanSpeed"])
-                        updated["fanSpeed"] = clamp(value, 0, 100)
+                        value = int(payload["spindleFanAftercoolSeconds"])
+                        updated["spindleFanAftercoolSeconds"] = clamp(value, 0, 300)
                     except (ValueError, TypeError):
-                        return json_response(self, 400, {"error": "Invalid fanSpeed"})
-                if "fanAuto" in payload:
-                    value = payload["fanAuto"]
+                        return json_response(self, 400, {"error": "Invalid spindleFanAftercoolSeconds"})
+                if "enclosureFanThresholdC" in payload:
+                    try:
+                        value = int(payload["enclosureFanThresholdC"])
+                        updated["enclosureFanThresholdC"] = clamp(value, 30, 65)
+                    except (ValueError, TypeError):
+                        return json_response(self, 400, {"error": "Invalid enclosureFanThresholdC"})
+                if "enclosureFanAuto" in payload or "fanAuto" in payload:
+                    value = payload["enclosureFanAuto"] if "enclosureFanAuto" in payload else payload["fanAuto"]
                     if isinstance(value, bool):
-                        updated["fanAuto"] = value
+                        updated["enclosureFanAuto"] = value
                     elif isinstance(value, (int, float)) and value in (0, 1):
-                        updated["fanAuto"] = bool(value)
+                        updated["enclosureFanAuto"] = bool(value)
                     else:
-                        return json_response(self, 400, {"error": "Invalid fanAuto"})
+                        return json_response(self, 400, {"error": "Invalid enclosureFanAuto"})
                 if "wifiSsid" in payload:
                     value = payload["wifiSsid"]
                     if not isinstance(value, str):
@@ -266,6 +272,8 @@ def create_request_handler(app):
             relay_path_map = {
                 "/api/hardware/light": ("light", ("on",)),
                 "/api/hardware/fan": ("fan", ("on",)),
+                "/api/hardware/enclosure-fan": ("enclosureFan", ("on",)),
+                "/api/hardware/relay-3": ("enclosureFan", ("on",)),
                 "/api/hardware/e-stop": ("eStop", ("engaged", "on")),
             }
             if parsed.path in relay_path_map:

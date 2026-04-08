@@ -36,6 +36,8 @@ Zusaetzlich koordiniert `backend/cnc_backend/app.py` die laufenden Hintergrund-W
 - Hardware-E-Stop-Polling
 - RGB-Status-Synchronisation
 - backend-seitiges Hochzaehlen und Persistieren der Spindellaufzeit
+- Spindel-Lüfter-Automatik mit Nachkühlzeit
+- Gehäuse-Lüfter-Automatik über die Gehäusetemperatur
 
 ## HTTP-Anbindung
 
@@ -66,6 +68,8 @@ aktuell folgende Hardware-Endpunkte bereit:
   - Schaltet Relaiskanal 1 fuer das Maschinenlicht
 - `POST /api/hardware/fan`
   - Schaltet Relaiskanal 2 fuer den Spindelluefter
+- `POST /api/hardware/enclosure-fan`
+  - Schaltet Relaiskanal 3 fuer den Gehäuse-Lüfter
 - `POST /api/hardware/e-stop`
   - Schaltet den manuellen E-Stop auf Relaiskanal 4; ein Hardware-E-Stop kann darueber nicht quittiert werden
 
@@ -119,7 +123,7 @@ Das `GHI GDL-ACRELAYP4-C` ist aktuell so eingeplant:
 - Kanalbelegung:
   - `1`: Maschinenlicht
   - `2`: Spindelluefter
-  - `3`: Reserve
+  - `3`: Gehäuse-Lüfter
   - `4`: E-Stop
 
 Konfigurierbare Umgebungsvariablen:

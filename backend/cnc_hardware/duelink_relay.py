@@ -215,8 +215,13 @@ class DuelinkRelayP4Controller:
         },
         "fan": {
             "channel": 2,
-            "label": "Spindelluefter",
+            "label": "Spindel-Lüfter",
             "endpoint": "/api/hardware/fan",
+        },
+        "enclosureFan": {
+            "channel": 3,
+            "label": "Gehäuse-Lüfter",
+            "endpoint": "/api/hardware/enclosure-fan",
         },
         "eStop": {
             "channel": 4,
@@ -356,6 +361,12 @@ class DuelinkRelayP4Controller:
         aliases = {
             "light": "light",
             "fan": "fan",
+            "spindlefan": "fan",
+            "spindle-fan": "fan",
+            "enclosurefan": "enclosureFan",
+            "enclosure-fan": "enclosureFan",
+            "relay3": "enclosureFan",
+            "relay-3": "enclosureFan",
             "estop": "eStop",
             "e-stop": "eStop",
         }

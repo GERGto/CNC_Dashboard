@@ -57,7 +57,7 @@ body.is-shutting-down .app{
 
 .statusbar{
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
+  grid-template-columns: 220px 1fr 266px;
   align-items: center;
   padding: 0 10px;
   border-bottom: 2px solid var(--line);
@@ -95,7 +95,7 @@ body.is-shutting-down .app{
   display:flex;
   align-items:center;
   justify-content:flex-end;
-  gap: 14px;
+  gap: 10px;
 }
 
 .statusbar.is-running{

@@ -48,13 +48,16 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
 - POST `/api/hardware/fan`
   - Request: `{ on: true|false }`
   - Response: `{ ok, channel, relayBoard }`
+- POST `/api/hardware/enclosure-fan`
+  - Request: `{ on: true|false }`
+  - Response: `{ ok, channel, relayBoard }`
 - POST `/api/hardware/e-stop`
   - Request: `{ engaged: true|false }` or `{ on: true|false }`
   - Response: `{ ok, channel, relayBoard }`
 - GET `/api/settings`
-  - `{ graphWindowSec, rgbStripBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, rgbStripBrightness, spindleFanAftercoolSeconds, enclosureFanThresholdC, enclosureFanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - POST `/api/settings`
-  - `{ graphWindowSec, rgbStripBrightness, fanSpeed, fanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, rgbStripBrightness, spindleFanAftercoolSeconds, enclosureFanThresholdC, enclosureFanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
 - GET `/api/maintenance/tasks`
   - `{ tasks: [{ id, title, intervalType, intervalValue, effortMin, description, lastCompletedAt, spindleRuntimeSecAtCompletion }] }`
   - `intervalType`: `runtimeHours` | `calendarMonths` | `none`
@@ -86,7 +89,7 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
 - Channel mapping:
   - `1`: machine light
   - `2`: spindle fan
-  - `3`: spare
+  - `3`: enclosure fan
   - `4`: E-Stop
 - Manual frontend reset is blocked while a hardware E-Stop input is active.
 
@@ -252,6 +255,6 @@ The shared camera environment lives in `backend/camera-stream.env`.
 
 ## Persisted Files
 
-- `settings.json`: UI settings (`graphWindowSec`, light/fan settings, Wi-Fi, `axisVisibility`)
+- `settings.json`: UI settings (`graphWindowSec`, RGB strip, spindle/enclosure fan settings, Wi-Fi, `axisVisibility`)
 - `tasks.json`: maintenance tasks (`maintenanceTasks`)
 - `machine_stats.json`: machine statistics (`spindleRuntimeSec`)
