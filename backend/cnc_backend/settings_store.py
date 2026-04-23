@@ -94,12 +94,18 @@ class SettingsStore:
 
     def default_machine_stats(self):
         return {
+            "machineOnTimeSec": 0,
             "spindleRuntimeSec": 0,
             "axisRuntimeSec": {
                 "x": 0,
                 "y": 0,
                 "z": 0,
             },
+            "backendStartCount": 0,
+            "spindleStartCount": 0,
+            "eStopCount": 0,
+            "manualEStopCount": 0,
+            "hardwareEStopCount": 0,
         }
 
     def normalize_axis_visibility(self, raw_value):
@@ -151,6 +157,9 @@ class SettingsStore:
         except (ValueError, TypeError):
             value = 0
         return max(0, value)
+
+    def sanitize_machine_counter(self, raw_value):
+        return self.sanitize_spindle_runtime_sec(raw_value)
 
     def normalize_axis_runtime_sec(self, raw_value):
         defaults = self.default_machine_stats()["axisRuntimeSec"]
@@ -341,11 +350,29 @@ class SettingsStore:
                 "axisRuntimeSec": fallback.get("axisRuntimeSec", defaults["axisRuntimeSec"]),
             }
         return {
+            "machineOnTimeSec": self.sanitize_machine_counter(
+                raw.get("machineOnTimeSec", defaults["machineOnTimeSec"])
+            ),
             "spindleRuntimeSec": self.sanitize_spindle_runtime_sec(
                 raw.get("spindleRuntimeSec", defaults["spindleRuntimeSec"])
             ),
             "axisRuntimeSec": self.normalize_axis_runtime_sec(
                 raw.get("axisRuntimeSec", defaults["axisRuntimeSec"])
+            ),
+            "backendStartCount": self.sanitize_machine_counter(
+                raw.get("backendStartCount", defaults["backendStartCount"])
+            ),
+            "spindleStartCount": self.sanitize_machine_counter(
+                raw.get("spindleStartCount", defaults["spindleStartCount"])
+            ),
+            "eStopCount": self.sanitize_machine_counter(
+                raw.get("eStopCount", defaults["eStopCount"])
+            ),
+            "manualEStopCount": self.sanitize_machine_counter(
+                raw.get("manualEStopCount", defaults["manualEStopCount"])
+            ),
+            "hardwareEStopCount": self.sanitize_machine_counter(
+                raw.get("hardwareEStopCount", defaults["hardwareEStopCount"])
             ),
         }
 
@@ -353,8 +380,14 @@ class SettingsStore:
         current = self.load_machine_stats()
         merged = {**current, **(patch if isinstance(patch, dict) else {})}
         normalized = {
+            "machineOnTimeSec": self.sanitize_machine_counter(merged.get("machineOnTimeSec", 0)),
             "spindleRuntimeSec": self.sanitize_spindle_runtime_sec(merged.get("spindleRuntimeSec", 0)),
             "axisRuntimeSec": self.normalize_axis_runtime_sec(merged.get("axisRuntimeSec", {})),
+            "backendStartCount": self.sanitize_machine_counter(merged.get("backendStartCount", 0)),
+            "spindleStartCount": self.sanitize_machine_counter(merged.get("spindleStartCount", 0)),
+            "eStopCount": self.sanitize_machine_counter(merged.get("eStopCount", 0)),
+            "manualEStopCount": self.sanitize_machine_counter(merged.get("manualEStopCount", 0)),
+            "hardwareEStopCount": self.sanitize_machine_counter(merged.get("hardwareEStopCount", 0)),
         }
         write_json_dict(self.config.machine_stats_path, normalized)
         return normalized
@@ -389,9 +422,15 @@ class SettingsStore:
         else:
             self.save_machine_stats(
                 {
+                    "machineOnTimeSec": self.default_machine_stats()["machineOnTimeSec"],
                     "spindleRuntimeSec": legacy.get(
                         "spindleRuntimeSec", self.default_machine_stats()["spindleRuntimeSec"]
                     ),
                     "axisRuntimeSec": self.default_machine_stats()["axisRuntimeSec"],
+                    "backendStartCount": self.default_machine_stats()["backendStartCount"],
+                    "spindleStartCount": self.default_machine_stats()["spindleStartCount"],
+                    "eStopCount": self.default_machine_stats()["eStopCount"],
+                    "manualEStopCount": self.default_machine_stats()["manualEStopCount"],
+                    "hardwareEStopCount": self.default_machine_stats()["hardwareEStopCount"],
                 }
             )

@@ -207,12 +207,16 @@ Letzter bekannter Live-Scan auf `/dev/i2c-1`:
   - Die Adresse `0x21` liegt im offiziellen `PCF8574`-Bereich `0x20` bis `0x27` und nicht im `PCF8574A`-Bereich `0x38` bis `0x3F`
   - Daraus folgt: Der aktuell aktive Adressdecoder des Moduls verhaelt sich im Live-Betrieb wie ein `PCF8574`, nicht wie ein `PCF8574A`
   - Die Eingangslogik wird im Projekt aktiv als `active-low` ausgewertet
-  - `Input 1` und `Input 2` sind fest fuer mechanische Hardware-E-Stops reserviert
-  - `Input 3` ist fest als `Spindel laeuft` verdrahtet
-  - Sobald `Input 1` oder `Input 2` aktiv wird, loest das Backend sofort einen System-E-Stop aus
-  - Dieser Hardware-E-Stop kann nicht im Frontend quittiert werden; er bleibt aktiv, bis der mechanische Taster real geloest wurde
-  - Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist, und wird im Backend nach `machine_stats.json` persistiert
-  - Die Achsenlaufzeiten fuer `X`, `Y` und `Z` werden separat gezaehlt, sobald die kalibrierte Achslast der jeweiligen Achse ueber `5 %` liegt
+- `Input 1` und `Input 2` sind fest fuer mechanische Hardware-E-Stops reserviert
+- `Input 3` ist fest als `Spindel laeuft` verdrahtet
+- Sobald `Input 1` oder `Input 2` aktiv wird, loest das Backend sofort einen System-E-Stop aus
+- Dieser Hardware-E-Stop kann nicht im Frontend quittiert werden; er bleibt aktiv, bis der mechanische Taster real geloest wurde
+- Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist, und wird im Backend nach `machine_stats.json` persistiert
+- Die Achsenlaufzeiten fuer `X`, `Y` und `Z` werden separat gezaehlt, sobald die kalibrierte Achslast der jeweiligen Achse ueber `5 %` liegt
+- Backend-Starts werden ebenfalls nach `machine_stats.json` als `backendStartCount` gezaehlt; ein Start des Backend-Prozesses reicht dafuer jeweils einmal aus
+- Die allgemeine Maschinenlaufzeit wird als `machineOnTimeSec` ueber die aktive Backend-Laufzeit mitgezaehlt
+- Spindelstarts werden als `spindleStartCount` auf der Flanke `Spindel laeuft: aus -> an` gezaehlt
+- E-Stop-Ausloesungen werden ebenfalls nach `machine_stats.json` persistiert: als Gesamtzaehler `eStopCount` sowie getrennt nach `manualEStopCount` und `hardwareEStopCount`
 
 Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
 

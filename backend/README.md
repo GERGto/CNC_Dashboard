@@ -262,4 +262,4 @@ The shared camera environment lives in `backend/camera-stream.env`.
 
 - `settings.json`: UI settings (`graphWindowSec`, RGB strip, spindle/enclosure fan settings, Wi-Fi, `axisVisibility`)
 - `tasks.json`: maintenance tasks (`maintenanceTasks`)
-- `machine_stats.json`: machine statistics (`spindleRuntimeSec`, `axisRuntimeSec`)
+- `machine_stats.json`: machine statistics (`machineOnTimeSec`, `spindleRuntimeSec`, `axisRuntimeSec`, `backendStartCount`, `spindleStartCount`, `eStopCount`, `manualEStopCount`, `hardwareEStopCount`)

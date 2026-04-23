@@ -66,8 +66,14 @@ class BackendApp:
             self.system_info_service.backend_app = self
         self._spindle_runtime_lock = threading.Lock()
         self._fan_control_lock = threading.Lock()
+        self._machine_on_time_sec = None
         self._spindle_runtime_sec = None
         self._axis_runtime_sec = None
+        self._backend_start_count = None
+        self._spindle_start_count = None
+        self._estop_count = None
+        self._manual_estop_count = None
+        self._hardware_estop_count = None
         self._spindle_runtime_last_sample_monotonic = None
         self._spindle_runtime_last_persist_monotonic = 0.0
         self._spindle_runtime_last_running = False
@@ -75,6 +81,9 @@ class BackendApp:
             axis: False
             for axis in ("x", "y", "z")
         }
+        self._last_spindle_running_observed = None
+        self._last_hardware_estop_engaged = None
+        self._backend_start_recorded = False
         self._spindle_fan_last_running = False
         self._spindle_fan_last_stop_monotonic = None
         self._fan_manual_overrides = {
@@ -89,6 +98,7 @@ class BackendApp:
     def ensure_storage(self):
         self.store.ensure_split_storage()
         self._load_spindle_runtime_state()
+        self._record_backend_startup()
         self._apply_status_indicator_preferences()
 
     def start_background_tasks(self):
@@ -167,13 +177,20 @@ class BackendApp:
     def set_relay_output(self, output_id, enabled, source="manual"):
         normalized_output_id = self._normalize_automated_fan_output_id(output_id)
         manual_auto_desired_on = None
+        previous_estop_engaged = None
         if source != "automation":
             manual_auto_desired_on = self._get_manual_override_auto_desired_on(normalized_output_id)
+        if str(output_id or "").strip().lower() in {"estop", "e-stop", "e_stop", "relay4", "relay-4"}:
+            previous_estop_engaged = self._is_estop_engaged(self.hardware_backend.get_relay_board())
 
         result = self.hardware_backend.set_relay_output(output_id, enabled)
 
         if source != "automation":
             self._update_manual_fan_override(normalized_output_id, enabled, manual_auto_desired_on)
+        if previous_estop_engaged is not None:
+            current_estop_engaged = self._is_estop_engaged(result.get("relayBoard"))
+            if bool(enabled) and current_estop_engaged and not previous_estop_engaged:
+                self._record_estop_activation("manual")
         self.sync_status_indicator()
         return result
 
@@ -361,12 +378,18 @@ class BackendApp:
 
     def _load_spindle_runtime_state_locked(self):
         machine_stats = self.store.load_machine_stats()
+        self._machine_on_time_sec = float(max(0, int(machine_stats.get("machineOnTimeSec", 0) or 0)))
         self._spindle_runtime_sec = float(max(0, int(machine_stats.get("spindleRuntimeSec", 0) or 0)))
         axis_runtime_sec = machine_stats.get("axisRuntimeSec", {})
         self._axis_runtime_sec = {
             axis: float(max(0, int(axis_runtime_sec.get(axis, 0) or 0)))
             for axis in ("x", "y", "z")
         }
+        self._backend_start_count = max(0, int(machine_stats.get("backendStartCount", 0) or 0))
+        self._spindle_start_count = max(0, int(machine_stats.get("spindleStartCount", 0) or 0))
+        self._estop_count = max(0, int(machine_stats.get("eStopCount", 0) or 0))
+        self._manual_estop_count = max(0, int(machine_stats.get("manualEStopCount", 0) or 0))
+        self._hardware_estop_count = max(0, int(machine_stats.get("hardwareEStopCount", 0) or 0))
         self._spindle_runtime_last_sample_monotonic = time.monotonic()
         self._spindle_runtime_last_persist_monotonic = self._spindle_runtime_last_sample_monotonic
         self._spindle_runtime_last_running = False
@@ -374,6 +397,8 @@ class BackendApp:
             axis: False
             for axis in ("x", "y", "z")
         }
+        self._last_spindle_running_observed = None
+        self._last_hardware_estop_engaged = None
 
     def _persist_spindle_runtime(self, force=False):
         machine_stats_to_save = None
@@ -383,23 +408,81 @@ class BackendApp:
                 self._load_spindle_runtime_state_locked()
             if not force and (now - self._spindle_runtime_last_persist_monotonic) < self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC:
                 return {
+                    "machineOnTimeSec": max(0, int(self._machine_on_time_sec or 0)),
                     "spindleRuntimeSec": max(0, int(self._spindle_runtime_sec or 0)),
                     "axisRuntimeSec": {
                         axis: max(0, int((self._axis_runtime_sec or {}).get(axis, 0) or 0))
                         for axis in ("x", "y", "z")
                     },
+                    "backendStartCount": max(0, int(self._backend_start_count or 0)),
+                    "spindleStartCount": max(0, int(self._spindle_start_count or 0)),
+                    "eStopCount": max(0, int(self._estop_count or 0)),
+                    "manualEStopCount": max(0, int(self._manual_estop_count or 0)),
+                    "hardwareEStopCount": max(0, int(self._hardware_estop_count or 0)),
                 }
             machine_stats_to_save = {
+                "machineOnTimeSec": max(0, int(self._machine_on_time_sec or 0)),
                 "spindleRuntimeSec": max(0, int(self._spindle_runtime_sec or 0)),
                 "axisRuntimeSec": {
                     axis: max(0, int((self._axis_runtime_sec or {}).get(axis, 0) or 0))
-                    for axis in ("x", "y", "z")
+                        for axis in ("x", "y", "z")
                 },
+                "backendStartCount": max(0, int(self._backend_start_count or 0)),
+                "spindleStartCount": max(0, int(self._spindle_start_count or 0)),
+                "eStopCount": max(0, int(self._estop_count or 0)),
+                "manualEStopCount": max(0, int(self._manual_estop_count or 0)),
+                "hardwareEStopCount": max(0, int(self._hardware_estop_count or 0)),
             }
             self._spindle_runtime_last_persist_monotonic = now
 
         self.store.save_machine_stats(machine_stats_to_save)
         return machine_stats_to_save
+
+    def _record_backend_startup(self):
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            if self._backend_start_recorded:
+                return max(0, int(self._backend_start_count or 0))
+            self._backend_start_count = max(0, int(self._backend_start_count or 0)) + 1
+            self._backend_start_recorded = True
+        self._persist_spindle_runtime(force=True)
+        return max(0, int(self._backend_start_count or 0))
+
+    @staticmethod
+    def _is_estop_engaged(relay_board):
+        channels = relay_board.get("channels", {}) if isinstance(relay_board, dict) else {}
+        estop = channels.get("eStop", {}) if isinstance(channels, dict) else {}
+        return bool(
+            estop.get("engaged", estop.get("on", False))
+            or estop.get("hardwareInputEngaged", False)
+        )
+
+    def _record_estop_activation(self, source):
+        source_key = str(source or "").strip().lower()
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            self._estop_count = max(0, int(self._estop_count or 0)) + 1
+            if source_key == "hardware":
+                self._hardware_estop_count = max(0, int(self._hardware_estop_count or 0)) + 1
+            else:
+                self._manual_estop_count = max(0, int(self._manual_estop_count or 0)) + 1
+        self._persist_spindle_runtime(force=True)
+
+    def _observe_hardware_estop_state(self, engaged):
+        engaged = bool(engaged)
+        should_count = False
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            if self._last_hardware_estop_engaged is None:
+                self._last_hardware_estop_engaged = engaged
+                return
+            should_count = engaged and not self._last_hardware_estop_engaged
+            self._last_hardware_estop_engaged = engaged
+        if should_count:
+            self._record_estop_activation("hardware")
 
     def _apply_status_indicator_preferences(self, ui_settings=None):
         settings = ui_settings if isinstance(ui_settings, dict) else self.store.load_ui_settings()
@@ -597,6 +680,7 @@ class BackendApp:
         while True:
             try:
                 result = self.hardware_backend.sync_hardware_estop(force_refresh=True)
+                self._observe_hardware_estop_state(result.get("hardwareEStopEngaged", False))
                 if result.get("stateChanged") or result.get("relayChanged"):
                     self.sync_status_indicator()
                 elif result.get("relayError"):
@@ -636,27 +720,41 @@ class BackendApp:
                         self._load_spindle_runtime_state_locked()
 
                     previous_running = bool(self._spindle_runtime_last_running)
+                    previous_spindle_running_observed = self._last_spindle_running_observed
                     previous_axis_moving = dict(self._axis_runtime_last_moving)
                     last_sample = self._spindle_runtime_last_sample_monotonic
                     delta_sec = now - last_sample if last_sample is not None else 0.0
                     self._spindle_runtime_last_sample_monotonic = now
 
                     if 0.0 < delta_sec <= self.SPINDLE_RUNTIME_DELTA_CLAMP_SEC:
+                        self._machine_on_time_sec += delta_sec
                         if spindle_running:
                             self._spindle_runtime_sec += delta_sec
                         for axis in ("x", "y", "z"):
                             if axis_moving.get(axis, False):
                                 self._axis_runtime_sec[axis] += delta_sec
 
+                    if previous_spindle_running_observed is None:
+                        self._last_spindle_running_observed = spindle_running
+                    else:
+                        if spindle_running and not previous_spindle_running_observed:
+                            self._spindle_start_count = max(0, int(self._spindle_start_count or 0)) + 1
+                            persist_required = True
+                        self._last_spindle_running_observed = spindle_running
+
                     if spindle_running != previous_running:
                         status_sync_required = True
 
                     any_runtime_active = spindle_running or any(axis_moving.values())
                     any_runtime_was_active = previous_running or any(previous_axis_moving.values())
+                    periodic_persist_due = (
+                        (now - self._spindle_runtime_last_persist_monotonic)
+                        >= self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC
+                    )
 
-                    if any_runtime_active:
-                        persist_required = (now - self._spindle_runtime_last_persist_monotonic) >= self.SPINDLE_RUNTIME_PERSIST_INTERVAL_SEC
-                    elif any_runtime_was_active:
+                    if periodic_persist_due:
+                        persist_required = True
+                    elif any_runtime_was_active and not any_runtime_active:
                         persist_required = True
 
                     self._spindle_runtime_last_running = spindle_running
