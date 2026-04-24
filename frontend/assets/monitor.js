@@ -7,6 +7,7 @@ const AXIS_WARN = {
 };
 const STATIC_REFRESH_MS = 1500;
 const CAMERA_RECONNECT_DELAY_MS = 1500;
+const WARMUP_VALIDITY_MS = 2 * 60 * 60 * 1000;
 
 const ICONS = {
   rec: `
@@ -118,6 +119,7 @@ const state = {
   cameraStreamBase: createCameraStreamBase(),
   machineStatus: "IDLE",
   maintenanceDue: false,
+  warmupDue: false,
   dueTaskIds: [],
   tasks: [],
   lightOn: false,
@@ -137,6 +139,7 @@ const state = {
   axes: { x: 0, y: 0, z: 0, spindle: 0 },
   spindleRunning: false,
   spindleRuntimeSec: 0,
+  backendStartCount: 0,
   activeTab: "files",
   files: [],
   cameraReaderSupported:
@@ -417,7 +420,7 @@ function getCurrentTone() {
   if (state.eStopEngaged) {
     return "estop";
   }
-  if (state.maintenanceDue) {
+  if (state.warmupDue || state.maintenanceDue) {
     return "maintenance";
   }
   if (getSpindleActive()) {
@@ -431,7 +434,7 @@ function renderStatusStrip() {
   const labels = {
     idle: "IDLE",
     spindle: "SPINDEL",
-    maintenance: "WARTUNG FÄLLIG",
+    maintenance: state.warmupDue ? "WARMLAUF FÄLLIG" : "WARTUNG FÄLLIG",
     estop: "E-STOP AKTIV",
   };
 
@@ -644,7 +647,36 @@ function getTaskDueDetails(task) {
   const taskId = String(task?.id || "");
   const overdue = state.dueTaskIds.includes(taskId);
   if (overdue) {
-    return { label: "Ueberfaellig", priority: "high", overdue: true };
+    return {
+      label: taskId === "spindle-warmup" ? "Warmlauf fällig" : "Ueberfaellig",
+      priority: "high",
+      overdue: true,
+    };
+  }
+
+  if (taskId === "spindle-warmup") {
+    const lastCompletedAt = String(task?.lastCompletedAt || "").trim();
+    const completedAt = lastCompletedAt ? new Date(lastCompletedAt) : null;
+    const dueAt =
+      completedAt && !Number.isNaN(completedAt.getTime())
+        ? completedAt.getTime() + WARMUP_VALIDITY_MS
+        : null;
+    if (dueAt !== null && !(state.spindleRunning && task?.lastCompletedAt)) {
+      const remainingMs = Math.max(0, dueAt - Date.now());
+      const remainingMinutes = Math.ceil(remainingMs / 60000);
+      if (remainingMinutes <= 60) {
+        return {
+          label: remainingMinutes <= 1 ? "Unter 1 min" : `In ${remainingMinutes} min`,
+          priority: remainingMinutes <= 15 ? "medium" : "low",
+          overdue: false,
+        };
+      }
+      return { label: `In ${Math.ceil(remainingMinutes / 60)} h`, priority: "low", overdue: false };
+    }
+    if (state.spindleRunning && task?.lastCompletedAt) {
+      return { label: "Spindel läuft", priority: "low", overdue: false };
+    }
+    return { label: "2 h gültig", priority: "low", overdue: false };
   }
 
   const intervalType = String(task?.intervalType || "").trim();
@@ -660,6 +692,15 @@ function getTaskDueDetails(task) {
       return { label: `In ${remainingHours.toFixed(1)} h`, priority: "medium", overdue: false };
     }
     return { label: `In ${Math.ceil(remainingHours)} h`, priority: "low", overdue: false };
+  }
+
+  if (intervalType === "backendStarts" && Number.isFinite(intervalValue)) {
+    const completionCount = Math.max(0, Number(task?.backendStartCountAtCompletion) || 0);
+    const remainingStarts = intervalValue - Math.max(0, state.backendStartCount - completionCount);
+    if (remainingStarts <= 1) {
+      return { label: "Beim nächsten Start", priority: "medium", overdue: false };
+    }
+    return { label: `In ${Math.ceil(remainingStarts)} Starts`, priority: "low", overdue: false };
   }
 
   if (intervalType === "calendarMonths" && Number.isFinite(intervalValue)) {
@@ -813,10 +854,12 @@ function applyMachineStatus(snapshot) {
   }
   state.machineStatus = String(snapshot.effectiveStatus || "IDLE").toUpperCase();
   state.maintenanceDue = !!snapshot.maintenanceDue;
+  state.warmupDue = !!snapshot.warmupDue;
   state.dueTaskIds = Array.isArray(snapshot.maintenanceDueTaskIds)
     ? snapshot.maintenanceDueTaskIds.map((taskId) => String(taskId))
     : [];
   state.spindleRuntimeSec = Math.max(0, Math.floor(Number(snapshot.spindleRuntimeSec) || 0));
+  state.backendStartCount = Math.max(0, Math.floor(Number(snapshot.backendStartCount) || 0));
   if (snapshot.spindleRunning !== undefined) {
     state.spindleRunning = !!snapshot.spindleRunning;
   }

@@ -44,6 +44,10 @@ def create_request_handler(app):
                 force_refresh = parse_bool_query_flag(params, "refresh")
                 return json_response(self, 200, app.get_enclosure_temperature(force_refresh=force_refresh))
 
+            if path == "/api/hardware/spindle-load":
+                force_refresh = parse_bool_query_flag(params, "refresh")
+                return json_response(self, 200, app.get_spindle_load(force_refresh=force_refresh))
+
             if path == "/api/hardware/axis-loads":
                 force_refresh = parse_bool_query_flag(params, "refresh")
                 return json_response(self, 200, app.get_axis_loads(force_refresh=force_refresh))

@@ -15,6 +15,24 @@
 - I2C-Spannung im aktuellen System: `3.3 V`
 - Relevante Leitungen: `3V3`, `GND`, `SDA`, `SCL`
 
+## Verkabelung im System
+
+- Der `SparkFun Qwiic HAT` sitzt auf dem 40-Pin-Header des Raspberry Pi und stellt den gemeinsamen `I²C`-Bus bereit.
+- Der `AHT20` hängt mit `3V3`, `GND`, `SDA` und `SCL` im selben Qwiic-Daisy-Chain-Bus wie die übrigen Sensoren.
+- Für dieses Modul sind im aktuellen Aufbau keine zusätzlichen Schraubklemmen oder Lastleitungen vorgesehen.
+- Die Verkabelung ist damit rein logisch:
+  - `Raspberry Pi -> Qwiic HAT -> Qwiic-Kabel -> AHT20`
+- Relevant im System ist vor allem die physische Position:
+  - der Sensor soll die Temperatur im Maschinen- bzw. Elektronikgehäuse erfassen
+  - nicht direkt in einem Luftstrom des Lüfters und nicht direkt auf einem Hotspot des Pi montieren
+
+## Hersteller-Referenzen
+
+- Adafruit Produkt- und Pinout-Guide:
+  - `https://learn.adafruit.com/adafruit-aht20`
+- AHT20-Datenblatt des Chip-Herstellers ASAIR:
+  - `https://www.aosong.com/userfiles/files/media/Data%20Sheet%20AHT20.pdf`
+
 ## Verifikation
 
 - Datum: `2026-04-06`

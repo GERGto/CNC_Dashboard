@@ -104,12 +104,12 @@ class NeoPixelStatusStripController:
     ANIMATION_FPS = 60.0
     BOOT_EXPAND_DURATION_SEC = 1.8
     SYSTEM_CHECK_FADE_DURATION_SEC = 1.2
-    IDLE_BLEND_DURATION_SEC = 1.6
+    STATE_BLEND_DURATION_SEC = 1.6
     SHUTDOWN_COLLAPSE_DURATION_SEC = 0.45
     STATIC_REFRESH_SEC = 0.25
     STARTUP_RENDER_STATE = "startupExpand"
     SYSTEM_CHECK_RENDER_STATE = "systemCheck"
-    IDLE_BLEND_RENDER_STATE = "idleBlend"
+    STATE_BLEND_RENDER_STATE = "stateBlend"
     RUNNING_RENDER_STATE = "runningLoadHotspot"
     WARNING_RENDER_STATE = "warningPulse"
     ESTOP_RENDER_STATE = "eStopPulse"
@@ -573,8 +573,8 @@ class NeoPixelStatusStripController:
                 frame = self._render_system_check_frame(progress)
                 render_state = self.SYSTEM_CHECK_RENDER_STATE
                 if progress >= 1.0:
-                    if self._desired_state == "idle":
-                        self._boot_phase = "idleBlend"
+                    if self._desired_state in {"idle", "warning"}:
+                        self._boot_phase = "stateBlend"
                         self._boot_phase_started_monotonic = now
                     else:
                         self._boot_completed = True
@@ -582,17 +582,17 @@ class NeoPixelStatusStripController:
                         self._boot_phase_started_monotonic = None
                 return frame, render_state, None, 1.0 / self.ANIMATION_FPS
 
-            if self._boot_phase == "idleBlend":
-                if self._desired_state != "idle":
+            if self._boot_phase == "stateBlend":
+                if self._desired_state not in {"idle", "warning"}:
                     self._boot_completed = True
                     self._boot_phase = "done"
                     self._boot_phase_started_monotonic = None
                     return self._render_static_frame(self._desired_state), self._desired_state, None, self.STATIC_REFRESH_SEC
 
                 phase_start = self._boot_phase_started_monotonic or now
-                progress = min(1.0, max(0.0, (now - phase_start) / self.IDLE_BLEND_DURATION_SEC))
-                frame = self._render_idle_transition_frame(progress)
-                render_state = self.IDLE_BLEND_RENDER_STATE
+                progress = min(1.0, max(0.0, (now - phase_start) / self.STATE_BLEND_DURATION_SEC))
+                frame = self._render_target_transition_frame(progress, now)
+                render_state = self.STATE_BLEND_RENDER_STATE
                 if progress >= 1.0:
                     self._boot_completed = True
                     self._boot_phase = "done"
@@ -618,13 +618,21 @@ class NeoPixelStatusStripController:
     def _render_idle_breathing_frame(self):
         return self._render_idle_wave_frame(advance_phase=True)
 
-    def _render_idle_transition_frame(self, progress):
+    def _render_target_transition_frame(self, progress, now):
         blend = max(0.0, min(1.0, float(progress)))
-        target_frame = self._render_idle_wave_frame(advance_phase=True)
+        if self._desired_state == "warning":
+            target_frame = self._render_warning_pulse_frame(now)
+        else:
+            target_frame = self._render_idle_wave_frame(advance_phase=True)
         frame = []
-        for white_red, _, _ in target_frame:
-            white = _lerp_channel(self.IDLE_WHITE_MAX, white_red, blend)
-            frame.append((white, white, white))
+        for target_color in target_frame:
+            frame.append(
+                _blend_color(
+                    (self.IDLE_WHITE_MAX, self.IDLE_WHITE_MAX, self.IDLE_WHITE_MAX),
+                    target_color,
+                    blend,
+                )
+            )
         return frame
 
     def _render_idle_wave_frame(self, advance_phase):

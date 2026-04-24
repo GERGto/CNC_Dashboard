@@ -21,6 +21,7 @@ Hier sollen kuenftig alle verbauten oder angebundenen Komponenten mit ihren Schn
 - [Hardware Backend Architektur](./backend-architecture.md)
 - [Adafruit AHT20 Gehäusetemperatur-Sensor](./adafruit-aht20-spindle-temperature.md)
 - [Adafruit INA228 Achslast-Sensoren](./adafruit-ina228-axis-load-sensors.md)
+- [Pololu 5411 Spindellast-Sensor](./pololu-5411-spindle-load-sensor.md)
 - [GHI GDL-ACRELAYP4-C 4-Kanal-Relais](./ghi-gdl-acrelayp4-c-relay-board.md)
 - [PCF8574 Safety- und Spindel-Inputs](./pcf8574-safety-input-module.md)
 - [WS2812B Status-LED-Streifen](./ws2812b-status-strip.md)

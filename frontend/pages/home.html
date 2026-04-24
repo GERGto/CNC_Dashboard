@@ -17,7 +17,7 @@
       </header>
 
       <div class="spindle-stack">
-        <article class="gauge-card" aria-labelledby="spindleLoadGaugeTitle">
+        <article class="gauge-card" id="spindleLoadCard" aria-labelledby="spindleLoadGaugeTitle">
           <div class="gauge-card__head">
             <h3 id="spindleLoadGaugeTitle">Spindellast</h3>
           </div>
@@ -111,6 +111,40 @@
       </div>
     </section>
   </main>
+
+  <div class="modal" id="axisCalibrationModalSpindle" role="dialog" aria-modal="true" aria-labelledby="axisCalibrationTitleSpindle" aria-hidden="true">
+    <div class="modal__backdrop" data-close-axis-calibration="spindle"></div>
+    <div class="modal__panel modal__panel--axis-calibration" role="document">
+      <h2 class="modal__title" id="axisCalibrationTitleSpindle">Spindel kalibrieren</h2>
+      <p class="modal__text">Ampere-Spanne f&uuml;r die Prozentanzeige festlegen.</p>
+      <div class="axis-calibration__meta">
+        <div class="axis-calibration__meta-row">
+          <span>Aktueller Strom</span>
+          <strong id="axisCalibrationCurrentSpindle">-- A</strong>
+        </div>
+        <div class="axis-calibration__meta-row">
+          <span>Aktuelle Anzeige</span>
+          <strong id="axisCalibrationPercentSpindle">-- %</strong>
+        </div>
+      </div>
+      <p class="modal__error axis-calibration__error" id="axisCalibrationErrorSpindle" hidden></p>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMinSliderSpindle">0%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMinSliderSpindle" type="range" min="0" max="30" step="0.1" value="0" />
+        <div class="slider__value" id="axisCalibrationMinValueSpindle">0,0 A</div>
+      </div>
+      <div class="slider axis-calibration__slider">
+        <label class="axis-calibration__label" for="axisCalibrationMaxSliderSpindle">100%-Punkt</label>
+        <input class="slider__input" id="axisCalibrationMaxSliderSpindle" type="range" min="0" max="30" step="0.1" value="30" />
+        <div class="slider__value" id="axisCalibrationMaxValueSpindle">30,0 A</div>
+      </div>
+      <p class="axis-calibration__hint" id="axisCalibrationHintSpindle">0,0 A entsprechen 0%, 30,0 A entsprechen 100%.</p>
+      <div class="modal__actions">
+        <button class="btn" id="axisCalibrationCloseSpindle" type="button">Abbrechen</button>
+        <button class="btn btn--danger" id="axisCalibrationSaveSpindle" type="button">Speichern</button>
+      </div>
+    </div>
+  </div>
 
   <div class="modal" id="axisCalibrationModalX" role="dialog" aria-modal="true" aria-labelledby="axisCalibrationTitleX" aria-hidden="true">
     <div class="modal__backdrop" data-close-axis-calibration="x"></div>
@@ -236,17 +270,22 @@
 
     const API_BASE = createApiBase();
     const axisKeys = ["spindle", "x", "y", "z"];
-    const sensorAxisKeys = ["x", "y", "z"];
+    const sensorAxisKeys = ["spindle", "x", "y", "z"];
     const axisDisplayNames = {
       spindle: "Spindel",
       x: "X Achse",
       y: "Y Achse",
       z: "Z Achse"
     };
-    const AXIS_CALIBRATION_MIN_A = 0;
-    const AXIS_CALIBRATION_MAX_A = 10;
     const AXIS_CALIBRATION_LONG_PRESS_MS = 650;
+    const AXIS_CALIBRATION_LIMITS = {
+      spindle: { minA: 0, maxA: 30 },
+      x: { minA: 0, maxA: 10 },
+      y: { minA: 0, maxA: 10 },
+      z: { minA: 0, maxA: 10 }
+    };
     const AXIS_CALIBRATION_DEFAULTS = {
+      spindle: { minA: 0, maxA: 30 },
       x: { minA: 0, maxA: 10 },
       y: { minA: 0, maxA: 10 },
       z: { minA: 0, maxA: 10 }
@@ -259,6 +298,7 @@
     const spindleValueEl = document.getElementById("spindleValue");
     const spindleGauge = document.getElementById("spindleGauge");
     const spindleGaugeFill = spindleGauge.querySelector(".arc-gauge__fill");
+    const spindleLoadCard = document.getElementById("spindleLoadCard");
     const enclosureTempGauge = document.getElementById("enclosureTempGauge");
     const enclosureTempGaugeFill = enclosureTempGauge.querySelector(".arc-gauge__fill");
     const enclosureTempValueEl = document.getElementById("enclosureTempValue");
@@ -286,8 +326,8 @@
     };
 
     const axisValues = { spindle: 0, x: 0, y: 0, z: 0 };
-    const axisCurrentAmps = { x: null, y: null, z: null };
-    const axisAvailability = { spindle: true, x: false, y: false, z: false };
+    const axisCurrentAmps = { spindle: null, x: null, y: null, z: null };
+    const axisAvailability = { spindle: false, x: false, y: false, z: false };
     const axisLoadCalibration = cloneAxisCalibrationMap(AXIS_CALIBRATION_DEFAULTS);
     const history = {
       spindle: [],
@@ -321,6 +361,19 @@
     const axisLabelRight = document.getElementById("axisLabelRight");
     const axesChart = document.querySelector(".axes-chart");
     const axisCalibrationUi = {
+      spindle: {
+        modal: document.getElementById("axisCalibrationModalSpindle"),
+        current: document.getElementById("axisCalibrationCurrentSpindle"),
+        percent: document.getElementById("axisCalibrationPercentSpindle"),
+        error: document.getElementById("axisCalibrationErrorSpindle"),
+        minSlider: document.getElementById("axisCalibrationMinSliderSpindle"),
+        maxSlider: document.getElementById("axisCalibrationMaxSliderSpindle"),
+        minValue: document.getElementById("axisCalibrationMinValueSpindle"),
+        maxValue: document.getElementById("axisCalibrationMaxValueSpindle"),
+        hint: document.getElementById("axisCalibrationHintSpindle"),
+        close: document.getElementById("axisCalibrationCloseSpindle"),
+        save: document.getElementById("axisCalibrationSaveSpindle")
+      },
       x: {
         modal: document.getElementById("axisCalibrationModalX"),
         current: document.getElementById("axisCalibrationCurrentX"),
@@ -375,16 +428,18 @@
     const CHART_LEFT_FADE_FRACTION = 0.14;
     const CHART_LEFT_FADE_MIN_PX = 24;
 
-    function clampCalibrationAmp(value){
+    function clampCalibrationAmp(axis, value){
+      const limits = AXIS_CALIBRATION_LIMITS[axis] || AXIS_CALIBRATION_LIMITS.x;
       const v = Number(value);
-      if (!Number.isFinite(v)) return AXIS_CALIBRATION_MIN_A;
-      return Math.max(AXIS_CALIBRATION_MIN_A, Math.min(AXIS_CALIBRATION_MAX_A, v));
+      if (!Number.isFinite(v)) return limits.minA;
+      return Math.max(limits.minA, Math.min(limits.maxA, v));
     }
 
-    function normalizeCalibrationRange(rawValue, fallback){
-      const fallbackRange = fallback && typeof fallback === "object" ? fallback : { minA: 0, maxA: 10 };
-      let minA = clampCalibrationAmp(rawValue && rawValue.minA !== undefined ? rawValue.minA : fallbackRange.minA);
-      let maxA = clampCalibrationAmp(rawValue && rawValue.maxA !== undefined ? rawValue.maxA : fallbackRange.maxA);
+    function normalizeCalibrationRange(axis, rawValue, fallback){
+      const defaultRange = AXIS_CALIBRATION_DEFAULTS[axis] || AXIS_CALIBRATION_DEFAULTS.x;
+      const fallbackRange = fallback && typeof fallback === "object" ? fallback : defaultRange;
+      let minA = clampCalibrationAmp(axis, rawValue && rawValue.minA !== undefined ? rawValue.minA : fallbackRange.minA);
+      let maxA = clampCalibrationAmp(axis, rawValue && rawValue.maxA !== undefined ? rawValue.maxA : fallbackRange.maxA);
       if (maxA < minA){
         maxA = minA;
       }
@@ -398,6 +453,7 @@
       const normalized = {};
       sensorAxisKeys.forEach((axis) => {
         normalized[axis] = normalizeCalibrationRange(
+          axis,
           rawValue && typeof rawValue === "object" ? rawValue[axis] : null,
           AXIS_CALIBRATION_DEFAULTS[axis]
         );
@@ -483,7 +539,19 @@
 
     function setSpindleValue(value){
       const v = clampPercent(value);
+      if (!axisAvailability.spindle){
+        spindleValueEl.textContent = "--";
+        spindleGauge.dataset.state = "error";
+        spindleGauge.style.setProperty("--gauge-color", "#9b9b9b");
+        spindleGaugeTargetValue = 0;
+        if (!pageActive){
+          spindleGaugeDisplayValue = 0;
+        }
+        return;
+      }
       spindleValueEl.textContent = `${v}%`;
+      spindleGauge.dataset.state = "ok";
+      spindleGauge.style.setProperty("--gauge-color", "#1a1a1a");
       spindleGaugeTargetValue = v;
     }
 
@@ -550,7 +618,7 @@
       const v = clampPercent(value);
       axisValues[axis] = v;
       if (axisValueEls[axis]){
-        if (axis === "spindle" || axisAvailability[axis]){
+        if (axisAvailability[axis]){
           axisValueEls[axis].textContent = `${v}%`;
         } else {
           axisValueEls[axis].textContent = "--";
@@ -897,7 +965,6 @@
     }
 
     function setAxisAvailability(axis, available){
-      if (axis === "spindle") return;
       const isAvailable = !!available;
       axisAvailability[axis] = isAvailable;
       if (cardEls[axis]) cardEls[axis].classList.toggle("is-unavailable", !isAvailable);
@@ -907,12 +974,14 @@
       if (isAvailable && axisValueEls[axis]){
         axisValueEls[axis].textContent = `${clampPercent(axisValues[axis])}%`;
       }
+      if (axis === "spindle"){
+        setSpindleValue(axisValues.spindle);
+      }
       requestChartDraw();
       updateAxisCalibrationStatus(axis);
     }
 
     function setAxisCurrentA(axis, currentA){
-      if (!sensorAxisKeys.includes(axis)) return;
       const value = Number(currentA);
       axisCurrentAmps[axis] = Number.isFinite(value) ? value : null;
       updateAxisCalibrationStatus(axis);
@@ -942,7 +1011,12 @@
     function syncAxisCalibrationModal(axis){
       const ui = axisCalibrationUi[axis];
       if (!ui) return;
+      const limits = AXIS_CALIBRATION_LIMITS[axis] || AXIS_CALIBRATION_LIMITS.x;
       const calibration = axisLoadCalibration[axis] || AXIS_CALIBRATION_DEFAULTS[axis];
+      ui.minSlider.min = String(limits.minA);
+      ui.minSlider.max = String(limits.maxA);
+      ui.maxSlider.min = String(limits.minA);
+      ui.maxSlider.max = String(limits.maxA);
       ui.minSlider.value = String(calibration.minA);
       ui.maxSlider.value = String(calibration.maxA);
       ui.minValue.textContent = formatAmpValue(calibration.minA, 1);
@@ -955,8 +1029,8 @@
       const ui = axisCalibrationUi[axis];
       if (!ui) return;
 
-      let minA = clampCalibrationAmp(ui.minSlider.value);
-      let maxA = clampCalibrationAmp(ui.maxSlider.value);
+      let minA = clampCalibrationAmp(axis, ui.minSlider.value);
+      let maxA = clampCalibrationAmp(axis, ui.maxSlider.value);
 
       if (changedField === "min" && minA > maxA){
         maxA = minA;
@@ -1009,6 +1083,7 @@
 
       const nextCalibration = cloneAxisCalibrationMap(axisLoadCalibration);
       nextCalibration[axis] = normalizeCalibrationRange(
+        axis,
         {
           minA: ui.minSlider.value,
           maxA: ui.maxSlider.value
@@ -1050,40 +1125,46 @@
           setAxisAvailability(axis, !!(payload && payload.available));
           setAxisCurrentA(axis, payload && payload.currentA);
           if (payload && payload.calibration && typeof payload.calibration === "object" && activeAxisCalibrationModalAxis !== axis){
-            axisLoadCalibration[axis] = normalizeCalibrationRange(payload.calibration, axisLoadCalibration[axis]);
+            axisLoadCalibration[axis] = normalizeCalibrationRange(axis, payload.calibration, axisLoadCalibration[axis]);
             syncAxisCalibrationModal(axis);
           }
         });
       });
     }
 
-    document.querySelectorAll(".axis-card").forEach((card) => {
-      const axis = card.dataset.axis;
-      setAxisEnabled(axis, true, false);
-      card.addEventListener("pointerdown", (ev) => {
+    function clearAxisPress(axis){
+      if (axisPressTimers[axis]) clearTimeout(axisPressTimers[axis]);
+      axisPressTimers[axis] = null;
+    }
+
+    function attachAxisLongPress(axis, element){
+      if (!element || !sensorAxisKeys.includes(axis)){
+        return;
+      }
+
+      element.addEventListener("pointerdown", (ev) => {
         if (ev.pointerType === "mouse" && ev.button !== 0){
           return;
         }
         axisLongPressActive[axis] = false;
-        if (axisPressTimers[axis]) clearTimeout(axisPressTimers[axis]);
-        if (!sensorAxisKeys.includes(axis)){
-          return;
-        }
+        clearAxisPress(axis);
         axisPressTimers[axis] = setTimeout(() => {
           axisLongPressActive[axis] = true;
           axisSuppressClickUntilMs[axis] = performance.now() + AXIS_CALIBRATION_LONG_PRESS_MS;
           openAxisCalibrationModal(axis);
         }, AXIS_CALIBRATION_LONG_PRESS_MS);
       });
-      const clearAxisPress = () => {
-        if (axisPressTimers[axis]) clearTimeout(axisPressTimers[axis]);
-        axisPressTimers[axis] = null;
-      };
-      card.addEventListener("pointerup", clearAxisPress);
-      card.addEventListener("pointerleave", clearAxisPress);
-      card.addEventListener("pointercancel", clearAxisPress);
+      element.addEventListener("pointerup", () => clearAxisPress(axis));
+      element.addEventListener("pointerleave", () => clearAxisPress(axis));
+      element.addEventListener("pointercancel", () => clearAxisPress(axis));
+    }
+
+    document.querySelectorAll(".axis-card").forEach((card) => {
+      const axis = card.dataset.axis;
+      setAxisEnabled(axis, true, false);
+      attachAxisLongPress(axis, card);
       card.addEventListener("click", () => {
-        clearAxisPress();
+        clearAxisPress(axis);
         if (axisLongPressActive[axis]){
           axisLongPressActive[axis] = false;
           return;
@@ -1101,10 +1182,20 @@
       });
     });
 
+    attachAxisLongPress("spindle", spindleLoadCard);
+    if (spindleLoadCard){
+      spindleLoadCard.addEventListener("click", () => {
+        clearAxisPress("spindle");
+        if (axisLongPressActive.spindle){
+          axisLongPressActive.spindle = false;
+        }
+      });
+    }
+
     setupGaugePaths(spindleGauge);
     setupGaugePaths(enclosureTempGauge);
 
-    const initialValues = { spindle: 68, x: 42, y: 55, z: 33 };
+    const initialValues = { spindle: 0, x: 0, y: 0, z: 0 };
     axisKeys.forEach((key) => setAxisValue(key, initialValues[key]));
     spindleGaugeDisplayValue = axisValues.spindle;
     spindleGaugeTargetValue = axisValues.spindle;
@@ -1168,10 +1259,10 @@
       if (msg.type === "axes"){
         runWithChartBatch(() => {
           const payload = (msg.axes && typeof msg.axes === "object") ? msg.axes : msg;
-          applyAxesPayload(payload);
           if (msg.axisLoadSensors && typeof msg.axisLoadSensors === "object"){
             applyAxisSensorPayload(msg.axisLoadSensors);
           }
+          applyAxesPayload(payload);
         });
       }
       if (msg.type === "setGraphWindow"){
@@ -1181,7 +1272,7 @@
         pageActive = true;
         lastAnimationTs = 0;
         lastChartRenderTs = 0;
-        loadSpindleTemperature();
+        loadEnclosureTemperature();
         requestChartDraw();
         ensureAnimationLoop();
       }

@@ -14,6 +14,27 @@
 - Stecksystem: `Qwiic` / `JST-SH 4-polig`
 - Gemeinsame Leitungen: `3V3`, `GND`, `SDA`, `SCL`
 
+## Verkabelung im System
+
+- Der `Qwiic HAT` steckt direkt auf dem 40-Pin-GPIO-Header des Raspberry Pi.
+- Er führt den Pi-`I²C`-Bus auf mehrere `Qwiic`-Buchsen heraus.
+- Die vorgesehene Grundverkabelung im System ist:
+  - `Raspberry Pi GPIO Header -> SparkFun Qwiic HAT -> Qwiic-Daisy-Chain -> I²C-Module`
+- Über den HAT laufen nur:
+  - `3V3`
+  - `GND`
+  - `SDA`
+  - `SCL`
+- Module mit zusätzlichen Schraubklemmen, wie Relais- oder Leistungssensor-Boards, bekommen ihre Feldverdrahtung separat direkt am jeweiligen Modul.
+- Der `Qwiic HAT` ist damit Busverteiler und Logikversorgung, aber nicht Teil der Leistungsverdrahtung.
+
+## Hersteller-Referenzen
+
+- SparkFun Produktseite:
+  - `https://www.sparkfun.com/sparkfun-qwiic-hat-for-raspberry-pi.html`
+- SparkFun Hookup Guide:
+  - `https://learn.sparkfun.com/tutorials/qwiic-hat-for-raspberry-pi-hookup-guide/all`
+
 ## Dev Tool
 
 - Skript: `backend/devtools/find_i2c_addresses.py`

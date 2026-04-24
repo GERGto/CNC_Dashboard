@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 from cnc_hardware import create_hardware_backend
 
@@ -25,8 +26,8 @@ def _calibrate_axis_load_percent(current_a, calibration):
     except (ValueError, TypeError):
         max_a = 10.0
 
-    min_a = max(0.0, min(10.0, min_a))
-    max_a = max(0.0, min(10.0, max_a))
+    min_a = max(0.0, min_a)
+    max_a = max(0.0, max_a)
     if max_a <= min_a:
         return 100.0 if abs(float(current_a or 0.0)) >= max_a else 0.0
 
@@ -42,6 +43,9 @@ class BackendApp:
     STATUS_INDICATOR_RUNNING_REFRESH_INTERVAL_SEC = 0.25
     ENCLOSURE_FAN_HYSTERESIS_C = 1.0
     AUTOMATED_FAN_OUTPUTS = frozenset({"fan", "enclosureFan"})
+    WARMUP_TASK_ID = "spindle-warmup"
+    WARMUP_AUTO_COMPLETE_RUNNING_SEC = 5.0 * 60.0
+    WARMUP_VALIDITY_SEC = 2 * 3600
 
     def __init__(
         self,
@@ -77,6 +81,9 @@ class BackendApp:
         self._spindle_runtime_last_sample_monotonic = None
         self._spindle_runtime_last_persist_monotonic = 0.0
         self._spindle_runtime_last_running = False
+        self._spindle_warmup_running_sec = 0.0
+        self._spindle_warmup_run_qualified = False
+        self._spindle_warmup_refresh_on_stop = False
         self._axis_runtime_last_moving = {
             axis: False
             for axis in ("x", "y", "z")
@@ -117,6 +124,7 @@ class BackendApp:
         timestamp = int(timestamp_ms if timestamp_ms is not None else time.time() * 1000)
         axes = mock_axes_load(timestamp)
         axis_loads = self.get_axis_loads()
+        spindle_load = self.get_spindle_load()
         axis_sensor_payloads = axis_loads.get("axes", {}) if isinstance(axis_loads, dict) else {}
 
         for axis in ("x", "y", "z"):
@@ -126,10 +134,18 @@ class BackendApp:
             else:
                 axes[axis] = 0.0
 
+        if spindle_load.get("available") and spindle_load.get("calibratedLoadPercent") is not None:
+            axes["spindle"] = float(spindle_load.get("calibratedLoadPercent"))
+        else:
+            axes["spindle"] = 0.0
+
         return {
             "timestamp": timestamp,
             "axes": axes,
-            "axisLoadSensors": axis_sensor_payloads,
+            "axisLoadSensors": {
+                **axis_sensor_payloads,
+                "spindle": spindle_load,
+            },
         }
 
     def get_hardware_snapshot(self, force_refresh=False):
@@ -148,6 +164,7 @@ class BackendApp:
         if not isinstance(axis_loads, dict):
             return axis_loads
 
+        calibration_defaults = self.store.default_ui_settings().get("axisLoadCalibration", {})
         calibration = self.store.load_ui_settings().get("axisLoadCalibration", {})
         axes = axis_loads.get("axes")
         if not isinstance(axes, dict):
@@ -157,7 +174,7 @@ class BackendApp:
             payload = axes.get(axis)
             if not isinstance(payload, dict):
                 continue
-            axis_calibration = calibration.get(axis, {"minA": 0.0, "maxA": 10.0})
+            axis_calibration = calibration.get(axis, calibration_defaults.get(axis, {"minA": 0.0, "maxA": 10.0}))
             payload["calibration"] = axis_calibration
             if payload.get("available") and payload.get("currentA") is not None:
                 payload["calibratedLoadPercent"] = round(
@@ -167,6 +184,27 @@ class BackendApp:
             else:
                 payload["calibratedLoadPercent"] = None
         return axis_loads
+
+    def get_spindle_load(self, force_refresh=False):
+        spindle_load = self.hardware_backend.get_spindle_load(force_refresh=force_refresh)
+        if not isinstance(spindle_load, dict):
+            return spindle_load
+
+        calibration_defaults = self.store.default_ui_settings().get("axisLoadCalibration", {})
+        calibration = self.store.load_ui_settings().get("axisLoadCalibration", {})
+        spindle_calibration = calibration.get(
+            "spindle",
+            calibration_defaults.get("spindle", {"minA": 0.0, "maxA": 30.0}),
+        )
+        spindle_load["calibration"] = spindle_calibration
+        if spindle_load.get("available") and spindle_load.get("currentA") is not None:
+            spindle_load["calibratedLoadPercent"] = round(
+                _calibrate_axis_load_percent(spindle_load.get("currentA"), spindle_calibration),
+                2,
+            )
+        else:
+            spindle_load["calibratedLoadPercent"] = None
+        return spindle_load
 
     def get_relay_board(self):
         return self.hardware_backend.get_relay_board()
@@ -202,6 +240,7 @@ class BackendApp:
             self.get_spindle_runtime_sec(),
             maintenance_tasks,
             relay_board,
+            backend_start_count=self.get_backend_start_count(),
         )
 
     def report_machine_status(self, status, source="api"):
@@ -223,7 +262,10 @@ class BackendApp:
     def get_settings(self):
         legacy = self.store.load_legacy_settings()
         ui_settings = self.wifi_service.merge_wifi_runtime_settings(self.store.load_ui_settings())
-        machine_stats = {"spindleRuntimeSec": self.get_spindle_runtime_sec()}
+        machine_stats = {
+            "spindleRuntimeSec": self.get_spindle_runtime_sec(),
+            "backendStartCount": self.get_backend_start_count(),
+        }
         maintenance_tasks = self.store.load_maintenance_tasks(legacy)
         return {
             **ui_settings,
@@ -300,21 +342,41 @@ class BackendApp:
         return self.get_settings().get("maintenanceTasks", [])
 
     def complete_maintenance_task(self, task_id):
+        return self._complete_maintenance_task(task_id)
+
+    def _complete_maintenance_task(
+        self,
+        task_id,
+        *,
+        completed_at=None,
+        spindle_runtime_sec=None,
+        backend_start_count=None,
+    ):
         task_id = str(task_id or "").strip()
         if not task_id:
             return None
 
         settings = self.get_settings()
         tasks = settings.get("maintenanceTasks", [])
-        spindle_runtime_sec = max(0, int(settings.get("spindleRuntimeSec", 0) or 0))
-        now_iso = iso_now_utc()
+        completion_runtime_sec = (
+            max(0, int(spindle_runtime_sec or 0))
+            if spindle_runtime_sec is not None
+            else max(0, int(settings.get("spindleRuntimeSec", 0) or 0))
+        )
+        completion_backend_start_count = (
+            max(0, int(backend_start_count or 0))
+            if backend_start_count is not None
+            else max(0, int(settings.get("backendStartCount", 0) or 0))
+        )
+        now_iso = str(completed_at or iso_now_utc())
 
         updated_task = None
         for task in tasks:
             if str(task.get("id", "")).strip() != task_id:
                 continue
             task["lastCompletedAt"] = now_iso
-            task["spindleRuntimeSecAtCompletion"] = spindle_runtime_sec
+            task["spindleRuntimeSecAtCompletion"] = completion_runtime_sec
+            task["backendStartCountAtCompletion"] = completion_backend_start_count
             updated_task = task
             break
 
@@ -323,6 +385,43 @@ class BackendApp:
 
         self.save_settings({"maintenanceTasks": tasks})
         return updated_task
+
+    def _mark_warmup_completed(self, spindle_runtime_sec=None):
+        current_runtime_sec = (
+            self.get_spindle_runtime_sec()
+            if spindle_runtime_sec is None
+            else max(0, int(spindle_runtime_sec or 0))
+        )
+        return self._complete_maintenance_task(
+            self.WARMUP_TASK_ID,
+            spindle_runtime_sec=current_runtime_sec,
+            backend_start_count=self.get_backend_start_count(),
+        )
+
+    def _is_warmup_currently_valid(self):
+        warmup_task = None
+        for task in self.store.load_maintenance_tasks():
+            if str(task.get("id", "")).strip() == self.WARMUP_TASK_ID:
+                warmup_task = task
+                break
+
+        if not isinstance(warmup_task, dict):
+            return False
+
+        completed_at = str(warmup_task.get("lastCompletedAt", "") or "").strip()
+        if not completed_at:
+            return False
+
+        try:
+            completed_dt = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+
+        current_dt = datetime.now(completed_dt.tzinfo or timezone.utc)
+        if completed_dt.tzinfo is None and current_dt.tzinfo is not None:
+            current_dt = current_dt.replace(tzinfo=None)
+
+        return current_dt < (completed_dt + timedelta(seconds=self.WARMUP_VALIDITY_SEC))
 
     def request_system_shutdown(self):
         return self.shutdown_service.request_system_shutdown()
@@ -361,6 +460,12 @@ class BackendApp:
                 for axis in ("x", "y", "z")
             }
 
+    def get_backend_start_count(self):
+        with self._spindle_runtime_lock:
+            if self._backend_start_count is None:
+                self._load_spindle_runtime_state_locked()
+            return max(0, int(self._backend_start_count or 0))
+
     def set_spindle_runtime_sec(self, value, persist=False):
         normalized = max(0, int(value or 0))
         with self._spindle_runtime_lock:
@@ -393,6 +498,9 @@ class BackendApp:
         self._spindle_runtime_last_sample_monotonic = time.monotonic()
         self._spindle_runtime_last_persist_monotonic = self._spindle_runtime_last_sample_monotonic
         self._spindle_runtime_last_running = False
+        self._spindle_warmup_running_sec = 0.0
+        self._spindle_warmup_run_qualified = False
+        self._spindle_warmup_refresh_on_stop = False
         self._axis_runtime_last_moving = {
             axis: False
             for axis in ("x", "y", "z")
@@ -511,9 +619,12 @@ class BackendApp:
         if str(indicator.get("state", "")).strip() != "running":
             return 0.0
 
-        axes = mock_axes_load(int(time.time() * 1000))
         try:
-            return max(0.0, min(100.0, float(axes.get("spindle", 0.0))))
+            spindle_load = self.get_spindle_load(force_refresh=False)
+            return max(
+                0.0,
+                min(100.0, float(spindle_load.get("calibratedLoadPercent", 0.0) or 0.0)),
+            )
         except (ValueError, TypeError):
             return 0.0
 
@@ -714,6 +825,9 @@ class BackendApp:
                 now = time.monotonic()
                 persist_required = False
                 status_sync_required = False
+                warmup_completed_required = False
+                warmup_refresh_on_stop = False
+                current_runtime_sec = 0
 
                 with self._spindle_runtime_lock:
                     if self._spindle_runtime_sec is None:
@@ -730,17 +844,37 @@ class BackendApp:
                         self._machine_on_time_sec += delta_sec
                         if spindle_running:
                             self._spindle_runtime_sec += delta_sec
+                            self._spindle_warmup_running_sec += delta_sec
                         for axis in ("x", "y", "z"):
                             if axis_moving.get(axis, False):
                                 self._axis_runtime_sec[axis] += delta_sec
+                    elif not spindle_running:
+                        self._spindle_warmup_running_sec = 0.0
 
                     if previous_spindle_running_observed is None:
                         self._last_spindle_running_observed = spindle_running
+                        if spindle_running:
+                            self._spindle_warmup_refresh_on_stop = self._is_warmup_currently_valid()
                     else:
                         if spindle_running and not previous_spindle_running_observed:
                             self._spindle_start_count = max(0, int(self._spindle_start_count or 0)) + 1
                             persist_required = True
+                            self._spindle_warmup_running_sec = 0.0
+                            self._spindle_warmup_run_qualified = False
+                            self._spindle_warmup_refresh_on_stop = self._is_warmup_currently_valid()
                         self._last_spindle_running_observed = spindle_running
+
+                    if spindle_running and self._spindle_warmup_running_sec >= self.WARMUP_AUTO_COMPLETE_RUNNING_SEC:
+                        if not self._spindle_warmup_run_qualified:
+                            warmup_completed_required = True
+                        self._spindle_warmup_run_qualified = True
+                        self._spindle_warmup_refresh_on_stop = True
+                    elif not spindle_running:
+                        if previous_running and (self._spindle_warmup_run_qualified or self._spindle_warmup_refresh_on_stop):
+                            warmup_refresh_on_stop = True
+                        self._spindle_warmup_running_sec = 0.0
+                        self._spindle_warmup_run_qualified = False
+                        self._spindle_warmup_refresh_on_stop = False
 
                     if spindle_running != previous_running:
                         status_sync_required = True
@@ -762,9 +896,16 @@ class BackendApp:
                         axis: bool(axis_moving.get(axis, False))
                         for axis in ("x", "y", "z")
                     }
+                    current_runtime_sec = max(0, int(self._spindle_runtime_sec or 0))
 
                 if persist_required:
                     self._persist_spindle_runtime(force=True)
+                if warmup_completed_required:
+                    self._mark_warmup_completed(current_runtime_sec)
+                    status_sync_required = True
+                elif warmup_refresh_on_stop:
+                    self._mark_warmup_completed(current_runtime_sec)
+                    status_sync_required = True
                 if status_sync_required:
                     self.sync_status_indicator()
             except Exception as exc:  # pragma: no cover - background safety net

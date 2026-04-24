@@ -1,8 +1,9 @@
 # Hardware API (dev)
 
 This backend provides a simple HTTP + SSE API for Raspberry Pi hardware control
-and streaming axis/spindle load values. The spindle value is currently still
-mocked, while `X/Y/Z` can be backed by INA228 current sensors.
+and streaming axis/spindle load values. The spindle value is backed by a
+`Pololu 5411` / `ACS37800` I2C power monitor, while `X/Y/Z` are backed by
+INA228 current sensors.
 
 For the camera stack, the backend no longer serves MJPEG itself. Instead:
 
@@ -21,13 +22,16 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - `event: axes` with `{ timestamp, axes: { spindle, x, y, z }, axisLoadSensors }` every ~250 ms
   - Optional query: `?intervalMs=250`
 - GET `/api/hardware`
-  - `{ time, transport: { primary, i2c }, sensors: { enclosureTemperature, spindleTemperature, axisLoads, safetyInputs }, actuators: { relayBoard, statusIndicator }, machineStatus }`
+  - `{ time, transport: { primary, i2c }, sensors: { enclosureTemperature, spindleTemperature, spindleLoad, axisLoads, safetyInputs }, actuators: { relayBoard, statusIndicator }, machineStatus }`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/enclosure-temperature`
   - `{ sensorId, sensorType, available, temperatureC, humidityPercent, measuredAt, ... }`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/spindle-temperature`
   - Legacy alias of `/api/hardware/enclosure-temperature`
+  - Optional query: `?refresh=1`
+- GET `/api/hardware/spindle-load`
+  - `{ sensorId, sensorType, available, currentA, powerW, busVoltageV, calibratedLoadPercent, measuredAt, ... }`
   - Optional query: `?refresh=1`
 - GET `/api/hardware/axis-loads`
   - `{ sensorGroupId, available, axes: { x, y, z }, ... }`
@@ -55,9 +59,9 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - Request: `{ engaged: true|false }` or `{ on: true|false }`
   - Response: `{ ok, channel, relayBoard }`
 - GET `/api/settings`
-  - `{ graphWindowSec, rgbStripBrightness, spindleFanAftercoolSeconds, enclosureFanThresholdC, enclosureFanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, rgbStripBrightness, spindleFanAftercoolSeconds, enclosureFanThresholdC, enclosureFanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, axisLoadCalibration, spindleRuntimeSec, maintenanceTasks }`
 - POST `/api/settings`
-  - `{ graphWindowSec, rgbStripBrightness, spindleFanAftercoolSeconds, enclosureFanThresholdC, enclosureFanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, spindleRuntimeSec, maintenanceTasks }`
+  - `{ graphWindowSec, rgbStripBrightness, spindleFanAftercoolSeconds, enclosureFanThresholdC, enclosureFanAuto, wifiSsid, wifiPassword, wifiAutoConnect, wifiConnected, axisVisibility, axisLoadCalibration, spindleRuntimeSec, maintenanceTasks }`
 - GET `/api/maintenance/tasks`
   - `{ tasks: [{ id, title, intervalType, intervalValue, effortMin, description, lastCompletedAt, spindleRuntimeSecAtCompletion }] }`
   - `intervalType`: `runtimeHours` | `calendarMonths` | `none`
@@ -158,6 +162,19 @@ The project is prepared for three `Adafruit INA228` current/power monitors.
 - The backend reads `currentA`, `powerW`, `busVoltageV`, `shuntVoltageMv` and `dieTemperatureC`.
 - For the current frontend graph, the measured current is normalized into `loadPercent`.
 
+## Spindle Load Sensor
+
+The project now uses a `Pololu 5411` (`ACS37800KMACTR-030B3-I2C Power Monitor Carrier`)
+for the primary spindle load.
+
+- Bus: `/dev/i2c-1`
+- Current live bus inventory:
+  - `Spindle`: `0x60`
+- The backend reads `currentA`, `powerW` and `busVoltageV`.
+- The local and remote dashboards use the calibrated spindle load from this
+  sensor instead of the previous mock value.
+- The RGB status strip running animation also uses this calibrated spindle load.
+
 ## Run
 
 ```bash
@@ -174,6 +191,10 @@ set SHUTDOWN_COMMAND=sudo -n /usr/bin/systemctl poweroff
 set SHUTDOWN_DELAY_SEC=1.0
 set HARDWARE_PRIMARY_I2C_BUS=1
 set SPINDLE_TEMP_SENSOR_I2C_ADDRESS=0x38
+set SPINDLE_LOAD_SENSOR_ENABLED=1
+set SPINDLE_LOAD_SENSOR_I2C_ADDRESS=0x60
+set SPINDLE_LOAD_SENSOR_RSENSE_KOHM=4
+set SPINDLE_LOAD_SENSOR_REFERENCE_CURRENT_A=30.0
 set HARDWARE_SENSOR_CACHE_TTL_SEC=2.0
 set AXIS_LOAD_SENSOR_CACHE_TTL_SEC=0.25
 set AXIS_LOAD_X_SENSOR_ENABLED=1

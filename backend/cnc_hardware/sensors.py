@@ -351,3 +351,141 @@ class INA228Sensor:
 
     def _read_s24(self, register):
         return _sign_extend(self._read_u24(register), 24)
+
+
+class ACS37800Sensor:
+    DEFAULT_ADDRESS = 0x60
+    DEFAULT_CURRENT_RANGE_A = 30.0
+    DEFAULT_BOARD_RSENSE_KOHM = 4
+    DEFAULT_LOAD_REFERENCE_CURRENT_A = DEFAULT_CURRENT_RANGE_A
+
+    REG_RMS_VOLTAGE_CURRENT = 0x20
+    REG_ACTIVE_REACTIVE_POWER = 0x21
+
+    VALID_RSENSE_KOHM = (1, 2, 4)
+
+    def __init__(
+        self,
+        bus_number=1,
+        address=DEFAULT_ADDRESS,
+        role="spindle",
+        current_range_a=DEFAULT_CURRENT_RANGE_A,
+        board_rsense_kohm=DEFAULT_BOARD_RSENSE_KOHM,
+        load_reference_current_a=DEFAULT_LOAD_REFERENCE_CURRENT_A,
+        enabled=True,
+    ):
+        self.bus_number = int(bus_number)
+        self.address = int(address)
+        self.role = str(role or "").strip().lower() or "spindle"
+        self.enabled = bool(enabled)
+        self.device = LinuxI2CDevice(self.bus_number, self.address)
+        self.current_range_a = max(1e-6, float(current_range_a))
+        self.board_rsense_kohm = self._normalize_rsense_kohm(board_rsense_kohm)
+        self.load_reference_current_a = max(1e-6, float(load_reference_current_a))
+        self._lock = threading.Lock()
+
+        self._vcodes_mult = 18637
+        self._vcodes_shift = 11
+        self._icodes_mult = 17873
+        self._icodes_shift = 14
+        self._pinstant_mult = 325
+        self._pinstant_shift = 0
+        self._configure_pololu_scaling()
+
+    @property
+    def device_path(self):
+        return self.device.path
+
+    def describe(self):
+        return {
+            "sensorType": "ACS37800",
+            "interface": "i2c",
+            "bus": self.bus_number,
+            "devicePath": self.device_path,
+            "address": self.address,
+            "addressHex": f"0x{self.address:02x}",
+            "currentRangeA": round(self.current_range_a, 3),
+            "boardRsenseKOhm": self.board_rsense_kohm,
+            "loadReferenceCurrentA": round(self.load_reference_current_a, 3),
+        }
+
+    def read_measurement(self):
+        with self._lock:
+            return self._read_measurement_locked()
+
+    def _read_measurement_locked(self):
+        if not self.enabled:
+            raise SensorUnavailableError("ACS37800 fuer die Spindellast ist deaktiviert.")
+        if not self.device.is_supported():
+            raise SensorUnavailableError("Linux-I2C ist in dieser Umgebung nicht verfuegbar.")
+        if not self.device.is_available():
+            raise SensorUnavailableError(f"I2C-Bus {self.device_path} ist nicht verfuegbar.")
+
+        try:
+            rms_register = self._read_u32_le(self.REG_RMS_VOLTAGE_CURRENT)
+            power_register = self._read_u32_le(self.REG_ACTIVE_REACTIVE_POWER)
+        except I2CError as exc:
+            raise SensorReadError(str(exc)) from exc
+
+        vrms_codes = rms_register & 0xFFFF
+        irms_codes = (rms_register >> 16) & 0xFFFF
+        active_power_codes = _sign_extend(power_register & 0xFFFF, 16)
+        reactive_power_codes = (power_register >> 16) & 0xFFFF
+
+        rms_voltage_mv = ((int(vrms_codes) * self._vcodes_mult) >> self._vcodes_shift) >> 1
+        rms_current_ma = ((int(irms_codes) * self._icodes_mult) >> self._icodes_shift) >> 1
+        active_power_mw = (int(active_power_codes) * self._pinstant_mult) >> self._pinstant_shift
+        reactive_power_mw = (
+            (int(reactive_power_codes) * self._pinstant_mult) >> self._pinstant_shift
+        ) >> 1
+
+        current_a = rms_current_ma / 1000.0
+        load_percent = min(
+            100.0,
+            max(0.0, (abs(current_a) / self.load_reference_current_a) * 100.0),
+        )
+
+        return {
+            "measuredAt": iso_now_utc(),
+            "loadPercent": round(load_percent, 2),
+            "currentA": round(current_a, 4),
+            "powerW": round(active_power_mw / 1000.0, 4),
+            "reactivePowerW": round(reactive_power_mw / 1000.0, 4),
+            "busVoltageV": round(rms_voltage_mv / 1000.0, 4),
+        }
+
+    def _configure_pololu_scaling(self):
+        if self.board_rsense_kohm == 1:
+            self._vcodes_mult = 18623
+            self._vcodes_shift = 9
+            self._pinstant_mult = 1299
+            self._pinstant_shift = 0
+            return
+
+        if self.board_rsense_kohm == 2:
+            self._vcodes_mult = 18627
+            self._vcodes_shift = 10
+            self._pinstant_mult = 10395
+            self._pinstant_shift = 4
+            return
+
+        self._vcodes_mult = 18637
+        self._vcodes_shift = 11
+        self._pinstant_mult = 325
+        self._pinstant_shift = 0
+
+    def _read_u32_le(self, register):
+        data = self.device.transfer(write_bytes=(int(register) & 0xFF,), read_length=4)
+        if len(data) != 4:
+            raise I2CError(
+                f"ACS37800-Register 0x{int(register):02x} lieferte {len(data)} statt 4 Byte."
+            )
+        return data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24)
+
+    @classmethod
+    def _normalize_rsense_kohm(cls, raw_value):
+        try:
+            parsed = int(raw_value)
+        except (ValueError, TypeError):
+            return cls.DEFAULT_BOARD_RSENSE_KOHM
+        return parsed if parsed in cls.VALID_RSENSE_KOHM else cls.DEFAULT_BOARD_RSENSE_KOHM

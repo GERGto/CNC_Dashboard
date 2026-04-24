@@ -30,6 +30,27 @@
 - Aktuelle Adresse im Aufbau: `0x21`
 - Feldseite des Moduls: optisch getrennte 8-Kanal-Eingaenge fuer externe 3.6 V bis 24 V Signale laut Modulbezeichnung
 
+## Verkabelung im System
+
+- Die Logikseite des Moduls hängt am gemeinsamen `I²C`-Bus des Raspberry Pi.
+- Der vorgesehene Buspfad ist:
+  - `Raspberry Pi -> SparkFun Qwiic HAT -> gemeinsamer I²C-Bus -> PCF8574-Modul`
+- Auf der Feldseite werden die externen Status- und Safety-Signale an den Eingangsklemmen des Optokoppler-Moduls angeschlossen.
+- Aktuell vorgesehene Klemmenbelegung im System:
+  - `IN1`: mechanischer E-Stop-Kreis 1
+  - `IN2`: mechanischer E-Stop-Kreis 2
+  - `IN3`: Signal `Spindel läuft`
+  - `IN4..IN8`: Reserve
+- Über diese Schraubklemmen werden nur Eingangssignale erfasst; das Modul schaltet selbst keine Lasten.
+- Wichtig für die Praxis:
+  - Qwiic/I²C ist nur die Bus- und Logikseite
+  - die Feldverdrahtung der E-Stop- und Statussignale bleibt galvanisch getrennt auf der Eingangsseite des Moduls
+
+## Hersteller-Referenzen
+
+- NXP Produktseite und Datenblatt zur zugrunde liegenden I/O-Expander-Familie:
+  - `https://www.nxp.com/products/interfaces/ic-spi-i3c-interface-devices/general-purpose-i-o-gpio/remote-8-bit-i-o-expander-for-icbus-with-interrupt:PCF8574_74A`
+
 ## Backend-Anbindung
 
 - Eingangstreiber: `backend/cnc_hardware/pcf8574_inputs.py`

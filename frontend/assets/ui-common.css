@@ -236,15 +236,30 @@
 
 .maintenance-guide{
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "meta"
+    "text";
   gap: 8px;
   align-content: start;
   min-height: 100%;
+}
+
+.maintenance-guide--with-image{
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 46%);
+  grid-template-areas:
+    "meta meta"
+    "text image";
+  column-gap: 14px;
+  row-gap: 10px;
+  align-items: start;
 }
 
 .maintenance-guide__meta{
   font-weight: 700;
   color: #555;
   font-size: 15px;
+  grid-area: meta;
 }
 
 .maintenance-guide__text{
@@ -252,15 +267,33 @@
   font-size: clamp(18px, 3vw, 28px);
   line-height: 1.25;
   font-weight: 500;
+  grid-area: text;
 }
 
 .maintenance-guide__image{
   display: block;
-  width: min(460px, 100%);
-  max-height: min(230px, 30vh);
+  width: 100%;
+  max-width: 100%;
+  max-height: min(420px, 58vh);
   object-fit: contain;
   background: #fff;
   margin-top: 2px;
+  grid-area: image;
+  justify-self: end;
+}
+
+@media (max-width: 860px){
+  .maintenance-guide--with-image{
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "meta"
+      "text"
+      "image";
+  }
+
+  .maintenance-guide__image{
+    justify-self: start;
+  }
 }
 
 .maintenance-guide-empty{

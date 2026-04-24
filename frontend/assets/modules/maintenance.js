@@ -5,6 +5,7 @@ export function createMaintenanceController({
   onSetMaintenanceDue,
   onTaskCompleted,
 }) {
+  const WARMUP_VALIDITY_MS = 2 * 60 * 60 * 1000;
   const {
     taskModal,
     taskTitle,
@@ -37,6 +38,8 @@ export function createMaintenanceController({
   let modalStepIndex = 0;
   let tasksCache = [];
   let listenersBound = false;
+  let guideTouchStartX = null;
+  let guideTouchStartY = null;
 
   function toNumber(value, fallback = 0) {
     const n = Number(value);
@@ -49,6 +52,22 @@ export function createMaintenanceController({
     return d;
   }
 
+  function isWarmupTask(task) {
+    return !!task && String(task.id || "").trim() === "spindle-warmup";
+  }
+
+  function getWarmupDueAtMs(task) {
+    const lastCompletedAt = String(task?.lastCompletedAt || "").trim();
+    if (!lastCompletedAt) {
+      return null;
+    }
+    const completedAt = new Date(lastCompletedAt);
+    if (Number.isNaN(completedAt.getTime())) {
+      return null;
+    }
+    return completedAt.getTime() + WARMUP_VALIDITY_MS;
+  }
+
   function normalizeTask(task) {
     if (!task || typeof task !== "object") return null;
     const id = String(task.id || "").trim();
@@ -59,6 +78,9 @@ export function createMaintenanceController({
     let intervalType = "runtimeHours";
     if (rawIntervalType === "calendarMonths") {
       intervalType = "calendarMonths";
+    }
+    if (rawIntervalType === "backendStarts") {
+      intervalType = "backendStarts";
     }
     if (rawIntervalType === "none" || (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-")) {
       intervalType = "none";
@@ -74,6 +96,10 @@ export function createMaintenanceController({
         0,
         Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0))
       ),
+      backendStartCountAtCompletion: Math.max(
+        0,
+        Math.floor(toNumber(task.backendStartCountAtCompletion, 0))
+      ),
     };
   }
 
@@ -83,13 +109,19 @@ export function createMaintenanceController({
     const intervalValue = task.intervalValue;
     if (intervalType === "none") return false;
     if (typeof intervalValue === "string" && intervalValue.trim() === "-") return false;
-    return intervalType === "runtimeHours" || intervalType === "calendarMonths";
+    return intervalType === "runtimeHours" || intervalType === "calendarMonths" || intervalType === "backendStarts";
   }
 
   function isTaskDue(task) {
     if (!task || typeof task !== "object") return false;
     if (!hasAutomaticInterval(task)) return false;
     if (!task.lastCompletedAt) return true;
+
+    if (isWarmupTask(task)) {
+      const dueAtMs = getWarmupDueAtMs(task);
+      if (dueAtMs === null) return true;
+      return Date.now() >= dueAtMs;
+    }
 
     const intervalType = String(task.intervalType || "");
     const intervalValue = Math.max(1, Math.floor(toNumber(task.intervalValue, 1)));
@@ -98,6 +130,12 @@ export function createMaintenanceController({
       const lastSec = Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0)));
       const elapsedSec = Math.max(0, state.spindleRuntimeSec - lastSec);
       return elapsedSec >= intervalValue * 3600;
+    }
+
+    if (intervalType === "backendStarts") {
+      const lastStartCount = Math.max(0, Math.floor(toNumber(task.backendStartCountAtCompletion, 0)));
+      const elapsedStarts = Math.max(0, (state.backendStartCount || 0) - lastStartCount);
+      return elapsedStarts >= intervalValue;
     }
 
     if (intervalType === "calendarMonths") {
@@ -164,6 +202,7 @@ export function createMaintenanceController({
   function renderGuideStep() {
     const count = modalSteps.length;
     if (count === 0) {
+      guideContent.classList.remove("maintenance-guide--with-image");
       guideContent.hidden = true;
       guideEmpty.hidden = false;
       guidePrev.disabled = true;
@@ -189,10 +228,12 @@ export function createMaintenanceController({
       guideStepImage.src = step.image;
       guideStepImage.alt = step.imageAlt || "Arbeitsschritt";
       guideStepImage.hidden = false;
+      guideContent.classList.add("maintenance-guide--with-image");
     } else {
       guideStepImage.src = "";
       guideStepImage.alt = "";
       guideStepImage.hidden = true;
+      guideContent.classList.remove("maintenance-guide--with-image");
     }
 
     guidePrev.disabled = modalStepIndex <= 0;
@@ -261,6 +302,7 @@ export function createMaintenanceController({
     modalSteps = [];
     modalStepIndex = 0;
     modalTab = "overview";
+    guideContent.classList.remove("maintenance-guide--with-image");
     taskModal.classList.remove("is-open");
     taskModal.setAttribute("aria-hidden", "true");
   }
@@ -337,6 +379,26 @@ export function createMaintenanceController({
         closeTaskModal();
       }
     });
+    panelGuide.addEventListener("touchstart", (ev) => {
+      const touch = ev.changedTouches && ev.changedTouches[0];
+      if (!touch) return;
+      guideTouchStartX = touch.clientX;
+      guideTouchStartY = touch.clientY;
+    }, { passive: true });
+    panelGuide.addEventListener("touchend", (ev) => {
+      const touch = ev.changedTouches && ev.changedTouches[0];
+      if (!touch || guideTouchStartX === null || guideTouchStartY === null) return;
+      const deltaX = touch.clientX - guideTouchStartX;
+      const deltaY = touch.clientY - guideTouchStartY;
+      guideTouchStartX = null;
+      guideTouchStartY = null;
+      if (Math.abs(deltaX) < 60 || Math.abs(deltaY) > 40 || modalTab !== "guide") return;
+      if (deltaX < 0) {
+        handleGuideNext();
+      } else {
+        handleGuidePrev();
+      }
+    }, { passive: true });
   }
 
   return {

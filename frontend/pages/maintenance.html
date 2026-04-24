@@ -185,16 +185,23 @@
 
     const API_BASE = createApiBase();
     const PAGE_SIZE = 4;
+    const WARMUP_VALIDITY_MS = 2 * 60 * 60 * 1000;
 
     const taskTableBody = document.getElementById("taskTableBody");
     const prevPageBtn = document.getElementById("prevPageBtn");
     const nextPageBtn = document.getElementById("nextPageBtn");
     const pageIndicator = document.getElementById("pageIndicator");
+    const layoutEl = document.querySelector(".layout");
+
+    let swipeStartX = null;
+    let swipeStartY = null;
 
     const state = {
       tasks: [],
       page: 0,
       spindleRuntimeSec: 0,
+      backendStartCount: 0,
+      spindleRunning: false,
     };
 
     function toNumber(value, fallback = 0){
@@ -226,19 +233,54 @@
       return d;
     }
 
+    function formatDurationMs(ms){
+      const totalMinutes = Math.max(1, Math.round(Math.max(0, toNumber(ms, 0)) / 60000));
+      if (totalMinutes < 60){
+        return `${totalMinutes} min`;
+      }
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (minutes === 0){
+        return `${hours} h`;
+      }
+      return `${hours} h ${minutes} min`;
+    }
+
+    function getWarmupDueAtMs(task){
+      const lastCompletedAt = String(task?.lastCompletedAt || "").trim();
+      if (!lastCompletedAt){
+        return null;
+      }
+      const completedAt = new Date(lastCompletedAt);
+      if (Number.isNaN(completedAt.getTime())){
+        return null;
+      }
+      return completedAt.getTime() + WARMUP_VALIDITY_MS;
+    }
+
     function hasAutomaticInterval(task){
       if (!task || typeof task !== "object") return false;
       const intervalType = String(task.intervalType || "").trim();
       const rawIntervalValue = task.intervalValue;
       if (intervalType === "none") return false;
       if (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-") return false;
-      return intervalType === "runtimeHours" || intervalType === "calendarMonths";
+      return intervalType === "runtimeHours" || intervalType === "calendarMonths" || intervalType === "backendStarts";
+    }
+
+    function isWarmupTask(task){
+      return !!task && String(task.id || "").trim() === "spindle-warmup";
     }
 
     function isTaskDue(task){
       if (!task || typeof task !== "object") return false;
       if (!hasAutomaticInterval(task)) return false;
       if (!task.lastCompletedAt) return true;
+
+      if (isWarmupTask(task)){
+        const dueAtMs = getWarmupDueAtMs(task);
+        if (dueAtMs === null) return true;
+        return Date.now() >= dueAtMs;
+      }
 
       const intervalType = String(task.intervalType || "");
       const intervalValue = Math.max(1, Math.floor(toNumber(task.intervalValue, 1)));
@@ -247,6 +289,12 @@
         const lastSec = Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0)));
         const elapsedSec = Math.max(0, state.spindleRuntimeSec - lastSec);
         return elapsedSec >= (intervalValue * 3600);
+      }
+
+      if (intervalType === "backendStarts"){
+        const lastStartCount = Math.max(0, Math.floor(toNumber(task.backendStartCountAtCompletion, 0)));
+        const elapsedStarts = Math.max(0, state.backendStartCount - lastStartCount);
+        return elapsedStarts >= intervalValue;
       }
 
       if (intervalType === "calendarMonths"){
@@ -263,8 +311,17 @@
         return "-";
       }
       const intervalValue = Math.max(1, Math.floor(toNumber(task.intervalValue, 1)));
+      if (isWarmupTask(task)){
+        return "2 h gültig";
+      }
+      if (isWarmupTask(task) && false){
+        return "2h gültig";
+      }
       if (task.intervalType === "runtimeHours"){
         return `Alle ${intervalValue}h`;
+      }
+      if (task.intervalType === "backendStarts"){
+        return intervalValue <= 1 ? "Nach jedem Einschalten" : `Alle ${intervalValue} Starts`;
       }
       if (task.intervalType === "calendarMonths"){
         return `Alle ${intervalValue} Monate`;
@@ -314,6 +371,38 @@
       const due = autoDue && isTaskDue(task);
       const lastRuntimeSec = Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0)));
       const runtimeSinceSec = task.lastCompletedAt ? Math.max(0, state.spindleRuntimeSec - lastRuntimeSec) : 0;
+      const lastBackendStartCount = Math.max(0, Math.floor(toNumber(task.backendStartCountAtCompletion, 0)));
+      const startsSinceCompletion = task.lastCompletedAt ? Math.max(0, state.backendStartCount - lastBackendStartCount) : 0;
+      const warmupDueAtMs = isWarmupTask(task) ? getWarmupDueAtMs(task) : null;
+      const lastDoneText = task.lastCompletedAt
+        ? (task.intervalType === "backendStarts"
+          ? `${formatDateTime(task.lastCompletedAt)} (bei Start ${lastBackendStartCount})`
+          : `${formatDateTime(task.lastCompletedAt)} (bei ${getHoursText(lastRuntimeSec)})`)
+        : "Noch nie";
+      const sinceDoneText = task.lastCompletedAt
+        ? (task.intervalType === "backendStarts"
+          ? (startsSinceCompletion <= 0
+            ? "seitdem kein Neustart"
+            : `seitdem ${startsSinceCompletion} Neustart${startsSinceCompletion === 1 ? "" : "e"}`)
+          : `vor ${getHoursText(runtimeSinceSec)} Betriebsstunden`)
+        : "-";
+      const modalLastDoneText = isWarmupTask(task)
+        ? (task.lastCompletedAt ? formatDateTime(task.lastCompletedAt) : "Noch nie")
+        : lastDoneText;
+      const modalSinceDoneText = isWarmupTask(task)
+        ? (task.lastCompletedAt
+          ? (warmupDueAtMs !== null && Date.now() < warmupDueAtMs
+            ? `noch ${formatDurationMs(warmupDueAtMs - Date.now())} gültig`
+            : (warmupDueAtMs !== null
+              ? `seit ${formatDurationMs(Date.now() - warmupDueAtMs)} abgelaufen`
+              : "-"))
+          : "-")
+        : sinceDoneText;
+      const modalStatusText = autoDue
+        ? (isWarmupTask(task)
+          ? (due ? "Warmlauf fällig" : (state.spindleRunning ? "Spindel läuft" : "In Ordnung"))
+          : (due ? "Fällig" : "In Ordnung"))
+        : "Manuell";
 
       return {
         type: "openMaintenanceTaskModal",
@@ -322,9 +411,12 @@
         intervalText: formatInterval(task),
         effortText: `${Math.max(1, Math.floor(toNumber(task.effortMin, 1)))}m`,
         statusText: autoDue ? (due ? "Fällig" : "In Ordnung") : "Manuell",
+        statusText: modalStatusText,
         due,
-        lastDoneText: task.lastCompletedAt ? `${formatDateTime(task.lastCompletedAt)} (bei ${getHoursText(lastRuntimeSec)})` : "Noch nie",
-        sinceDoneText: task.lastCompletedAt ? `vor ${getHoursText(runtimeSinceSec)} Betriebsstunden` : "-",
+        lastDoneText,
+        lastDoneText: modalLastDoneText,
+        sinceDoneText,
+        sinceDoneText: modalSinceDoneText,
         description: task.description || "-",
         steps: normalizeTaskSteps(task.steps),
       };
@@ -386,6 +478,9 @@
       if (rawIntervalType === "calendarMonths"){
         intervalType = "calendarMonths";
       }
+      if (rawIntervalType === "backendStarts"){
+        intervalType = "backendStarts";
+      }
       if (rawIntervalType === "none" || (typeof rawIntervalValue === "string" && rawIntervalValue.trim() === "-")){
         intervalType = "none";
       }
@@ -401,6 +496,7 @@
         steps: normalizeTaskSteps(task.steps),
         lastCompletedAt: task.lastCompletedAt ? String(task.lastCompletedAt) : null,
         spindleRuntimeSecAtCompletion: Math.max(0, Math.floor(toNumber(task.spindleRuntimeSecAtCompletion, 0))),
+        backendStartCountAtCompletion: Math.max(0, Math.floor(toNumber(task.backendStartCountAtCompletion, 0))),
       };
     }
 
@@ -422,6 +518,8 @@
         }
 
         state.spindleRuntimeSec = Math.max(0, Math.floor(toNumber(settings && settings.spindleRuntimeSec, 0)));
+        state.backendStartCount = Math.max(0, Math.floor(toNumber(settings && settings.backendStartCount, 0)));
+        state.spindleRunning = !!(settings && settings.spindleRunning);
         const rawTasks = (tasksPayload && Array.isArray(tasksPayload.tasks))
           ? tasksPayload.tasks
           : (settings && Array.isArray(settings.maintenanceTasks) ? settings.maintenanceTasks : []);
@@ -444,18 +542,55 @@
       renderTable();
     });
 
+    layoutEl.addEventListener("touchstart", (ev) => {
+      const touch = ev.changedTouches && ev.changedTouches[0];
+      if (!touch) return;
+      swipeStartX = touch.clientX;
+      swipeStartY = touch.clientY;
+    }, { passive: true });
+
+    layoutEl.addEventListener("touchend", (ev) => {
+      const touch = ev.changedTouches && ev.changedTouches[0];
+      if (!touch || swipeStartX === null || swipeStartY === null) return;
+      const deltaX = touch.clientX - swipeStartX;
+      const deltaY = touch.clientY - swipeStartY;
+      swipeStartX = null;
+      swipeStartY = null;
+      if (Math.abs(deltaX) < 60 || Math.abs(deltaY) > 40) return;
+      if (deltaX < 0 && !nextPageBtn.disabled){
+        state.page += 1;
+        renderTable();
+      } else if (deltaX > 0 && !prevPageBtn.disabled){
+        state.page -= 1;
+        renderTable();
+      }
+    }, { passive: true });
+
     window.addEventListener("message", (ev) => {
       if (ev.origin !== location.origin) return;
       const msg = ev.data || {};
       if (typeof msg !== "object") return;
 
-      if (msg.type === "init" && typeof msg.spindleRuntimeSec === "number"){
-        state.spindleRuntimeSec = Math.max(0, Math.floor(msg.spindleRuntimeSec));
+      if (msg.type === "init"){
+        if (typeof msg.spindleRuntimeSec === "number"){
+          state.spindleRuntimeSec = Math.max(0, Math.floor(msg.spindleRuntimeSec));
+        }
+        if (typeof msg.backendStartCount === "number"){
+          state.backendStartCount = Math.max(0, Math.floor(msg.backendStartCount));
+        }
+        if (typeof msg.spindleRunning === "boolean"){
+          state.spindleRunning = msg.spindleRunning;
+        }
         renderTable();
       }
 
       if (msg.type === "spindleRuntime" && typeof msg.seconds === "number"){
         state.spindleRuntimeSec = Math.max(0, Math.floor(msg.seconds));
+        renderTable();
+      }
+
+      if (msg.type === "spindleRunning"){
+        state.spindleRunning = !!msg.active;
         renderTable();
       }
 

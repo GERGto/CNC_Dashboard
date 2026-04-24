@@ -1,8 +1,8 @@
-import { createStatusbarController } from "./modules/statusbar.js?v=20260408-07";
+import { createStatusbarController } from "./modules/statusbar.js?v=20260424-02";
 import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
-import { createMaintenanceController } from "./modules/maintenance.js";
+import { createMaintenanceController } from "./modules/maintenance.js?v=20260424-03";
 
 // -----------------------------
 // Konfiguration
@@ -46,6 +46,7 @@ const state = {
   activePage: "home",
   machineStatus: "IDLE", // IDLE | RUNNING | ERROR
   maintenanceDue: false,
+  warmupDue: false,
   eStopEngaged: false,
   spindleRunning: false,
   wifiConnected: false,
@@ -61,6 +62,7 @@ const state = {
   enclosureFanThresholdC: 40,
   enclosureFanAvailable: true,
   spindleRuntimeSec: 0,
+  backendStartCount: 0,
 };
 
 const ICONS = {
@@ -292,17 +294,26 @@ function applyMachineStatusSnapshot(snapshot){
       maintenanceDueDot.hidden = !state.maintenanceDue;
     }
   }
+  if (snapshot.warmupDue !== undefined){
+    state.warmupDue = !!snapshot.warmupDue;
+  }
   if (snapshot.eStopEngaged !== undefined){
     state.eStopEngaged = !!snapshot.eStopEngaged;
   }
   if (snapshot.spindleRunning !== undefined){
     state.spindleRunning = !!snapshot.spindleRunning;
+    broadcastToFrames({ type: "spindleRunning", active: state.spindleRunning });
+    maintenanceController.onSpindleRuntimeChanged();
   }
   if (snapshot.spindleRuntimeSec !== undefined){
     const nextRuntimeSec = Math.max(0, Math.floor(Number(snapshot.spindleRuntimeSec) || 0));
     if (nextRuntimeSec !== state.spindleRuntimeSec){
       setSpindleRuntimeSec(nextRuntimeSec, false);
     }
+  }
+  if (snapshot.backendStartCount !== undefined){
+    state.backendStartCount = Math.max(0, Math.floor(Number(snapshot.backendStartCount) || 0));
+    maintenanceController.onSpindleRuntimeChanged();
   }
 
   statusbarController.applyStatusbarState();
@@ -482,6 +493,7 @@ function buildInitMessage(){
   return {
     type: "init",
     machineStatus: state.machineStatus,
+    warmupDue: state.warmupDue,
     eStopEngaged: state.eStopEngaged,
     wifiConnected: state.wifiConnected,
     wifiSsid: state.wifiSsid,
@@ -494,6 +506,7 @@ function buildInitMessage(){
     enclosureFanAuto: state.enclosureFanAuto,
     enclosureFanThresholdC: state.enclosureFanThresholdC,
     spindleRuntimeSec: state.spindleRuntimeSec,
+    backendStartCount: state.backendStartCount,
     spindleRunning: state.spindleRunning
   };
 }
@@ -720,6 +733,10 @@ function loadUiSettings(){
       }
       if (typeof data.spindleRuntimeSec === "number"){
         setSpindleRuntimeSec(data.spindleRuntimeSec);
+      }
+      if (typeof data.backendStartCount === "number"){
+        state.backendStartCount = Math.max(0, Math.floor(data.backendStartCount));
+        maintenanceController.onSpindleRuntimeChanged();
       }
       if (typeof data.graphWindowSec === "number"){
         updateGraphWindowModal(data.graphWindowSec, false);

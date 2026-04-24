@@ -49,6 +49,15 @@ Hinweis:
 - Dadurch koennen mehrere INA228-Boards am selben I2C-Bus betrieben werden.
 - Fuer `Y` und `Z` sind die Adressen im Backend konfigurierbar, falls die reale Verdrahtung davon abweicht.
 
+## Verkabelung im System
+
+- Die Logikseite aller drei `INA228`-Module hängt am gemeinsamen `Qwiic`-Daisy-Chain-Bus des Raspberry Pi.
+- Der reine `I²C`-Pfad ist damit:
+  - `Raspberry Pi -> SparkFun Qwiic HAT -> Qwiic-Daisy-Chain -> INA228 X/Y/Z`
+- Über `Qwiic` werden nur `3V3`, `GND`, `SDA` und `SCL` geführt.
+- Die eigentliche Leistungsverdrahtung der Achsen läuft separat über die Schraubklemmen der einzelnen `INA228`-Boards.
+- Pro Achse ist ein eigenes Board vorgesehen, das in Serie in den `+48V`-Zweig des jeweiligen Stepper-Treibers eingeschleift wird.
+
 ## Anschluss an die 48V-Stepper-Treiber
 
 Wichtig:
@@ -217,6 +226,13 @@ Achs-Stream pruefen:
 ```bash
 curl -N "http://127.0.0.1:8080/api/axes/stream?intervalMs=250"
 ```
+
+## Hersteller-Referenzen
+
+- Adafruit Produkt- und Pinout-Guide:
+  - `https://learn.adafruit.com/adafruit-ina228-i2c-power-monitor`
+- TI Produktseite mit Datenblatt:
+  - `https://www.ti.com/product/INA228`
 
 ## Offene Punkte
 

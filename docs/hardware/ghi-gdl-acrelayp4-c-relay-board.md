@@ -32,6 +32,26 @@ Vom Hersteller bestaetigte Kommandostruktur:
 - Offizielles DUELink-Beispiel: `gdl-acrelayp4-c.ubp`
   - verwendet `due_select_device 1`
   - verwendet `sensors:i2cWrite 82` und `sensors:i2cRead 82`
+- Offizielle DUELink-Produktseite:
+  - `https://www.ghielectronics.com/duelink/`
+
+## Verkabelung im System
+
+- Die Logikseite des Relaisboards hängt am gemeinsamen `I²C`-/`DaisyLink`-Bus des Raspberry Pi.
+- Der vorgesehene Buspfad ist:
+  - `Raspberry Pi -> SparkFun Qwiic HAT -> I²C/DaisyLink-Bus -> GDL-ACRELAYP4-C`
+- Über diese Busseite laufen nur Kommunikation und Logikversorgung, nicht die geschalteten Lasten.
+- Die eigentliche Feldverdrahtung erfolgt an den Relais-Schraubklemmen.
+- Im System ist vorgesehen, die Arbeitskontakte je Kanal über `COM` und `NO` zu nutzen, damit die Lasten im stromlosen Grundzustand aus bleiben.
+- Aktuelle Funktionszuordnung der Schraubklemmen:
+  - `K1`: Maschinenlicht
+  - `K2`: Spindel-Lüfter
+  - `K3`: Gehäuse-Lüfter
+  - `K4`: E-Stop-Kreis
+- Das bedeutet praktisch:
+  - Versorgungs- oder Freigabeleitung der jeweiligen Last auf `COM`
+  - geschalteter Abgang zur Last auf `NO`
+  - `NC` bleibt im aktuellen Aufbau ungenutzt, solange kein inverses Schaltverhalten gewünscht ist
 
 ## Verifikation
 

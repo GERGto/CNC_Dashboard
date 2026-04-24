@@ -10,7 +10,7 @@ from .duelink_relay import DuelinkI2CEngine, DuelinkRelayP4Controller
 from .gpio_power import LinuxGPIOChipLineOutput
 from .neopixel import NeoPixelStatusStripController
 from .pcf8574_inputs import PCF8574InputModule
-from .sensors import AHT20Sensor, HardwareError, HardwareStateConflictError, INA228Sensor
+from .sensors import ACS37800Sensor, AHT20Sensor, HardwareError, HardwareStateConflictError, INA228Sensor
 
 
 def iso_now_utc():
@@ -71,6 +71,7 @@ class HardwareBackend:
         self,
         primary_i2c_bus=1,
         spindle_temperature_sensor=None,
+        spindle_load_sensor=None,
         axis_load_sensors=None,
         relay_controller=None,
         relay_power_controller=None,
@@ -88,6 +89,9 @@ class HardwareBackend:
     ):
         self.primary_i2c_bus = int(primary_i2c_bus)
         self.spindle_temperature_sensor = spindle_temperature_sensor or AHT20Sensor(
+            bus_number=self.primary_i2c_bus
+        )
+        self.spindle_load_sensor = spindle_load_sensor or ACS37800Sensor(
             bus_number=self.primary_i2c_bus
         )
         self.axis_load_sensors = {
@@ -112,6 +116,8 @@ class HardwareBackend:
         self._status_indicator_lock = threading.Lock()
         self._spindle_temperature_cache = None
         self._spindle_temperature_cache_until = 0.0
+        self._spindle_load_cache = None
+        self._spindle_load_cache_until = 0.0
         self._axis_load_cache = None
         self._axis_load_cache_until = 0.0
         self._emergency_input_snapshot = self.emergency_input_module.get_snapshot()
@@ -123,6 +129,7 @@ class HardwareBackend:
     def get_snapshot(self, force_refresh=False):
         self.sync_hardware_estop(force_refresh=force_refresh)
         enclosure_temperature = self.get_enclosure_temperature(force_refresh=force_refresh)
+        spindle_load = self.get_spindle_load(force_refresh=force_refresh)
         axis_loads = self.get_axis_loads(force_refresh=force_refresh)
         safety_inputs = self.get_emergency_stop_inputs(force_refresh=False)
         relay_board = self.get_relay_board()
@@ -136,11 +143,14 @@ class HardwareBackend:
                     "devicePath": enclosure_temperature["devicePath"],
                     "relayBoardAddress": relay_board["address"],
                     "relayBoardAddressHex": relay_board["addressHex"],
+                    "spindleLoadSensorAddress": spindle_load.get("address"),
+                    "spindleLoadSensorAddressHex": spindle_load.get("addressHex"),
                 },
             },
             "sensors": {
                 "enclosureTemperature": enclosure_temperature,
                 "spindleTemperature": dict(enclosure_temperature),
+                "spindleLoad": spindle_load,
                 "axisLoads": axis_loads,
                 "safetyInputs": safety_inputs,
             },
@@ -170,6 +180,23 @@ class HardwareBackend:
     def get_spindle_temperature(self, force_refresh=False):
         return self.get_enclosure_temperature(force_refresh=force_refresh)
 
+    def get_spindle_load(self, force_refresh=False):
+        with self._lock:
+            if (
+                not force_refresh
+                and self._spindle_load_cache is not None
+                and time.monotonic() < self._spindle_load_cache_until
+            ):
+                return dict(self._spindle_load_cache)
+
+        reading = self._read_spindle_load()
+
+        with self._lock:
+            self._spindle_load_cache = dict(reading)
+            self._spindle_load_cache_until = time.monotonic() + self.axis_load_cache_ttl_sec
+
+        return dict(reading)
+
     def _read_enclosure_temperature(self):
         base_payload = {
             "sensorId": "enclosure-temperature",
@@ -194,6 +221,46 @@ class HardwareBackend:
         except Exception as exc:  # pragma: no cover - unexpected hardware edge case
             base_payload["error"] = f"Unerwarteter Hardwarefehler: {exc}"
             base_payload["measuredAt"] = iso_now_utc()
+            return base_payload
+
+        return {
+            **base_payload,
+            **measurement,
+            "available": True,
+            "status": "ok",
+            "error": "",
+        }
+
+    def _read_spindle_load(self):
+        base_payload = {
+            "sensorId": "spindle-load",
+            "displayName": "Spindellast",
+            "role": "spindleLoad",
+            "axis": "spindle",
+            "available": False,
+            "status": "unavailable",
+            "error": "",
+            "loadPercent": None,
+            "currentA": None,
+            "powerW": None,
+            "reactivePowerW": None,
+            "busVoltageV": None,
+            "measuredAt": iso_now_utc(),
+            "cacheTtlMs": int(round(self.axis_load_cache_ttl_sec * 1000)),
+            **self.spindle_load_sensor.describe(),
+        }
+
+        if self.spindle_load_sensor is None:
+            base_payload["error"] = "ACS37800 fuer die Spindellast ist nicht konfiguriert."
+            return base_payload
+
+        try:
+            measurement = self.spindle_load_sensor.read_measurement()
+        except HardwareError as exc:
+            base_payload["error"] = str(exc)
+            return base_payload
+        except Exception as exc:  # pragma: no cover - unexpected hardware edge case
+            base_payload["error"] = f"Unerwarteter Hardwarefehler: {exc}"
             return base_payload
 
         return {
@@ -558,6 +625,19 @@ class HardwareBackend:
 def create_hardware_backend():
     primary_i2c_bus = _read_int_env("HARDWARE_PRIMARY_I2C_BUS", 1)
     spindle_sensor_address = _read_int_env("SPINDLE_TEMP_SENSOR_I2C_ADDRESS", AHT20Sensor.DEFAULT_ADDRESS)
+    spindle_load_sensor_enabled = _read_bool_env("SPINDLE_LOAD_SENSOR_ENABLED", True)
+    spindle_load_sensor_address = _read_int_env(
+        "SPINDLE_LOAD_SENSOR_I2C_ADDRESS",
+        ACS37800Sensor.DEFAULT_ADDRESS,
+    )
+    spindle_load_sensor_rsense_kohm = _read_int_env(
+        "SPINDLE_LOAD_SENSOR_RSENSE_KOHM",
+        ACS37800Sensor.DEFAULT_BOARD_RSENSE_KOHM,
+    )
+    spindle_load_sensor_reference_current_a = _read_non_negative_float_env(
+        "SPINDLE_LOAD_SENSOR_REFERENCE_CURRENT_A",
+        ACS37800Sensor.DEFAULT_LOAD_REFERENCE_CURRENT_A,
+    )
     axis_load_cache_ttl_sec = _read_non_negative_float_env("AXIS_LOAD_SENSOR_CACHE_TTL_SEC", 0.25)
     axis_load_sensor_defaults = {
         "x": {"address": 0x40},
@@ -620,6 +700,14 @@ def create_hardware_backend():
     spindle_temperature_sensor = AHT20Sensor(
         bus_number=primary_i2c_bus,
         address=spindle_sensor_address,
+    )
+    spindle_load_sensor = ACS37800Sensor(
+        bus_number=primary_i2c_bus,
+        address=spindle_load_sensor_address,
+        role="spindle",
+        board_rsense_kohm=spindle_load_sensor_rsense_kohm,
+        load_reference_current_a=spindle_load_sensor_reference_current_a,
+        enabled=spindle_load_sensor_enabled,
     )
     axis_load_sensors = {}
     for axis, defaults in axis_load_sensor_defaults.items():
@@ -688,6 +776,7 @@ def create_hardware_backend():
     return HardwareBackend(
         primary_i2c_bus=primary_i2c_bus,
         spindle_temperature_sensor=spindle_temperature_sensor,
+        spindle_load_sensor=spindle_load_sensor,
         axis_load_sensors=axis_load_sensors,
         relay_controller=relay_controller,
         relay_power_controller=relay_power_controller,

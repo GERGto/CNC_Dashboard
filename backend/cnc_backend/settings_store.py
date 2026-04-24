@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from copy import deepcopy
 
-from .common import clamp, iso_now_utc, read_json_dict, to_int, write_json_dict
+from .common import clamp, read_json_dict, to_int, write_json_dict
 
 
 class SettingsStore:
@@ -11,60 +11,86 @@ class SettingsStore:
         self.config = config
 
     def default_maintenance_tasks(self):
-        now_iso = iso_now_utc()
         return [
             {
-                "id": "axes-grease",
-                "title": "Achsen Fetten",
+                "id": "spindle-warmup",
+                "title": "Spindelwarmlauf",
                 "intervalType": "runtimeHours",
-                "intervalValue": 8,
-                "effortMin": 5,
-                "description": "Fettpunkte der X/Y/Z-Achsen abschmieren.",
+                "intervalValue": 2,
+                "effortMin": 10,
+                "description": 'Spindelwarmlauf durchführen! Programm "spindle-warmup" vor Bearbeitung ausführen (Dauer ca. 10min).',
                 "steps": [
                     {
-                        "instruction": "Schmierpresse befÃ¼llen und auf die Schmiernippel der Achsen ansetzen.",
-                        "image": "assets/images/presse.png",
-                        "imageAlt": "Schmierpresse fÃ¼r die Achsenschmierung",
-                    },
-                    {
-                        "instruction": "Je Schmierpunkt 1 bis 2 HÃ¼be ausfÃ¼hren und auf gleichmÃ¤ÃŸigen Fettfluss achten.",
-                    },
-                    {
-                        "instruction": "ÃœberschÃ¼ssiges Fett entfernen und Schmierstellen auf Dichtheit prÃ¼fen.",
+                        "instruction": 'Programm "spindle-warmup" vor der Bearbeitung starten und den vollständigen Warmlauf abwarten.',
                     },
                 ],
                 "lastCompletedAt": None,
                 "spindleRuntimeSecAtCompletion": 0,
+                "backendStartCountAtCompletion": 0,
             },
             {
-                "id": "coolant-check",
-                "title": "KÃ¼hlmittelstand prÃ¼fen",
-                "intervalType": "calendarMonths",
-                "intervalValue": 1,
-                "effortMin": 3,
-                "description": "KÃ¼hlmittelstand kontrollieren und bei Bedarf nachfÃ¼llen.",
-                "lastCompletedAt": now_iso,
+                "id": "axes-grease",
+                "title": "Achsen schmieren",
+                "intervalType": "runtimeHours",
+                "intervalValue": 50,
+                "effortMin": 15,
+                "description": "Laufwagen über Nippel abschmieren! Anzahl der Hübe pro Schmiernippel beachten (Bild), zu verwendendes Schmierfett: Fließfett Typ NLGI 00 (z.B. Eurolub GEARFIT EP 00-000).",
+                "steps": [
+                    {
+                        "instruction": "Laufwagen über die Schmiernippel abschmieren.",
+                    },
+                    {
+                        "instruction": "Anzahl der Hübe pro Schmiernippel gemäß Bild 1 beachten.",
+                        "image": "assets/images/achsen-schmieren-1.jpg",
+                        "imageAlt": "Schmierhinweis Bild 1 für die Achsenschmierung",
+                    },
+                    {
+                        "instruction": "Anzahl der Hübe pro Schmiernippel gemäß Bild 2 beachten.",
+                        "image": "assets/images/achsen-schmieren-2.jpg",
+                        "imageAlt": "Schmierhinweis Bild 2 für die Achsenschmierung",
+                    },
+                    {
+                        "instruction": "Schmierfett Typ NLGI 00 verwenden, z. B. Eurolub GEARFIT EP 00-000.",
+                    },
+                ],
+                "lastCompletedAt": None,
                 "spindleRuntimeSecAtCompletion": 0,
+                "backendStartCountAtCompletion": 0,
             },
             {
-                "id": "emergency-stop-test",
-                "title": "Not-Aus prÃ¼fen",
-                "intervalType": "calendarMonths",
-                "intervalValue": 3,
+                "id": "axes-wipe",
+                "title": "Achsen abwischen",
+                "intervalType": "runtimeHours",
+                "intervalValue": 50,
                 "effortMin": 10,
-                "description": "Funktion aller Not-Aus-Schalter prÃ¼fen.",
-                "lastCompletedAt": now_iso,
+                "description": "Linearführungen abwischen! Tür rechts öffnen, Klappe links abnehmen und überflüssiges Fett / Schmutz von den Achsen abwischen.",
+                "steps": [
+                    {
+                        "instruction": "Tür rechts öffnen und die linke Klappe abnehmen.",
+                    },
+                    {
+                        "instruction": "Überflüssiges Fett und Schmutz von den Linearführungen der Achsen abwischen.",
+                    },
+                ],
+                "lastCompletedAt": None,
                 "spindleRuntimeSecAtCompletion": 0,
+                "backendStartCountAtCompletion": 0,
             },
             {
-                "id": "lubrication-lines-check",
-                "title": "Schmierleitungen prÃ¼fen",
-                "intervalType": "calendarMonths",
-                "intervalValue": 6,
+                "id": "enclosure-fans-cleaning",
+                "title": "Gehäuselüfter reinigen",
+                "intervalType": "runtimeHours",
+                "intervalValue": 200,
                 "effortMin": 8,
-                "description": "SichtprÃ¼fung der Schmierleitungen auf Undichtigkeiten.",
-                "lastCompletedAt": now_iso,
+                "description": "Staub und Verschmutzung von Gehäuselüftern entfernen!",
+                "steps": [
+                    {
+                        "instruction": "Staub und Verschmutzung von den Gehäuselüftern entfernen.",
+                    },
+                ],
+                "lastCompletedAt": None,
                 "spindleRuntimeSecAtCompletion": 0,
+                "backendStartCountAtCompletion": 0,
             },
         ]
 
@@ -86,6 +112,7 @@ class SettingsStore:
                 "z": True,
             },
             "axisLoadCalibration": {
+                "spindle": {"minA": 0.0, "maxA": 30.0},
                 "x": {"minA": 0.0, "maxA": 10.0},
                 "y": {"minA": 0.0, "maxA": 10.0},
                 "z": {"minA": 0.0, "maxA": 10.0},
@@ -140,8 +167,9 @@ class SettingsStore:
             except (ValueError, TypeError):
                 max_a = float(axis_defaults["maxA"])
 
-            min_a = max(0.0, min(10.0, min_a))
-            max_a = max(0.0, min(10.0, max_a))
+            max_limit = max(0.0, float(axis_defaults.get("maxA", 10.0)))
+            min_a = max(0.0, min(max_limit, min_a))
+            max_a = max(0.0, min(max_limit, max_a))
             if max_a < min_a:
                 max_a = min_a
 
@@ -197,6 +225,7 @@ class SettingsStore:
                     "steps": [],
                     "lastCompletedAt": None,
                     "spindleRuntimeSecAtCompletion": 0,
+                    "backendStartCountAtCompletion": 0,
                 },
             )
 
@@ -214,7 +243,7 @@ class SettingsStore:
                 interval_value = "-"
             else:
                 interval_type = interval_type_raw
-                if interval_type not in ("runtimeHours", "calendarMonths"):
+                if interval_type not in ("runtimeHours", "calendarMonths", "backendStarts"):
                     interval_type = template["intervalType"]
 
                 try:
@@ -243,6 +272,17 @@ class SettingsStore:
             except (ValueError, TypeError):
                 runtime_at_completion = int(template["spindleRuntimeSecAtCompletion"])
             runtime_at_completion = max(0, runtime_at_completion)
+
+            try:
+                backend_starts_at_completion = int(
+                    item.get(
+                        "backendStartCountAtCompletion",
+                        template.get("backendStartCountAtCompletion", 0),
+                    )
+                )
+            except (ValueError, TypeError):
+                backend_starts_at_completion = int(template.get("backendStartCountAtCompletion", 0))
+            backend_starts_at_completion = max(0, backend_starts_at_completion)
 
             raw_steps = item.get("steps", template.get("steps", []))
             steps = []
@@ -277,6 +317,7 @@ class SettingsStore:
                     "steps": steps,
                     "lastCompletedAt": completed_at,
                     "spindleRuntimeSecAtCompletion": runtime_at_completion,
+                    "backendStartCountAtCompletion": backend_starts_at_completion,
                 }
             )
 

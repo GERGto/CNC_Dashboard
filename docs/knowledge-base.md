@@ -31,6 +31,20 @@ Der Maschinenstatus soll zusaetzlich physisch an der Maschine sichtbar sein:
 - `Gruen`: Job laeuft oder Spindel laeuft
 - `Rot`: `E-Stop` aktiv
 
+Warmlauf-Logik:
+
+- `Spindelwarmlauf` ist eine besondere Form von `Wartung faellig` und wird im UI-Banner explizit als `Warmlauf faellig` gezeigt
+- Ein gueltiger Warmlauf bleibt `2 Stunden` ab dem letzten gueltigen Warmlauf bzw. der letzten Spindelaktivitaet erhalten; Backend-Neustarts setzen diesen Zustand nicht zurueck
+- Nach `5 Minuten` echtem Spindellauf ueber den Optokoppler-Eingang `Spindel laeuft` wird der Warmlauf automatisch als erledigt markiert
+- Wenn die Spindel nach bereits gueltigem Warmlauf erneut laeuft, wird der `2-Stunden`-Zeitraum beim Ende des Laufes wieder aufgefrischt
+- Der RGB-Strip fadet nach dem Booten sauber in `IDLE` oder in den Warnzustand, falls Warmlauf bzw. Wartung faellig ist
+
+Wartungs-UI:
+
+- Auf der lokalen Wartungsseite kann per Wischgeste links/rechts zwischen den Tabellen-Seiten geblaettert werden
+- In der Aufgaben-Anleitung kann ebenfalls per Wischgeste links/rechts zwischen den einzelnen Schritten gewechselt werden
+- Anleitungsschritte mit Bild nutzen eine breitere Bilddarstellung; Text und Bild duerfen nebeneinander stehen, um den Bildplatz auf `1024x600` besser zu nutzen
+
 ## Zielhardware und Laufzeitumgebung
 
 ### Rechenplattform
@@ -196,9 +210,11 @@ Letzter bekannter Live-Scan auf `/dev/i2c-1`:
 - `0x41`
 - `0x44`
 - `0x52`
+- `0x60`
 
 - `Adafruit AHT20` fuer die Gehäusetemperatur auf `0x38`
 - `Adafruit INA228` fuer die `X`-Achslast auf `0x40`
+- `Pololu 5411` / `ACS37800` fuer die Spindellast auf `0x60`
 - `GHI GDL-ACRELAYP4-C` 4-Kanal-Relais auf `0x52` (`82` dezimal)
 - `PCF8574`-kompatibles 8-Kanal-Optokoppler-Eingangsmodul auf `0x21`
   - Produkt: `PCF8574 I2C 8 Kanal Optokoppler Eingang Input Modul 3,6-24V`
@@ -216,6 +232,8 @@ Letzter bekannter Live-Scan auf `/dev/i2c-1`:
 - Backend-Starts werden ebenfalls nach `machine_stats.json` als `backendStartCount` gezaehlt; ein Start des Backend-Prozesses reicht dafuer jeweils einmal aus
 - Die allgemeine Maschinenlaufzeit wird als `machineOnTimeSec` ueber die aktive Backend-Laufzeit mitgezaehlt
 - Spindelstarts werden als `spindleStartCount` auf der Flanke `Spindel laeuft: aus -> an` gezaehlt
+- Die Spindellast kommt im Dashboard und fuer die RGB-Strip-Running-Animation aus dem `ACS37800` auf `0x60`, nicht mehr aus dem Dummy-Pfad
+- Die Prozentanzeige der Spindellast nutzt dieselbe Kalibrierlogik wie die Achslasten und kann im lokalen Dashboard per Long-Press auf einer Spindel-Kachel angepasst werden
 - E-Stop-Ausloesungen werden ebenfalls nach `machine_stats.json` persistiert: als Gesamtzaehler `eStopCount` sowie getrennt nach `manualEStopCount` und `hardwareEStopCount`
 
 Geplante/Backend-vorbereitete Erweiterung fuer Achslasten:
