@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(ssh -o BatchMode=yes cncpi \"systemctl list-units --type=service --state=running 2>/dev/null | grep -i cnc\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"curl -s http://127.0.0.1:8080/api/machine/status\" 2>&1)",
+      "PowerShell(python3 -c \"import sys,json; d=json.loads\\(sys.stdin.read\\(\\)\\); print\\('warmupDue:', d.get\\('warmupDue'\\), '| progressSec:', d.get\\('warmupProgressSec'\\), '| requiredSec:', d.get\\('warmupRequiredSec'\\), '| maintenanceDue:', d.get\\('maintenanceDue'\\)\\)\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"cat /opt/cnc-dashboard/backend/settings.json\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"cat /opt/cnc-dashboard/backend/tasks.json\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"sed -n '/startupNoticeModal/,/<\\\\/div>/p' /opt/cnc-dashboard/frontend/index.html | head -20\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"grep -c 'modal__panel--warmup\\\\|modal__title--warmup' /opt/cnc-dashboard/frontend/index.html\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"grep 'app.css' /opt/cnc-dashboard/frontend/index.html\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"pkill -f chromium; sleep 2; systemctl restart cnc-dashboard-frontend.service && echo OK\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"pkill -f chromium || true; systemctl restart cnc-dashboard-frontend.service\" 2>&1)",
+      "PowerShell(ssh -o BatchMode=yes cncpi \"systemctl is-active cnc-dashboard-frontend.service cnc-dashboard-backend.service\" 2>&1)"
+    ]
+  }
+}

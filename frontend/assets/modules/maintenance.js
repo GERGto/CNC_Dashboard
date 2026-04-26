@@ -157,7 +157,10 @@ export function createMaintenanceController({
 
   function setTasks(tasks) {
     const list = Array.isArray(tasks) ? tasks : [];
-    tasksCache = list.map(normalizeTask).filter(Boolean);
+    tasksCache = list
+      .filter((t) => !isWarmupTask(t))
+      .map(normalizeTask)
+      .filter(Boolean);
     updateDueIndicator();
   }
 

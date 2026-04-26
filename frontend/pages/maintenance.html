@@ -524,7 +524,10 @@
           ? tasksPayload.tasks
           : (settings && Array.isArray(settings.maintenanceTasks) ? settings.maintenanceTasks : []);
 
-        state.tasks = rawTasks.map(normalizeTask).filter(Boolean);
+        state.tasks = rawTasks
+          .filter((t) => String(t?.id || "").trim() !== "spindle-warmup")
+          .map(normalizeTask)
+          .filter(Boolean);
       }catch (_err){
         state.tasks = [];
       }

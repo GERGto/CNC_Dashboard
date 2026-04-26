@@ -1,8 +1,8 @@
-import { createStatusbarController } from "./modules/statusbar.js?v=20260424-02";
+import { createStatusbarController } from "./modules/statusbar.js?v=20260426-02";
 import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
-import { createMaintenanceController } from "./modules/maintenance.js?v=20260424-03";
+import { createMaintenanceController } from "./modules/maintenance.js?v=20260425-01";
 
 // -----------------------------
 // Konfiguration
@@ -63,6 +63,9 @@ const state = {
   enclosureFanAvailable: true,
   spindleRuntimeSec: 0,
   backendStartCount: 0,
+  warmupProgressSec: 0,
+  warmupRequiredSec: 300,
+  warmupModalShownOnBoot: false,
 };
 
 const ICONS = {
@@ -100,6 +103,8 @@ const shutdownConfirm = document.getElementById("shutdownConfirm");
 const shutdownScreen = document.getElementById("shutdownScreen");
 const startupNoticeModal = document.getElementById("startupNoticeModal");
 const startupNoticeClose = document.getElementById("startupNoticeClose");
+const warmupChartFill = document.getElementById("warmupChartFill");
+const warmupChartPct = document.getElementById("warmupChartPct");
 const lightModal = document.getElementById("lightModal");
 const lightClose = document.getElementById("lightClose");
 const lightSlider = document.getElementById("lightSlider");
@@ -295,7 +300,27 @@ function applyMachineStatusSnapshot(snapshot){
     }
   }
   if (snapshot.warmupDue !== undefined){
+    const wasWarmupDue = state.warmupDue;
     state.warmupDue = !!snapshot.warmupDue;
+
+    if (snapshot.warmupProgressSec !== undefined){
+      state.warmupProgressSec = Math.max(0, Number(snapshot.warmupProgressSec) || 0);
+    }
+    if (snapshot.warmupRequiredSec !== undefined){
+      state.warmupRequiredSec = Math.max(1, Number(snapshot.warmupRequiredSec) || 300);
+    }
+
+    if (state.warmupDue && !state.warmupModalShownOnBoot){
+      state.warmupModalShownOnBoot = true;
+      openStartupNoticeModal();
+    }
+
+    if (startupNoticeModal.classList.contains("is-open")){
+      updateWarmupChart(state.warmupProgressSec, state.warmupRequiredSec);
+      if (!state.warmupDue && wasWarmupDue){
+        closeStartupNoticeModal();
+      }
+    }
   }
   if (snapshot.eStopEngaged !== undefined){
     state.eStopEngaged = !!snapshot.eStopEngaged;
@@ -874,7 +899,21 @@ function closeShutdownModal({ restoreFocus = true } = {}){
   }
 }
 
+const WARMUP_CHART_CIRCUMFERENCE = 2 * Math.PI * 42;
+
+function updateWarmupChart(progressSec, requiredSec){
+  const progress = requiredSec > 0 ? Math.min(1, Math.max(0, progressSec / requiredSec)) : 0;
+  const pct = Math.round(progress * 100);
+  if (warmupChartFill){
+    warmupChartFill.style.strokeDashoffset = (WARMUP_CHART_CIRCUMFERENCE * (1 - progress)).toFixed(2);
+  }
+  if (warmupChartPct){
+    warmupChartPct.textContent = pct + "%";
+  }
+}
+
 function openStartupNoticeModal(){
+  updateWarmupChart(state.warmupProgressSec, state.warmupRequiredSec);
   startupNoticeModal.classList.add("is-open");
   startupNoticeModal.setAttribute("aria-hidden", "false");
   startupNoticeClose.focus();
@@ -1013,11 +1052,9 @@ shutdownModal.addEventListener("click", (ev) => {
     closeShutdownModal();
   }
 });
-startupNoticeClose.addEventListener("click", closeStartupNoticeModal);
-startupNoticeModal.addEventListener("click", (ev) => {
-  if (ev.target && ev.target.dataset && ev.target.dataset.close){
-    closeStartupNoticeModal();
-  }
+startupNoticeClose.addEventListener("click", () => {
+  fetch(`${API_BASE}/api/warmup/complete`, { method: "POST", cache: "no-store" }).catch(() => {});
+  closeStartupNoticeModal();
 });
 lightClose.addEventListener("click", closeLightModal);
 lightModal.addEventListener("click", (ev) => {
@@ -1173,7 +1210,6 @@ navEl.addEventListener("click", (ev) => {
 
 createFrames();
 showPage(state.activePage);
-openStartupNoticeModal();
 window.addEventListener("load", () => {
   const deferredPageIds = PAGES
     .map((page) => page.id)

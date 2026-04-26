@@ -7,7 +7,6 @@ const AXIS_WARN = {
 };
 const STATIC_REFRESH_MS = 1500;
 const CAMERA_RECONNECT_DELAY_MS = 1500;
-const WARMUP_VALIDITY_MS = 2 * 60 * 60 * 1000;
 
 const ICONS = {
   rec: `
@@ -420,7 +419,7 @@ function getCurrentTone() {
   if (state.eStopEngaged) {
     return "estop";
   }
-  if (state.warmupDue || state.maintenanceDue) {
+  if (state.maintenanceDue) {
     return "maintenance";
   }
   if (getSpindleActive()) {
@@ -434,7 +433,7 @@ function renderStatusStrip() {
   const labels = {
     idle: "IDLE",
     spindle: "SPINDEL",
-    maintenance: state.warmupDue ? "WARMLAUF FÄLLIG" : "WARTUNG FÄLLIG",
+    maintenance: "WARTUNG FÄLLIG",
     estop: "E-STOP AKTIV",
   };
 
@@ -648,35 +647,10 @@ function getTaskDueDetails(task) {
   const overdue = state.dueTaskIds.includes(taskId);
   if (overdue) {
     return {
-      label: taskId === "spindle-warmup" ? "Warmlauf fällig" : "Ueberfaellig",
+      label: "Ueberfaellig",
       priority: "high",
       overdue: true,
     };
-  }
-
-  if (taskId === "spindle-warmup") {
-    const lastCompletedAt = String(task?.lastCompletedAt || "").trim();
-    const completedAt = lastCompletedAt ? new Date(lastCompletedAt) : null;
-    const dueAt =
-      completedAt && !Number.isNaN(completedAt.getTime())
-        ? completedAt.getTime() + WARMUP_VALIDITY_MS
-        : null;
-    if (dueAt !== null && !(state.spindleRunning && task?.lastCompletedAt)) {
-      const remainingMs = Math.max(0, dueAt - Date.now());
-      const remainingMinutes = Math.ceil(remainingMs / 60000);
-      if (remainingMinutes <= 60) {
-        return {
-          label: remainingMinutes <= 1 ? "Unter 1 min" : `In ${remainingMinutes} min`,
-          priority: remainingMinutes <= 15 ? "medium" : "low",
-          overdue: false,
-        };
-      }
-      return { label: `In ${Math.ceil(remainingMinutes / 60)} h`, priority: "low", overdue: false };
-    }
-    if (state.spindleRunning && task?.lastCompletedAt) {
-      return { label: "Spindel läuft", priority: "low", overdue: false };
-    }
-    return { label: "2 h gültig", priority: "low", overdue: false };
   }
 
   const intervalType = String(task?.intervalType || "").trim();
@@ -878,7 +852,8 @@ function applyMachineStatus(snapshot) {
 }
 
 function applyTasks(tasksPayload) {
-  state.tasks = Array.isArray(tasksPayload) ? tasksPayload : [];
+  state.tasks = (Array.isArray(tasksPayload) ? tasksPayload : [])
+    .filter((t) => String(t?.id || "").trim() !== "spindle-warmup");
 }
 
 function buildCameraWhepUrl(snapshot) {

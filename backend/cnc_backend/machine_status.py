@@ -171,14 +171,15 @@ class MachineStatusService:
         reported = self.get_reported_status()
         runtime_sec = _to_non_negative_int(spindle_runtime_sec, 0)
         spindle_running = self._is_spindle_running(relay_board)
-        due_task_ids = self._collect_due_task_ids(
+        all_due_task_ids = self._collect_due_task_ids(
             maintenance_tasks,
             runtime_sec,
             backend_start_count,
             spindle_running=spindle_running,
         )
+        warmup_due = WARMUP_TASK_ID in all_due_task_ids
+        due_task_ids = [t for t in all_due_task_ids if t != WARMUP_TASK_ID]
         maintenance_due = bool(due_task_ids)
-        warmup_due = WARMUP_TASK_ID in due_task_ids
         hardware_estop_engaged = self._is_hardware_estop_engaged(relay_board)
         hardware_estop_input_ids = self._get_hardware_estop_input_ids(relay_board)
         spindle_running_input_ids = self._get_spindle_running_input_ids(relay_board)
@@ -197,14 +198,18 @@ class MachineStatusService:
             effective_status = "ERROR"
             effective_reason = "reported-error"
             indicator_state = "eStop"
-        elif maintenance_due:
+        elif warmup_due:
             effective_status = "WARNING"
-            effective_reason = "warmup-due" if warmup_due else "maintenance-due"
+            effective_reason = "warmup-due"
             indicator_state = "warning"
         elif spindle_running:
             effective_status = "RUNNING"
             effective_reason = "spindle-running-input"
             indicator_state = "running"
+        elif maintenance_due:
+            effective_status = "WARNING"
+            effective_reason = "maintenance-due"
+            indicator_state = "warning"
         elif reported["status"] == "RUNNING":
             effective_status = "RUNNING"
             effective_reason = "reported-running"

@@ -18,12 +18,8 @@ class SettingsStore:
                 "intervalType": "runtimeHours",
                 "intervalValue": 2,
                 "effortMin": 10,
-                "description": 'Spindelwarmlauf durchführen! Programm "spindle-warmup" vor Bearbeitung ausführen (Dauer ca. 10min).',
-                "steps": [
-                    {
-                        "instruction": 'Programm "spindle-warmup" vor der Bearbeitung starten und den vollständigen Warmlauf abwarten.',
-                    },
-                ],
+                "description": "Spindelwarmlauf",
+                "steps": [],
                 "lastCompletedAt": None,
                 "spindleRuntimeSecAtCompletion": 0,
                 "backendStartCountAtCompletion": 0,

@@ -492,6 +492,10 @@ class HardwareBackend:
         with self._status_indicator_lock:
             return self.status_indicator_controller.set_running_load_percent(load_percent)
 
+    def set_status_indicator_warmup_fill_progress(self, progress_0_to_1):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.set_warmup_fill_progress(progress_0_to_1)
+
     def start_status_indicator_boot_sequence(self, on_full_blue_callback=None):
         with self._status_indicator_lock:
             return self.status_indicator_controller.start_boot_sequence(on_full_blue_callback=on_full_blue_callback)

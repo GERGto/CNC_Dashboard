@@ -236,12 +236,25 @@ class BackendApp:
         self.hardware_backend.sync_hardware_estop(force_refresh=False)
         maintenance_tasks = self.store.load_maintenance_tasks()
         relay_board = self.hardware_backend.get_relay_board()
-        return self.machine_status_service.build_snapshot(
+        snapshot = self.machine_status_service.build_snapshot(
             self.get_spindle_runtime_sec(),
             maintenance_tasks,
             relay_board,
             backend_start_count=self.get_backend_start_count(),
         )
+        with self._spindle_runtime_lock:
+            warmup_progress_sec = float(self._spindle_warmup_running_sec or 0.0)
+        snapshot["warmupProgressSec"] = warmup_progress_sec
+        snapshot["warmupRequiredSec"] = float(self.WARMUP_AUTO_COMPLETE_RUNNING_SEC)
+        return snapshot
+
+    def get_maintenance_tasks(self):
+        tasks = self.get_settings().get("maintenanceTasks", [])
+        return [t for t in tasks if str(t.get("id", "")).strip() != self.WARMUP_TASK_ID]
+
+    def complete_warmup(self):
+        self._mark_warmup_completed()
+        self.sync_status_indicator()
 
     def report_machine_status(self, status, source="api"):
         self.machine_status_service.update_reported_status(status, source=source)
@@ -253,6 +266,16 @@ class BackendApp:
         indicator = machine_status.get("indicator", {}) if isinstance(machine_status, dict) else {}
         state = str(indicator.get("state", "idle")).strip() or "idle"
         reason = str(indicator.get("reason", "")).strip()
+
+        warmup_due = bool(machine_status.get("warmupDue", False))
+        if warmup_due:
+            warmup_progress_sec = float(machine_status.get("warmupProgressSec", 0.0))
+            warmup_required_sec = float(machine_status.get("warmupRequiredSec", self.WARMUP_AUTO_COMPLETE_RUNNING_SEC))
+            progress = min(1.0, warmup_progress_sec / warmup_required_sec) if warmup_required_sec > 0 else 1.0
+        else:
+            progress = 0.0
+        self.hardware_backend.set_status_indicator_warmup_fill_progress(progress)
+
         self.hardware_backend.set_status_indicator_state(state, reason=reason, source="machine-status")
         self.hardware_backend.set_status_indicator_running_load_percent(
             self._get_status_indicator_running_load_percent(machine_status)
@@ -337,9 +360,6 @@ class BackendApp:
         if "spindleRuntimeSec" in payload or "maintenanceTasks" in payload:
             self.sync_status_indicator()
         return saved, ""
-
-    def get_maintenance_tasks(self):
-        return self.get_settings().get("maintenanceTasks", [])
 
     def complete_maintenance_task(self, task_id):
         return self._complete_maintenance_task(task_id)

@@ -2,10 +2,9 @@ export function createStatusbarController({ state, statusEl, statusBarEl }) {
   function applyStatusbarState() {
     const isEstop = !!state.eStopEngaged;
     const isError = !isEstop && state.machineStatus === "ERROR";
-    const isWarmup = !isEstop && !isError && !!state.warmupDue;
-    const isMaintenance = !isEstop && !isError && !isWarmup && !!state.maintenanceDue;
-    const isRunning =
-      !isEstop && !isError && !isMaintenance && !isWarmup && state.machineStatus === "RUNNING";
+    const isRunning = !isEstop && !isError && state.machineStatus === "RUNNING";
+    const hasMaintenance = !!state.maintenanceDue || !!state.warmupDue;
+    const isMaintenance = !isEstop && !isError && !isRunning && hasMaintenance;
 
     if (isEstop) {
       statusEl.textContent = "E-STOP";
@@ -13,9 +12,9 @@ export function createStatusbarController({ state, statusEl, statusBarEl }) {
     } else if (isError) {
       statusEl.textContent = "ERROR";
       statusEl.style.letterSpacing = "0.8px";
-    } else if (isWarmup) {
-      statusEl.textContent = "WARMLAUF FÄLLIG";
-      statusEl.style.letterSpacing = "0.3px";
+    } else if (isRunning) {
+      statusEl.textContent = "RUNNING";
+      statusEl.style.letterSpacing = "0.2px";
     } else if (isMaintenance) {
       statusEl.textContent = "WARTUNG FÄLLIG";
       statusEl.style.letterSpacing = "0.4px";
@@ -28,7 +27,7 @@ export function createStatusbarController({ state, statusEl, statusBarEl }) {
     statusBarEl.classList.toggle("is-running", isRunning);
     statusBarEl.classList.toggle("is-error", isEstop || isError);
     statusBarEl.classList.toggle("is-estop", isEstop);
-    statusBarEl.classList.toggle("is-maintenance", isWarmup || isMaintenance);
+    statusBarEl.classList.toggle("is-maintenance", isMaintenance);
   }
 
   function setMachineStatus(newStatus) {

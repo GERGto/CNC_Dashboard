@@ -287,6 +287,10 @@ def create_request_handler(app):
                 output_id, bool_keys = relay_path_map[parsed.path]
                 return self._handle_relay_output_post(output_id, bool_keys)
 
+            if parsed.path == "/api/warmup/complete":
+                app.complete_warmup()
+                return json_response(self, 200, {"ok": True})
+
             maintenance_complete_prefix = "/api/maintenance/tasks/"
             maintenance_complete_suffix = "/complete"
             if parsed.path.startswith(maintenance_complete_prefix) and parsed.path.endswith(maintenance_complete_suffix):

@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light" />
   <title>CNC Dashboard</title>
 
-  <link rel="stylesheet" href="assets/app.css?v=20260326-04" />
+  <link rel="stylesheet" href="assets/app.css?v=20260426-02" />
   <link rel="stylesheet" href="assets/ui-common.css?v=20260424-02" />
-  <script type="module" src="assets/app.js?v=20260424-03"></script>
+  <script type="module" src="assets/app.js?v=20260426-02"></script>
 </head>
 
 <body>
@@ -95,12 +95,18 @@
     </div>
 
     <div class="modal" id="startupNoticeModal" role="dialog" aria-modal="true" aria-labelledby="startupNoticeTitle" aria-hidden="true">
-      <div class="modal__backdrop" data-close="true"></div>
-      <div class="modal__panel" role="document">
-        <h2 class="modal__title" id="startupNoticeTitle">Hinweis</h2>
-        <p class="modal__text">Spindel vor erstem Job warm laufen lassen.</p>
+      <div class="modal__backdrop"></div>
+      <div class="modal__panel modal__panel--warmup" role="document">
+        <h2 class="modal__title modal__title--warmup" id="startupNoticeTitle">Spindel warmlaufen lassen</h2>
+        <div class="warmup-chart" aria-hidden="true">
+          <svg class="warmup-chart__svg" viewBox="0 0 100 100">
+            <circle class="warmup-chart__bg" cx="50" cy="50" r="42"/>
+            <circle class="warmup-chart__fill" id="warmupChartFill" cx="50" cy="50" r="42"/>
+            <text class="warmup-chart__pct" id="warmupChartPct" x="50" y="50">0%</text>
+          </svg>
+        </div>
         <div class="modal__actions">
-          <button class="btn btn--danger" id="startupNoticeClose" type="button">Verstanden</button>
+          <button class="btn" id="startupNoticeClose" type="button">Erledigt</button>
         </div>
       </div>
     </div>

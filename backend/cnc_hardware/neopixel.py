@@ -29,6 +29,7 @@ def _normalize_state_id(state_id):
         "e-stop": "eStop",
         "error": "eStop",
         "red": "eStop",
+        "warmupfill": "warmupFill",
     }
     return aliases.get(key, "idle")
 
@@ -74,7 +75,7 @@ def _blend_color(start_color, end_color, factor):
 class NeoPixelStatusStripController:
     CONTROLLER_ID = "ws2812b-status-strip"
     DISPLAY_NAME = "WS2812B Status-LED-Streifen"
-    DIMMABLE_STATES = frozenset({"idle", "warning", "running"})
+    DIMMABLE_STATES = frozenset({"idle", "warning", "running", "warmupFill"})
     DYNAMIC_BRIGHTNESS_MIN_PERCENT = 10
     STATIC_STATE_COLORS = {
         "off": (0, 0, 0),
@@ -115,6 +116,8 @@ class NeoPixelStatusStripController:
     ESTOP_RENDER_STATE = "eStopPulse"
     SHUTDOWN_RENDER_STATE = "shutdownCollapse"
     SHUTDOWN_OFF_RENDER_STATE = "shutdownOff"
+    WARMUP_FILL_RENDER_STATE = "warmupFill"
+    WARMUP_FILL_GREEN = (0, 255, 0)
 
     def __init__(
         self,
@@ -177,6 +180,7 @@ class NeoPixelStatusStripController:
         self._running_load_percent = 0.0
         self._running_display_position = 0.0
         self._running_last_frame_monotonic = None
+        self._warmup_fill_progress = 0.0
         self._last_command_at = None
         self._last_success_at = None
         self._last_error = ""
@@ -268,6 +272,31 @@ class NeoPixelStatusStripController:
                 return self._build_snapshot_locked()
 
             if self._desired_state == "running" or self._render_state == self.RUNNING_RENDER_STATE:
+                self._ensure_animator_running_locked()
+                self._wake_event.set()
+            return self._build_snapshot_locked()
+
+    def set_warmup_fill_progress(self, progress_0_to_1):
+        try:
+            normalized = max(0.0, min(1.0, float(progress_0_to_1)))
+        except (ValueError, TypeError):
+            normalized = 0.0
+
+        with self._lock:
+            self._warmup_fill_progress = normalized
+
+            driver = self._load_driver_locked()
+            if not self.enabled or driver is None:
+                return self._build_snapshot_locked()
+
+            strip = self._ensure_strip_locked()
+            if strip is None:
+                return self._build_snapshot_locked()
+
+            if not self._boot_started and not self._boot_completed:
+                return self._build_snapshot_locked()
+
+            if self._desired_state == "warmupFill":
                 self._ensure_animator_running_locked()
                 self._wake_event.set()
             return self._build_snapshot_locked()
@@ -605,6 +634,9 @@ class NeoPixelStatusStripController:
         if self._desired_state == "running":
             return self._render_running_load_frame(now), self.RUNNING_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
 
+        if self._desired_state == "warmupFill":
+            return self._render_warmup_fill_frame(self._warmup_fill_progress), self.WARMUP_FILL_RENDER_STATE, None, self.STATIC_REFRESH_SEC
+
         if self._desired_state == "warning":
             return self._render_warning_pulse_frame(now), self.WARNING_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
 
@@ -658,8 +690,29 @@ class NeoPixelStatusStripController:
         factor = self.WARNING_PULSE_MIN_FACTOR + (
             (self.WARNING_PULSE_MAX_FACTOR - self.WARNING_PULSE_MIN_FACTOR) * pulse_progress
         )
-        color = self._apply_state_brightness("warning", _scale_color(base_warning, factor))
-        return [color for _ in range(self.pixel_count)]
+        warning_raw = _scale_color(base_warning, factor)
+        warning_color = self._apply_state_brightness("warning", warning_raw)
+        frame = [warning_color for _ in range(self.pixel_count)]
+
+        progress = float(self._warmup_fill_progress)
+        if progress > 0.0:
+            green_raw = self.WARMUP_FILL_GREEN
+            green = self._apply_state_brightness("warning", green_raw)
+            scaled = max(0.0, min(1.0, progress)) * len(self._center_groups)
+            full_group_count = min(len(self._center_groups), int(scaled))
+            partial_progress = min(1.0, max(0.0, scaled - full_group_count))
+
+            for group_index in range(full_group_count):
+                for pixel_index in self._center_groups[group_index]:
+                    frame[pixel_index] = green
+
+            if full_group_count < len(self._center_groups) and partial_progress > 0.0:
+                blended_raw = _blend_color(warning_raw, green_raw, partial_progress)
+                blended = self._apply_state_brightness("warning", blended_raw)
+                for pixel_index in self._center_groups[full_group_count]:
+                    frame[pixel_index] = blended
+
+        return frame
 
     def _render_running_load_frame(self, now):
         target_position = self._running_load_percent_to_position(self._running_load_percent)
@@ -762,6 +815,29 @@ class NeoPixelStatusStripController:
             _lerp_channel(self.STARTUP_BLUE[2], target_white, progress),
         )
         return [fade_color for _ in range(self.pixel_count)]
+
+    def _render_warmup_fill_frame(self, progress):
+        white_raw = (self.IDLE_WHITE_MAX, self.IDLE_WHITE_MAX, self.IDLE_WHITE_MAX)
+        green_raw = self.WARMUP_FILL_GREEN
+        white = self._apply_state_brightness("warmupFill", white_raw)
+        green = self._apply_state_brightness("warmupFill", green_raw)
+        frame = [white for _ in range(self.pixel_count)]
+
+        scaled = max(0.0, min(1.0, float(progress))) * len(self._center_groups)
+        full_group_count = min(len(self._center_groups), int(scaled))
+        partial_progress = min(1.0, max(0.0, scaled - full_group_count))
+
+        for group_index in range(full_group_count):
+            for pixel_index in self._center_groups[group_index]:
+                frame[pixel_index] = green
+
+        if full_group_count < len(self._center_groups) and partial_progress > 0.0:
+            blended = _blend_color(white_raw, green_raw, partial_progress)
+            blended = self._apply_state_brightness("warmupFill", blended)
+            for pixel_index in self._center_groups[full_group_count]:
+                frame[pixel_index] = blended
+
+        return frame
 
     def _write_frame_locked(self, frame, render_state):
         if self._strip is None or self._driver is None:
