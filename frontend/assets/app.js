@@ -2,7 +2,7 @@ import { createStatusbarController } from "./modules/statusbar.js?v=20260426-02"
 import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
-import { createMaintenanceController } from "./modules/maintenance.js?v=20260425-01";
+import { createMaintenanceController } from "./modules/maintenance.js?v=20260426-05";
 
 // -----------------------------
 // Konfiguration
@@ -162,6 +162,7 @@ const maintenanceGuideStepMeta = document.getElementById("maintenanceGuideStepMe
 const maintenanceGuideStepText = document.getElementById("maintenanceGuideStepText");
 const maintenanceGuideStepImage = document.getElementById("maintenanceGuideStepImage");
 const maintenanceTaskClose = document.getElementById("maintenanceTaskClose");
+const maintenanceGuidePager = document.getElementById("maintenanceGuidePager");
 const maintenanceGuidePrev = document.getElementById("maintenanceGuidePrev");
 const maintenanceGuideNext = document.getElementById("maintenanceGuideNext");
 const maintenanceTaskDone = document.getElementById("maintenanceTaskDone");
@@ -255,6 +256,7 @@ const maintenanceController = createMaintenanceController({
     guideStepText: maintenanceGuideStepText,
     guideStepImage: maintenanceGuideStepImage,
     taskClose: maintenanceTaskClose,
+    guidePager: maintenanceGuidePager,
     guidePrev: maintenanceGuidePrev,
     guideNext: maintenanceGuideNext,
     taskDone: maintenanceTaskDone,

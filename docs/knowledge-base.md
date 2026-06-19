@@ -562,3 +562,18 @@ Die funktionierende Endkonfiguration war erreicht, als folgende Bedingungen glei
 - in den Chromium-Preferences steht `selected_languages=de-DE,de`
 - in den Chromium-Preferences steht `translate.enabled=false`
 - das Translate-Badge wird im Kiosk nicht mehr angezeigt
+
+### Pinch-Zoom im Chromium-Kiosk deaktivieren
+
+Auf dem lokalen Maschinen-UI soll keine Zwei-Finger-Zoom-Geste moeglich sein.
+
+Umgesetzt wurde eine Kombination aus Frontend-Viewport und Chromium-Startflag:
+
+- `frontend/index.html`, `frontend/pages/home.html`, `frontend/pages/maintenance.html`, `frontend/pages/system.html` und `frontend/monitor.html` setzen `maximum-scale=1` und `user-scalable=no`.
+- Der Kiosk-Wrapper `/usr/local/bin/cnc-dashboard-kiosk.sh` startet Chromium mit `--disable-pinch`.
+
+Aktuelle Chromium-Startzeile:
+
+```sh
+exec /usr/bin/chromium --lang=de-DE --disable-features=Translate --disable-pinch "$@"
+```

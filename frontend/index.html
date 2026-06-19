@@ -2,13 +2,13 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <title>CNC Dashboard</title>
 
   <link rel="stylesheet" href="assets/app.css?v=20260426-02" />
-  <link rel="stylesheet" href="assets/ui-common.css?v=20260424-02" />
-  <script type="module" src="assets/app.js?v=20260426-02"></script>
+  <link rel="stylesheet" href="assets/ui-common.css?v=20260426-05" />
+  <script type="module" src="assets/app.js?v=20260426-05"></script>
 </head>
 
 <body>
@@ -105,8 +105,8 @@
             <text class="warmup-chart__pct" id="warmupChartPct" x="50" y="50">0%</text>
           </svg>
         </div>
-        <div class="modal__actions">
-          <button class="btn" id="startupNoticeClose" type="button">Erledigt</button>
+        <div class="modal__actions warmup-actions">
+          <button class="btn maintenance-btn warmup-done-btn" id="startupNoticeClose" type="button">Erledigt</button>
         </div>
       </div>
     </div>
@@ -297,7 +297,6 @@
 
           <section class="maintenance-panel" id="maintenancePanelGuide" role="tabpanel" aria-labelledby="maintenanceTabGuide" aria-hidden="true">
             <div class="maintenance-guide" id="maintenanceGuideContent">
-              <div class="maintenance-guide__meta" id="maintenanceGuideStepMeta"></div>
               <p class="maintenance-guide__text" id="maintenanceGuideStepText"></p>
               <img class="maintenance-guide__image" id="maintenanceGuideStepImage" src="" alt="" hidden />
             </div>
@@ -306,10 +305,13 @@
         </div>
 
         <div class="modal__actions modal__actions--maintenance">
-          <button class="btn maintenance-btn btn--close" id="maintenanceTaskClose" type="button">Schließen</button>
-          <button class="btn maintenance-btn" id="maintenanceGuidePrev" type="button" hidden>Zurück</button>
-          <button class="btn maintenance-btn" id="maintenanceGuideNext" type="button" hidden>Weiter</button>
           <button class="btn maintenance-btn" id="maintenanceTaskDone" type="button">Erledigt</button>
+          <div class="guide-pager" id="maintenanceGuidePager" hidden>
+            <button class="btn guide-arrow" id="maintenanceGuidePrev" type="button" aria-label="Vorheriger Schritt">&#9664;</button>
+            <div class="guide-step-indicator" id="maintenanceGuideStepMeta"></div>
+            <button class="btn guide-arrow" id="maintenanceGuideNext" type="button" aria-label="Nächster Schritt">&#9654;</button>
+          </div>
+          <button class="btn maintenance-btn btn--close" id="maintenanceTaskClose" type="button">Schließen</button>
         </div>
       </div>
     </div>

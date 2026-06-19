@@ -225,13 +225,74 @@
 }
 
 .modal__actions--maintenance{
-  justify-content: flex-end;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+#maintenanceTaskDone{
+  grid-column: 1;
+  justify-self: start;
+}
+
+#maintenanceTaskClose{
+  grid-column: 3;
+  justify-self: end;
 }
 
 .maintenance-btn{
+  box-sizing: border-box;
+  height: 44px;
   padding: 10px 12px;
   font-size: 15px;
+}
+
+.warmup-actions{
+  justify-content: flex-start;
+  padding: 0 16px 16px 16px;
+}
+
+.warmup-done-btn{
+  border-radius: 0;
+}
+
+.guide-pager{
+  grid-column: 2;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0;
+}
+
+.guide-pager[hidden]{
+  display: none;
+}
+
+.guide-arrow{
+  box-sizing: border-box;
+  width: 48px;
+  height: 44px;
+  font-size: 20px;
+  font-weight: 700;
+  padding: 0;
+  border-radius: 2px;
+}
+
+.guide-arrow:disabled{
+  opacity: 0.35;
+}
+
+.guide-step-indicator{
+  min-width: 104px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .maintenance-guide{

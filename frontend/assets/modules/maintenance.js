@@ -26,6 +26,7 @@ export function createMaintenanceController({
     guideStepText,
     guideStepImage,
     taskClose,
+    guidePager,
     guidePrev,
     guideNext,
     taskDone,
@@ -261,8 +262,7 @@ export function createMaintenanceController({
     panelGuide.classList.toggle("is-active", isGuide);
     panelGuide.setAttribute("aria-hidden", isGuide ? "false" : "true");
 
-    guidePrev.hidden = !isGuide;
-    guideNext.hidden = !isGuide;
+    if (guidePager) guidePager.hidden = !isGuide;
 
     if (isGuide) {
       renderGuideStep();
@@ -306,6 +306,7 @@ export function createMaintenanceController({
     modalStepIndex = 0;
     modalTab = "overview";
     guideContent.classList.remove("maintenance-guide--with-image");
+    if (guidePager) guidePager.hidden = true;
     taskModal.classList.remove("is-open");
     taskModal.setAttribute("aria-hidden", "true");
   }
