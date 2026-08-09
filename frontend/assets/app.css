@@ -32,8 +32,24 @@ body{
   font-family: var(--font);
   font-size: var(--fs);
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
   touch-action: manipulation;
   user-select: none;
+}
+
+body *{
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"]{
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 body.is-shutting-down{

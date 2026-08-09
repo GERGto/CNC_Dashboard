@@ -1072,7 +1072,7 @@ function chooseRecordingMimeType() {
   if (typeof window.MediaRecorder === "undefined") {
     return "";
   }
-  const candidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  const candidates = ["video/mp4", "video/webm;codecs=vp8", "video/webm"];
   if (typeof window.MediaRecorder.isTypeSupported !== "function") {
     return candidates[candidates.length - 1];
   }

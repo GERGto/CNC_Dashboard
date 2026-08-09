@@ -1,5 +1,8 @@
 html, body{
   height: 100%;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 body.home{
@@ -9,6 +12,12 @@ body.home{
   font-family: var(--font);
   font-size: var(--fs);
   overflow: hidden;
+}
+
+body.home *{
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .home-layout{

@@ -78,6 +78,30 @@ const ICONS = {
 };
 
 const mainEl = document.querySelector(".main");
+const EDITABLE_SELECTION_SELECTOR = "input, textarea, select, [contenteditable=\"true\"]";
+
+function isEditableSelectionTarget(target){
+  return target instanceof Element && Boolean(target.closest(EDITABLE_SELECTION_SELECTOR));
+}
+
+function preventUiTextSelection(root){
+  if (!root || root.__cncDashboardSelectionGuard) return;
+  root.__cncDashboardSelectionGuard = true;
+
+  root.addEventListener("selectstart", (ev) => {
+    if (!isEditableSelectionTarget(ev.target)){
+      ev.preventDefault();
+    }
+  });
+
+  root.addEventListener("contextmenu", (ev) => {
+    if (!isEditableSelectionTarget(ev.target)){
+      ev.preventDefault();
+    }
+  });
+}
+
+preventUiTextSelection(document);
 const navEl = document.querySelector(".nav");
 const clockEl = document.getElementById("clock");
 const statusEl = document.getElementById("machineStatus");
@@ -1147,6 +1171,11 @@ function createFrames(){
     f.setAttribute("title", p.title);
     f.addEventListener("load", () => {
       frameState.loaded = true;
+      try{
+        preventUiTextSelection(f.contentDocument);
+      }catch (_error){
+        // Same-origin pages are guarded; ignore if a frame cannot be accessed.
+      }
       flushQueuedFrameMessages(p.id);
     });
     mainEl.appendChild(f);
