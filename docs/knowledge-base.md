@@ -447,17 +447,53 @@ Kiosk-Session neu starten:
 sudo systemctl restart cnc-dashboard-kiosk.service
 ```
 
-### Verzerrtes ("warped") Panelbild: Core-Takt pinnen
+### Verzerrtes ("warped") Panelbild
 
-Das Panel zeigte sporadisch fuer 5-20 Sekunden ein diagonal verschobenes Bild.
-Ausgeloest hat es jede Art von Lastwechsel: ein Dropdown im UI oeffnen, ein
-WLAN-Scan, der Chromium-Kaltstart - und beim Booten exakt in dem Moment, in dem
-`initial_turbo` ablief.
+Das Panel zeigte sporadisch fuer einige Sekunden ein diagonal verschobenes Bild.
+Es gab dafuer **zwei unabhaengige Ursachen**.
 
-Ursache: Auf dem Pi 4 wird der HDMI-Pixeltakt aus der Core-Taktdomaene
-abgeleitet. Der Core-Takt skalierte dynamisch zwischen **333 MHz (Leerlauf) und
-500 MHz (Last)**, und jeder dieser Uebergaenge stoert die laufende Ausgabe. Der
-Nachweis ist direkt messbar:
+#### Ursache 1 (die zuverlaessig reproduzierbare): nicht ausgerichteter Pitch
+
+Reproduzierbar durch **Schliessen** eines nativen `<select>`-Dropdowns.
+
+Das Kioskfenster ist absichtlich ein Pixel groesser als der Schirm
+(`--window-size=1025,601`), damit die Seite ein exaktes 1024x600-Viewport
+bekommt. Der zugehoerige Client-Puffer ist damit 1025 Pixel breit und hat einen
+Pitch von **4100 Byte - nicht 64-Byte-ausgerichtet**. Solange Xorg diesen Puffer
+direkt per Page-Flip auf den Scanout legt, liest die vc4-HVS die Zeilen
+versetzt: diagonales Scherbild.
+
+Das erklaert exakt den Ausloeser: Ist das Popup offen, ist das Hauptfenster
+verdeckt, Xorg kann nicht flippen und rendert in sein eigenes, korrekt
+ausgerichtetes Screen-Pixmap (1024x600, Pitch 4096) - Bild in Ordnung. Beim
+Schliessen faellt die Verdeckung weg, Xorg flippt wieder direkt auf den
+krummen Puffer - Scherbild.
+
+Fix in `20-cnc-dashboard-display.conf`:
+
+```
+Option "PageFlip" "false"
+```
+
+Damit rendert Xorg immer in sein eigenes Pixmap, und nur dieser ausgerichtete
+Puffer erreicht das Display. Kontrolle - es darf nur noch ein von Xorg
+allozierter Framebuffer mit Pitch 4096 auftauchen:
+
+```bash
+grep -E 'allocated|size=|pitch' /sys/kernel/debug/dri/gpu/framebuffer
+```
+
+Die naheliegende Alternative - das Fenster exakt 1024x600 gross machen - wurde
+verworfen: Chromium erzeugt daraus ein 1023x599-Fenster, und am unteren Rand
+bleibt eine sichtbare 1-Pixel-Zeile des Wurzelfensters stehen.
+
+#### Ursache 2: dynamischer Core-Takt
+
+Unabhaengig davon stoerte auch jeder Core-Taktwechsel die Ausgabe, weil auf dem
+Pi 4 der HDMI-Pixeltakt aus der Core-Taktdomaene abgeleitet wird. Der Core-Takt
+skalierte zwischen **333 MHz (Leerlauf) und 500 MHz (Last)**. Passend dazu trat
+die Verzerrung beim Booten exakt in dem Moment auf, in dem `initial_turbo`
+ablief. Nachweis:
 
 ```bash
 for i in 1 2 3 4 5; do vcgencmd measure_clock core; sleep 1; done
@@ -476,10 +512,19 @@ core_freq_min=500
 Damit gibt es keine Taktwechsel mehr. Die Leerlauftemperatur steigt dadurch nur
 unwesentlich (gemessen 49 °C, Limit `temp_limit=75`).
 
-Wichtig fuer die Fehlersuche: Waehrend der Verzerrung sind x11grab-Frames
-**sauber** und `hvs_underrun` bleibt `0`. Der Framebuffer-Inhalt ist also
-korrekt - die Stoerung entsteht erst bei der Ausgabe. Ein sauberer Screenshot
-schliesst dieses Problem daher nicht aus.
+#### Diagnosefalle
+
+Bei **beiden** Ursachen sind x11grab-Frames **sauber** und `hvs_underrun`
+(Pfad: `/sys/kernel/debug/dri/gpu/`, nicht `dri/0/`) bleibt `0`. Der
+Framebuffer-Inhalt ist korrekt; gestoert ist erst die Ausgabe. Ein sauberer
+Screenshot schliesst das Problem also nicht aus - deshalb muss man hier ueber
+Puffergeometrie und Takte gehen, nicht ueber Bildvergleiche.
+
+Zwei Hypothesen waren falsch und haben viel Zeit gekostet: HDMI-Audio-
+Infoframes und eine TMDS-Harmonische bei 2,45 GHz. Der entscheidende Hinweis
+kam erst, als klar war, dass ausgerechnet das *Schliessen* eines Dropdowns
+zuverlaessig ausloest - Oeffnen erzeugt dieselbe Last, aber eben die
+umgekehrte Verdeckungssituation.
 
 Nebenbefund zum Displaytiming: Der Pixeltakt liegt bei 51,20 MHz
 (`1024 1072 1168 1344, 600 611 621 635`, 59,99 Hz) - identisch in Firmware

@@ -9,6 +9,9 @@ case "$RES_Y" in ''|*[!0-9]*) RES_Y=600 ;; esac
 # Chromium without a window manager creates its kiosk surface one pixel smaller
 # than the requested outer size. The extra pixel is clipped by the X root window
 # and gives the page an exact 1024x600 content viewport.
+# The resulting 1025-pixel-wide client buffer has a 4100-byte pitch, which is
+# not 64-byte aligned. Xorg must therefore never scan it out directly - see
+# Option "PageFlip" "false" in 20-cnc-dashboard-display.conf.
 WINDOW_X=$((RES_X + 1))
 WINDOW_Y=$((RES_Y + 1))
 
