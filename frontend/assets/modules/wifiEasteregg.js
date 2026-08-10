@@ -4,10 +4,29 @@ export function createWifiEastereggController({
   tapTarget = 5,
   tapWindowMs = 1600,
   durationMs = 12000,
+  onActiveChange = null,
 }) {
   let tapTimestamps = [];
   let eastereggTimer = null;
   let imageReady = false;
+  let active = false;
+
+  // Announce the mode so the LED strip can join in. Never let a failing
+  // notification break the overlay itself.
+  function notifyActive(nextActive) {
+    if (active === nextActive) {
+      return;
+    }
+    active = nextActive;
+    if (typeof onActiveChange !== "function") {
+      return;
+    }
+    try {
+      onActiveChange(nextActive, durationMs);
+    } catch (_error) {
+      // Ignore: the visual easter egg works without the strip.
+    }
+  }
 
   function ensureImageLoaded() {
     if (!imageEl || imageReady) {
@@ -29,6 +48,7 @@ export function createWifiEastereggController({
     }
     overlayEl.hidden = true;
     overlayEl.setAttribute("aria-hidden", "true");
+    notifyActive(false);
   }
 
   function show() {
@@ -39,6 +59,7 @@ export function createWifiEastereggController({
     ensureImageLoaded();
     overlayEl.hidden = false;
     overlayEl.setAttribute("aria-hidden", "false");
+    notifyActive(true);
     eastereggTimer = setTimeout(() => {
       hide();
     }, durationMs);

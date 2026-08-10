@@ -63,6 +63,33 @@ def _scale_color(color, factor):
     )
 
 
+def _hue_to_rgb(hue, value):
+    """Fully saturated HSV to RGB, hue wrapped to [0, 1), value in [0, 1]."""
+    hue = hue - math.floor(hue)
+    value = max(0.0, min(1.0, float(value)))
+    sector = hue * 6.0
+    index = int(sector) % 6
+    fraction = sector - math.floor(sector)
+    peak = value
+    zero = 0.0
+    rising = value * fraction
+    falling = value * (1.0 - fraction)
+    table = (
+        (peak, rising, zero),
+        (falling, peak, zero),
+        (zero, peak, rising),
+        (zero, falling, peak),
+        (rising, zero, peak),
+        (peak, zero, falling),
+    )
+    red_value, green_value, blue_value = table[index]
+    return (
+        int(round(red_value * 255)),
+        int(round(green_value * 255)),
+        int(round(blue_value * 255)),
+    )
+
+
 def _blend_color(start_color, end_color, factor):
     blend = max(0.0, min(1.0, float(factor)))
     return (
@@ -75,7 +102,10 @@ def _blend_color(start_color, end_color, factor):
 class NeoPixelStatusStripController:
     CONTROLLER_ID = "ws2812b-status-strip"
     DISPLAY_NAME = "WS2812B Status-LED-Streifen"
-    DIMMABLE_STATES = frozenset({"idle", "warning", "running", "warmupFill"})
+    # The easter egg follows the configured strip brightness like every other
+    # animated state - the machine sits at 17 % here, and jumping to full
+    # output would be blinding rather than fun.
+    DIMMABLE_STATES = frozenset({"idle", "warning", "running", "warmupFill", "eastereggRgb"})
     DYNAMIC_BRIGHTNESS_MIN_PERCENT = 10
     STATIC_STATE_COLORS = {
         "off": (0, 0, 0),
@@ -110,6 +140,10 @@ class NeoPixelStatusStripController:
     BOOT_START_DELAY_SEC = 1.0
     BOOT_FILL_DURATION_SEC = 13.0
     BOOT_FILL_WHITE_SHIFT_START = 2.0 / 3.0
+    # Length of the brightness ramp at the leading edge of the fill, in mirror
+    # groups (one group = the two pixels at the same distance from the centre).
+    # Without it the fill front is a hard on/off step across a single group.
+    BOOT_FILL_EDGE_SOFTNESS_GROUPS = 4.0
     # Runs after the light is already on; only settles the strip into its
     # normal idle rendering, so it is not part of the announced animation.
     STATE_BLEND_DURATION_SEC = 1.5
@@ -120,6 +154,16 @@ class NeoPixelStatusStripController:
     STARTUP_DELAY_RENDER_STATE = "startupDelay"
     STARTUP_RENDER_STATE = "startupFill"
     STATE_BLEND_RENDER_STATE = "stateBlend"
+    EASTEREGG_RENDER_STATE = "eastereggRgb"
+    # Spacey RGB sweep for the UI easter egg.
+    EASTEREGG_HUE_CYCLES_OVER_STRIP = 1.6
+    EASTEREGG_HUE_SPEED_PER_SEC = 0.28
+    EASTEREGG_SHIMMER_SPEED_PER_SEC = 0.9
+    EASTEREGG_SHIMMER_WAVES_OVER_STRIP = 2.4
+    EASTEREGG_MIN_VALUE = 0.35
+    # A UI that reloads or crashes while the mode runs must not leave the strip
+    # stuck, so every activation carries its own expiry.
+    EASTEREGG_MAX_DURATION_SEC = 120.0
     RUNNING_RENDER_STATE = "runningLoadHotspot"
     WARNING_RENDER_STATE = "warningPulse"
     ESTOP_RENDER_STATE = "eStopPulse"
@@ -190,6 +234,7 @@ class NeoPixelStatusStripController:
         self._running_display_position = 0.0
         self._running_last_frame_monotonic = None
         self._warmup_fill_progress = 0.0
+        self._easteregg_until_monotonic = None
         self._last_command_at = None
         self._last_success_at = None
         self._last_error = ""
@@ -224,6 +269,43 @@ class NeoPixelStatusStripController:
             self._ensure_animator_running_locked()
             self._wake_event.set()
             return self._build_snapshot_locked()
+
+    def set_easteregg_active(self, active, duration_sec=None):
+        """Enable or disable the spacey RGB override.
+
+        The override sits on top of the machine state instead of replacing it,
+        so the periodic status sync keeps running underneath and the strip
+        returns to the correct state on its own once the mode ends. E-Stop and
+        the shutdown sequence still take precedence.
+        """
+        with self._lock:
+            if active:
+                try:
+                    requested = float(duration_sec) if duration_sec is not None else self.EASTEREGG_MAX_DURATION_SEC
+                except (TypeError, ValueError):
+                    requested = self.EASTEREGG_MAX_DURATION_SEC
+                requested = max(0.0, min(self.EASTEREGG_MAX_DURATION_SEC, requested))
+                self._easteregg_until_monotonic = time.monotonic() + requested
+                self._last_reason = "wifi-easteregg"
+                self._last_source = "ui-easteregg"
+                self._last_command_at = iso_now_utc()
+
+                driver = self._load_driver_locked()
+                if self.enabled and driver is not None and self._ensure_strip_locked() is not None:
+                    self._ensure_animator_running_locked()
+                    self._wake_event.set()
+            else:
+                self._easteregg_until_monotonic = None
+                self._wake_event.set()
+            return self._build_snapshot_locked()
+
+    def _easteregg_is_active_locked(self, now):
+        if self._easteregg_until_monotonic is None:
+            return False
+        if now >= self._easteregg_until_monotonic:
+            self._easteregg_until_monotonic = None
+            return False
+        return True
 
     def set_dynamic_brightness(self, brightness_percent):
         normalized_brightness = _clamp_percent(
@@ -658,6 +740,11 @@ class NeoPixelStatusStripController:
                     callback_to_run = self._finish_boot_sequence_locked()
                 return frame, render_state, callback_to_run, 1.0 / self.ANIMATION_FPS
 
+        # Deliberately below the shutdown, E-Stop and boot branches: those must
+        # never be masked by the easter egg.
+        if self._easteregg_is_active_locked(now):
+            return self._render_easteregg_frame(now), self.EASTEREGG_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
+
         if self._desired_state == "idle":
             return self._render_idle_breathing_frame(), "idle", None, 1.0 / self.ANIMATION_FPS
 
@@ -676,6 +763,31 @@ class NeoPixelStatusStripController:
         color = self.STATIC_STATE_COLORS.get(state_id, self.STATIC_STATE_COLORS["on"])
         color = self._apply_state_brightness(state_id, color)
         return [color for _ in range(self.pixel_count)]
+
+    def _render_easteregg_frame(self, now):
+        """Rainbow sweeping along the strip with a slower brightness shimmer.
+
+        The two waves run at different speeds and wavelengths so the pattern
+        does not visibly repeat.
+        """
+        span = max(1, self.pixel_count - 1)
+        hue_drift = now * self.EASTEREGG_HUE_SPEED_PER_SEC
+        shimmer_drift = now * self.EASTEREGG_SHIMMER_SPEED_PER_SEC
+        value_span = 1.0 - self.EASTEREGG_MIN_VALUE
+
+        frame = []
+        for pixel_index in range(self.pixel_count):
+            position = pixel_index / span
+            hue = (position * self.EASTEREGG_HUE_CYCLES_OVER_STRIP) + hue_drift
+            shimmer_phase = ((position * self.EASTEREGG_SHIMMER_WAVES_OVER_STRIP) - shimmer_drift) * math.tau
+            shimmer = (math.sin(shimmer_phase) + 1.0) * 0.5
+            value = self.EASTEREGG_MIN_VALUE + (value_span * shimmer)
+            frame.append(
+                self._apply_state_brightness(
+                    self.EASTEREGG_RENDER_STATE, _hue_to_rgb(hue, value)
+                )
+            )
+        return frame
 
     def _render_idle_breathing_frame(self):
         return self._render_idle_wave_frame(advance_phase=True)
@@ -843,22 +955,23 @@ class NeoPixelStatusStripController:
         )
 
         frame = [(0, 0, 0) for _ in range(self.pixel_count)]
-        scaled = progress * len(self._center_groups)
-        full_group_count = min(len(self._center_groups), int(scaled))
-        partial_progress = min(1.0, max(0.0, scaled - full_group_count))
+        group_count = len(self._center_groups)
+        feather = max(1e-6, self.BOOT_FILL_EDGE_SOFTNESS_GROUPS)
+        # The front travels feather groups past the end so the outermost
+        # pixels still reach full brightness before the fill is over.
+        edge = progress * (group_count + feather)
 
-        for group_index in range(full_group_count):
-            for pixel_index in self._center_groups[group_index]:
-                frame[pixel_index] = color
-
-        if full_group_count < len(self._center_groups):
-            leading_edge = (
-                _lerp_channel(0, color[0], partial_progress),
-                _lerp_channel(0, color[1], partial_progress),
-                _lerp_channel(0, color[2], partial_progress),
-            )
-            for pixel_index in self._center_groups[full_group_count]:
-                frame[pixel_index] = leading_edge
+        for group_index, group in enumerate(self._center_groups):
+            intensity = (edge - group_index) / feather
+            if intensity <= 0.0:
+                continue
+            if intensity < 1.0:
+                intensity = intensity * intensity * (3.0 - (2.0 * intensity))
+            else:
+                intensity = 1.0
+            edge_color = _scale_color(color, intensity)
+            for pixel_index in group:
+                frame[pixel_index] = edge_color
 
         return frame
 

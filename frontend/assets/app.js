@@ -1,5 +1,5 @@
 import { createStatusbarController } from "./modules/statusbar.js?v=20260426-02";
-import { createWifiEastereggController } from "./modules/wifiEasteregg.js";
+import { createWifiEastereggController } from "./modules/wifiEasteregg.js?v=20260810-03";
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
 import { createMaintenanceController } from "./modules/maintenance.js?v=20260426-05";
@@ -219,6 +219,17 @@ const wifiEastereggController = createWifiEastereggController({
   tapTarget: 5,
   tapWindowMs: 1600,
   durationMs: 12000,
+  onActiveChange: (active, durationMs) => {
+    // The strip plays the RGB effect for as long as the overlay is up. The
+    // duration is sent along so a reloading UI cannot leave the strip stuck.
+    fetch(`${API_BASE}/api/hardware/status-indicator/easteregg`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active, durationSec: (durationMs / 1000) + 2 }),
+      cache: "no-store",
+      keepalive: true,
+    }).catch(() => {});
+  },
 });
 const keyboardController = createKeyboardController({
   modalEl: keyboardModal,

@@ -264,6 +264,9 @@ class BackendApp:
         self._mark_warmup_completed()
         self.sync_status_indicator()
 
+    def set_status_indicator_easteregg(self, active, duration_sec=None):
+        return self.hardware_backend.set_status_indicator_easteregg(active, duration_sec=duration_sec)
+
     def report_machine_status(self, status, source="api"):
         self.machine_status_service.update_reported_status(status, source=source)
         self.sync_status_indicator()

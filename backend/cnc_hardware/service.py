@@ -496,6 +496,10 @@ class HardwareBackend:
         with self._status_indicator_lock:
             return self.status_indicator_controller.set_warmup_fill_progress(progress_0_to_1)
 
+    def set_status_indicator_easteregg(self, active, duration_sec=None):
+        with self._status_indicator_lock:
+            return self.status_indicator_controller.set_easteregg_active(active, duration_sec=duration_sec)
+
     def start_status_indicator_boot_sequence(self, on_complete_callback=None):
         with self._status_indicator_lock:
             return self.status_indicator_controller.start_boot_sequence(on_complete_callback=on_complete_callback)

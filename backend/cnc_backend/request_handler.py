@@ -352,6 +352,20 @@ def create_request_handler(app):
                 app.complete_warmup()
                 return json_response(self, 200, {"ok": True})
 
+            if parsed.path == "/api/hardware/status-indicator/easteregg":
+                payload, error = self._read_json_payload()
+                if error:
+                    return json_response(self, 400, {"error": error})
+
+                active, value_error = self._read_bool_payload_field(payload, ("active",))
+                if value_error:
+                    return json_response(self, 400, {"error": value_error})
+
+                indicator = app.set_status_indicator_easteregg(
+                    bool(active), duration_sec=payload.get("durationSec")
+                )
+                return json_response(self, 200, {"ok": True, "active": bool(active), "indicator": indicator})
+
             maintenance_complete_prefix = "/api/maintenance/tasks/"
             maintenance_complete_suffix = "/complete"
             if parsed.path.startswith(maintenance_complete_prefix) and parsed.path.endswith(maintenance_complete_suffix):

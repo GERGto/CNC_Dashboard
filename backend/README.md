@@ -153,12 +153,27 @@ The project is now prepared for a `WS2812B` RGB strip as a machine status indica
 - Startup sequence, timed to match how long the system needs to boot:
   - the strip stays dark for `1.0 s` after the backend starts
   - one continuous fill from the center to the outside over `13.0 s`
+  - the fill front is feathered over `4` mirror groups, so it spreads softly
+    instead of switching pixels on in a hard step
   - the color washes from blue to white over the last third of that fill,
     concurrently with it, so the strip is completely filled and completely
     white at the same moment
   - the machine light is switched on exactly then
   - a short `1.5 s` blend afterwards only settles the strip into its idle
     rendering; the light is already on at that point
+- Easter egg mode:
+  - tapping the Wi-Fi icon in the local UI five times within `1.6 s` opens a
+    fullscreen GIF; the strip plays a spacey RGB sweep for as long as it runs
+  - `POST /api/hardware/status-indicator/easteregg` with
+    `{"active": true, "durationSec": 14}`
+  - it is an overlay on top of the machine state, not a state of its own: the
+    status sync keeps running underneath, and the strip returns to the correct
+    state by itself when the mode ends
+  - the shutdown sequence, E-Stop and the boot animation all take precedence
+  - every activation carries an expiry (capped at `120 s`), so a reloading or
+    crashing UI cannot leave the strip stuck in the effect
+  - it follows the configured strip brightness, peaking at about twice the
+    idle brightness
 - Shutdown sequence:
   - on frontend-triggered shutdown, the current strip image collapses quickly from the outside to the center
   - exactly when the strip turns fully off, the machine light is switched off
