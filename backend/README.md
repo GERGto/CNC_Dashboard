@@ -150,12 +150,15 @@ The project is now prepared for a `WS2812B` RGB strip as a machine status indica
 - Supply: `5V`
 - Data pin: `GPIO18`
 - Current strip length: `59` LEDs
-- Startup sequence (12 s total, matching how long the system needs to boot):
-  - blue expansion from the center to the outside (`4.8 s`)
-  - fade from blue to white for the system check (`3.2 s`)
-  - blend into the target state, e.g. idle (`4.0 s`)
-  - the machine light is switched on when the whole sequence has finished, so
-    strip and light reach their final state together
+- Startup sequence, timed to match how long the system needs to boot:
+  - the strip stays dark for `1.0 s` after the backend starts
+  - one continuous fill from the center to the outside over `13.0 s`
+  - the color washes from blue to white over the last third of that fill,
+    concurrently with it, so the strip is completely filled and completely
+    white at the same moment
+  - the machine light is switched on exactly then
+  - a short `1.5 s` blend afterwards only settles the strip into its idle
+    rendering; the light is already on at that point
 - Shutdown sequence:
   - on frontend-triggered shutdown, the current strip image collapses quickly from the outside to the center
   - exactly when the strip turns fully off, the machine light is switched off

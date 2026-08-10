@@ -103,20 +103,22 @@ class NeoPixelStatusStripController:
     RUNNING_TAIL_PIXELS = 44.0
     RUNNING_SMOOTHING_TIME_SEC = 0.28
     ANIMATION_FPS = 60.0
-    # The boot animation is timed to cover the whole system startup: from the
-    # moment the strip lights up until the dashboard is fully up takes about
-    # twelve seconds on the target hardware. The three phases keep their
-    # original proportions.
-    BOOT_EXPAND_DURATION_SEC = 4.8
-    SYSTEM_CHECK_FADE_DURATION_SEC = 3.2
-    STATE_BLEND_DURATION_SEC = 4.0
-    BOOT_SEQUENCE_DURATION_SEC = (
-        BOOT_EXPAND_DURATION_SEC + SYSTEM_CHECK_FADE_DURATION_SEC + STATE_BLEND_DURATION_SEC
-    )
+    # The boot animation covers the system startup: the strip stays dark for a
+    # moment, then fills from the centre outwards in one continuous 13 s move.
+    # The colour washes from blue to white over the last third of that fill -
+    # concurrently with it, not as a separate phase afterwards.
+    BOOT_START_DELAY_SEC = 1.0
+    BOOT_FILL_DURATION_SEC = 13.0
+    BOOT_FILL_WHITE_SHIFT_START = 2.0 / 3.0
+    # Runs after the light is already on; only settles the strip into its
+    # normal idle rendering, so it is not part of the announced animation.
+    STATE_BLEND_DURATION_SEC = 1.5
+    # When the machine light is switched on: end of the fill.
+    BOOT_SEQUENCE_DURATION_SEC = BOOT_START_DELAY_SEC + BOOT_FILL_DURATION_SEC
     SHUTDOWN_COLLAPSE_DURATION_SEC = 0.45
     STATIC_REFRESH_SEC = 0.25
-    STARTUP_RENDER_STATE = "startupExpand"
-    SYSTEM_CHECK_RENDER_STATE = "systemCheck"
+    STARTUP_DELAY_RENDER_STATE = "startupDelay"
+    STARTUP_RENDER_STATE = "startupFill"
     STATE_BLEND_RENDER_STATE = "stateBlend"
     RUNNING_RENDER_STATE = "runningLoadHotspot"
     WARNING_RENDER_STATE = "warningPulse"
@@ -323,7 +325,7 @@ class NeoPixelStatusStripController:
             self._last_source = "hardware-startup"
             self._boot_started = True
             self._boot_completed = False
-            self._boot_phase = "expand"
+            self._boot_phase = "delay"
             self._boot_phase_started_monotonic = time.monotonic()
             self._boot_light_callback = on_complete_callback if callable(on_complete_callback) else None
             self._boot_light_triggered = False
@@ -350,22 +352,31 @@ class NeoPixelStatusStripController:
                     self._last_error = f"Startup-Callback fuer Statusleiste fehlgeschlagen: {exc}"
         return return_value
 
-    def _finish_boot_sequence_locked(self, phase="done"):
-        """End the boot animation and hand back the completion callback.
+    def _release_boot_light_callback_locked(self):
+        """Hand back the machine-light callback, at most once.
 
-        The callback switches the machine light on, so it must fire when the
-        animation is over - not at an intermediate phase. Callers run it
-        outside the lock. Returns None if it already ran.
+        Callers must run it outside the lock. It is released when the fill has
+        finished, which is the animation the light is meant to line up with -
+        the state blend that follows only settles the strip into idle.
         """
-        self._boot_completed = True
-        self._boot_phase = phase
-        self._boot_phase_started_monotonic = None
         if self._boot_light_triggered:
             return None
         self._boot_light_triggered = True
         callback = self._boot_light_callback
         self._boot_light_callback = None
         return callback
+
+    def _finish_boot_sequence_locked(self, phase="done"):
+        """End the boot animation and hand back a not-yet-run light callback.
+
+        Paths that end the sequence early - no strip, or an E-Stop cutting the
+        animation short - must not swallow the callback, or the machine light
+        would never come on.
+        """
+        self._boot_completed = True
+        self._boot_phase = phase
+        self._boot_phase_started_monotonic = None
+        return self._release_boot_light_callback_locked()
 
     def start_shutdown_sequence(self, on_complete_callback=None):
         callback_to_run = None
@@ -606,27 +617,32 @@ class NeoPixelStatusStripController:
             return self._render_estop_double_pulse_frame(now), self.ESTOP_RENDER_STATE, callback_to_run, 1.0 / self.ANIMATION_FPS
 
         if self._boot_started and not self._boot_completed:
-            if self._boot_phase == "expand":
+            if self._boot_phase == "delay":
                 phase_start = self._boot_phase_started_monotonic or now
-                progress = min(1.0, max(0.0, (now - phase_start) / self.BOOT_EXPAND_DURATION_SEC))
-                frame = self._render_boot_expand_frame(progress)
+                if now - phase_start >= self.BOOT_START_DELAY_SEC:
+                    self._boot_phase = "fill"
+                    self._boot_phase_started_monotonic = now
+                    return self._render_boot_fill_frame(0.0), self.STARTUP_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
+                return (
+                    [(0, 0, 0) for _ in range(self.pixel_count)],
+                    self.STARTUP_DELAY_RENDER_STATE,
+                    None,
+                    1.0 / self.ANIMATION_FPS,
+                )
+
+            if self._boot_phase == "fill":
+                phase_start = self._boot_phase_started_monotonic or now
+                progress = min(1.0, max(0.0, (now - phase_start) / self.BOOT_FILL_DURATION_SEC))
+                frame = self._render_boot_fill_frame(progress)
                 render_state = self.STARTUP_RENDER_STATE
                 if progress >= 1.0:
-                    self._boot_phase = "systemCheck"
-                    self._boot_phase_started_monotonic = now
-                return frame, render_state, None, 1.0 / self.ANIMATION_FPS
-
-            if self._boot_phase == "systemCheck":
-                phase_start = self._boot_phase_started_monotonic or now
-                progress = min(1.0, max(0.0, (now - phase_start) / self.SYSTEM_CHECK_FADE_DURATION_SEC))
-                frame = self._render_system_check_frame(progress)
-                render_state = self.SYSTEM_CHECK_RENDER_STATE
-                if progress >= 1.0:
+                    # The fill is the animation the machine light waits for.
+                    callback_to_run = self._release_boot_light_callback_locked()
                     if self._desired_state in {"idle", "warning"}:
                         self._boot_phase = "stateBlend"
                         self._boot_phase_started_monotonic = now
                     else:
-                        callback_to_run = self._finish_boot_sequence_locked()
+                        self._finish_boot_sequence_locked()
                 return frame, render_state, callback_to_run, 1.0 / self.ANIMATION_FPS
 
             if self._boot_phase == "stateBlend":
@@ -803,32 +819,48 @@ class NeoPixelStatusStripController:
 
         return frame
 
-    def _render_boot_expand_frame(self, progress):
+    def _render_boot_fill_frame(self, progress):
+        """One continuous fill from the centre outwards.
+
+        The colour wash runs alongside the fill instead of after it: the strip
+        stays blue until BOOT_FILL_WHITE_SHIFT_START of the way, then blends
+        towards white so that it reaches full white exactly as the last pixels
+        light up. The wash covers the already lit pixels too, so the whole
+        strip changes colour together rather than leaving a blue trail.
+        """
+        progress = max(0.0, min(1.0, float(progress)))
+
+        shift_start = self.BOOT_FILL_WHITE_SHIFT_START
+        if progress <= shift_start:
+            white_blend = 0.0
+        else:
+            white_blend = (progress - shift_start) / max(1e-6, 1.0 - shift_start)
+        target_white = self.IDLE_WHITE_MAX
+        color = (
+            _lerp_channel(self.STARTUP_BLUE[0], target_white, white_blend),
+            _lerp_channel(self.STARTUP_BLUE[1], target_white, white_blend),
+            _lerp_channel(self.STARTUP_BLUE[2], target_white, white_blend),
+        )
+
         frame = [(0, 0, 0) for _ in range(self.pixel_count)]
-        scaled = max(0.0, min(1.0, progress)) * len(self._center_groups)
+        scaled = progress * len(self._center_groups)
         full_group_count = min(len(self._center_groups), int(scaled))
         partial_progress = min(1.0, max(0.0, scaled - full_group_count))
 
         for group_index in range(full_group_count):
             for pixel_index in self._center_groups[group_index]:
-                frame[pixel_index] = self.STARTUP_BLUE
+                frame[pixel_index] = color
 
         if full_group_count < len(self._center_groups):
-            partial_blue = _lerp_channel(0, self.STARTUP_BLUE[2], partial_progress)
-            partial_green = _lerp_channel(0, self.STARTUP_BLUE[1], partial_progress)
+            leading_edge = (
+                _lerp_channel(0, color[0], partial_progress),
+                _lerp_channel(0, color[1], partial_progress),
+                _lerp_channel(0, color[2], partial_progress),
+            )
             for pixel_index in self._center_groups[full_group_count]:
-                frame[pixel_index] = (0, partial_green, partial_blue)
+                frame[pixel_index] = leading_edge
 
         return frame
-
-    def _render_system_check_frame(self, progress):
-        target_white = self.IDLE_WHITE_MAX
-        fade_color = (
-            _lerp_channel(self.STARTUP_BLUE[0], target_white, progress),
-            _lerp_channel(self.STARTUP_BLUE[1], target_white, progress),
-            _lerp_channel(self.STARTUP_BLUE[2], target_white, progress),
-        )
-        return [fade_color for _ in range(self.pixel_count)]
 
     def _render_warmup_fill_frame(self, progress):
         white_raw = (self.IDLE_WHITE_MAX, self.IDLE_WHITE_MAX, self.IDLE_WHITE_MAX)
