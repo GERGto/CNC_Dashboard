@@ -488,8 +488,8 @@ class BackendApp:
     def disconnect_wifi(self):
         return self.wifi_service.disconnect_wifi()
 
-    def scan_wifi_networks(self):
-        return self.wifi_service.scan_wifi_networks()
+    def scan_wifi_networks(self, force_refresh=True):
+        return self.wifi_service.scan_wifi_networks(force_refresh=force_refresh)
 
     def get_wifi_autoconnect(self):
         return bool(self.store.load_ui_settings().get("wifiAutoConnect", False))

@@ -291,12 +291,13 @@ set_boot_config_value hdmi_blanking 0 "$boot_config"
 set_boot_config_value 'hdmi_force_hotplug:1' 1 "$boot_config"
 set_boot_config_value 'hdmi_group:1' 2 "$boot_config"
 set_boot_config_value 'hdmi_mode:1' 87 "$boot_config"
-# Give the firmware the exact detailed timing from the patched EDID (49.00MHz,
-# 1024 1072 1168 1312, 600 603 613 624). The earlier hdmi_cvt produced a
-# slightly different CVT timing, so the panel had to re-lock its PLL when the
-# kernel switched to the EDID mode - one avoidable off/on cycle per boot.
+# Give the firmware the exact detailed timing from the patched EDID (51.20MHz,
+# 1024 1072 1168 1344, 600 611 621 635). One timing for firmware, kernel and
+# Xorg means the panel locks its PLL once per boot. The 51.20 MHz clock is
+# deliberate: at 49.00 MHz the TMDS rate was 490 Mbit/s, whose 5th harmonic
+# (2.45 GHz) sits mid 2.4 GHz band - every Wi-Fi scan sheared the panel image.
 sed -i '/^[[:space:]]*hdmi_cvt:1=/d' "$boot_config"
-set_boot_config_value 'hdmi_timings:1' '1024 0 48 96 144 600 1 3 10 11 0 0 0 60 0 49000000 6' "$boot_config"
+set_boot_config_value 'hdmi_timings:1' '1024 0 48 96 176 600 1 11 10 14 0 0 0 60 0 51200000 6' "$boot_config"
 set_boot_config_value 'hdmi_drive:1' 2 "$boot_config"
 # Keep CPU/core clocks at turbo through the Chromium cold start. Display
 # shearing (HVS underruns) was observed exactly during that load peak.

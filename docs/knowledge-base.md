@@ -447,7 +447,23 @@ Kiosk-Session neu starten:
 sudo systemctl restart cnc-dashboard-kiosk.service
 ```
 
-### Chromium-Kiosk korrekt auf `1024x600`
+### Displaytiming: 51,20 MHz wegen 2,4-GHz-WLAN-Interferenz
+
+Das Panel lief zunaechst mit einem 49,00-MHz-Timing (1312x624 Totals). Dabei
+betraegt die TMDS-Datenrate 490 Mbit/s pro Lane; deren 5. Harmonische liegt bei
+exakt 2,45 GHz - mitten im 2,4-GHz-WLAN-Band. Folge: Jede aktive WLAN-Phase
+(Scan im WLAN-Dialog, Association beim Boot, periodische Hintergrund-Scans)
+stoerte den HDMI-Link, und der Panel-Receiver verlor fuer Sekunden den
+H-Sync - sichtbar als diagonal verzerrtes ("warped") Bild. Nachweis: Waehrend
+der Verzerrung waren x11grab-Frames sauber und `hvs_underrun` blieb 0; die
+Stoerung passiert also hinter dem Framebuffer auf dem Kabelweg.
+
+Aktuelles Timing ueberall (Firmware `hdmi_timings:1`, EDID-DTD aus
+`generate-edid.py`, Xorg-Modeline): `51.20 MHz, 1024 1072 1168 1344,
+600 611 621 635, -HSync +VSync` (59,99 Hz). Die 5. Harmonische liegt damit bei
+2,56 GHz, ausserhalb des WLAN-Bands. Bei einer kuenftigen Timing-Aenderung
+darauf achten, dass `Pixeltakt x 10 x n` fuer kleine `n` nicht in
+2,401-2,484 GHz faellt.
 
 Auf dem Zielsystem wurde der Chromium-Kiosk erfolgreich so eingerichtet, dass das Dashboard ohne schwarzen Balken und ohne abgeschnittenen rechten Rand auf dem `1024x600`-Display angezeigt wird.
 

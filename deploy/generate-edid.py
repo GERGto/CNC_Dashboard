@@ -3,8 +3,14 @@
 
 The MPI7002 advertises its native 1024x600 timing with sync intervals that the
 Raspberry Pi vc4 KMS driver rejects.  Keep all identification/CEA data from the
-real display, but replace the preferred detailed timing with the equivalent
-timing that vc4 accepts and that the kiosk has historically used via xrandr.
+real display, but replace the preferred detailed timing with a timing that vc4
+accepts.
+
+The pixel clock is deliberately 51.20 MHz: at the previous 49.00 MHz the TMDS
+data rate was 490 Mbit/s per lane, whose 5th harmonic (2.45 GHz) sits in the
+middle of the 2.4 GHz band. Every Wi-Fi scan or transmit burst visibly sheared
+the panel image for seconds. At 51.20 MHz the harmonic lands at 2.56 GHz,
+outside the Wi-Fi band.
 """
 
 from __future__ import annotations
@@ -15,12 +21,12 @@ from pathlib import Path
 
 HEADER = bytes.fromhex("00ffffffffffff00")
 
-# 49.00 MHz, 1024 1072 1168 1312, 600 603 613 624, -HSync +VSync
+# 51.20 MHz, 1024 1072 1168 1344, 600 611 621 635, -HSync +VSync (60.02 Hz)
 DTD_1024X600 = bytes.fromhex(
-    "2413"  # pixel clock in 10 kHz units
-    "002041"  # horizontal active/blanking: 1024/288
-    "581820"  # vertical active/blanking: 600/24
-    "30603a00"  # sync offsets and widths: 48/96, 3/10
+    "0014"  # pixel clock in 10 kHz units (5120)
+    "004041"  # horizontal active/blanking: 1024/320
+    "582320"  # vertical active/blanking: 600/35
+    "3060ba00"  # sync offsets and widths: 48/96, 11/10
     "ff9600"  # physical image size: 255 x 150 mm
     "0000"  # borders
     "1c"  # digital separate sync, -HSync +VSync

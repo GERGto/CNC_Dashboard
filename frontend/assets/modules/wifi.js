@@ -132,8 +132,12 @@ export function createWifiController({
     }
   }
 
-  function loadNetworks(preferredSsid = "") {
-    return fetch(`${apiBase}/api/wifi/networks`)
+  // forceRefresh triggers a real Wi-Fi scan. That sweeps every channel and the
+  // RF bursts visibly disturb the panel's HDMI link, so only the explicit
+  // "Neu laden" button asks for it; opening the dialog uses cached results.
+  function loadNetworks(preferredSsid = "", forceRefresh = false) {
+    const query = forceRefresh ? "?refresh=1" : "";
+    return fetch(`${apiBase}/api/wifi/networks${query}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const networks = data && Array.isArray(data.networks) ? data.networks : [];
@@ -400,7 +404,7 @@ export function createWifiController({
       ev.preventDefault();
       openPasswordKeyboard();
     });
-    scanBtn.addEventListener("click", () => loadNetworks(ssidSelect.value));
+    scanBtn.addEventListener("click", () => loadNetworks(ssidSelect.value, true));
     saveBtn.addEventListener("click", saveConfig);
     connectBtn.addEventListener("click", connectWifi);
     disconnectBtn.addEventListener("click", disconnectWifi);

@@ -93,7 +93,12 @@ def create_request_handler(app):
                 return json_response(self, 200, app.get_settings())
 
             if path == "/api/wifi/networks":
-                return json_response(self, 200, {"networks": app.scan_wifi_networks()})
+                # Default to the cached scan table: an active scan disturbs the
+                # HDMI link to the panel, so only an explicit refresh scans.
+                force_refresh = parse_bool_query_flag(params, "refresh")
+                return json_response(
+                    self, 200, {"networks": app.scan_wifi_networks(force_refresh=force_refresh)}
+                )
 
             if path == "/api/wifi/status":
                 return json_response(self, 200, app.get_wifi_status())

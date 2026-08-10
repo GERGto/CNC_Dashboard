@@ -163,7 +163,15 @@ class WiFiService:
 
         return True, ""
 
-    def scan_wifi_networks(self):
+    def scan_wifi_networks(self, force_refresh=True):
+        """Collect visible SSIDs.
+
+        An active scan sweeps every regulatory channel, including the 2.4 GHz
+        band, and the resulting RF bursts disturb the HDMI link to the machine
+        panel (visibly sheared image for several seconds). Opening the Wi-Fi
+        dialog therefore reads the kernel's cached scan table instead; only an
+        explicit refresh triggers a new active scan.
+        """
         candidates = []
         interface = self.get_wifi_interface()
 
@@ -176,15 +184,29 @@ class WiFiService:
                 sudo_only=True,
             )
 
-            result = run_command(
-                ["iw", "dev", interface, "scan", "ap-force"],
-                timeout=max(5, self.config.wifi_scan_timeout_sec),
-                allow_sudo=True,
-                prefer_sudo=True,
-                sudo_only=True,
-            )
-            if result and result.returncode == 0:
-                candidates.extend(self._parse_scan_results_from_iw(result.stdout))
+            if not force_refresh:
+                cached = run_command(
+                    ["iw", "dev", interface, "scan", "dump"],
+                    timeout=5,
+                    allow_sudo=True,
+                    prefer_sudo=True,
+                    sudo_only=True,
+                )
+                if cached and cached.returncode == 0:
+                    candidates.extend(self._parse_scan_results_from_iw(cached.stdout))
+
+            # An empty cache (fresh boot) still needs one real scan, otherwise
+            # the dialog would offer no networks at all.
+            if not candidates:
+                result = run_command(
+                    ["iw", "dev", interface, "scan", "ap-force"],
+                    timeout=max(5, self.config.wifi_scan_timeout_sec),
+                    allow_sudo=True,
+                    prefer_sudo=True,
+                    sudo_only=True,
+                )
+                if result and result.returncode == 0:
+                    candidates.extend(self._parse_scan_results_from_iw(result.stdout))
 
             if not candidates:
                 trigger_result = run_command(
