@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="assets/boot.css?v=20260809-01" />
   <link rel="stylesheet" href="assets/app.css?v=20260810-01" />
   <link rel="stylesheet" href="assets/ui-common.css?v=20260426-05" />
-  <script type="module" src="assets/app.js?v=20260810-03"></script>
+  <script type="module" src="assets/app.js?v=20260811-01"></script>
 </head>
 
 <body>
@@ -240,6 +240,29 @@
           <p class="smb-guide__note">Nach dem Speichern den DDCS neu starten. „Net Disk“ zeigt anschließend die Pi-Freigabe <strong>share</strong>.</p>
         </div>
         <div class="smb-guide__actions"><button class="btn" id="closeSmbGuideBtn" type="button">Schließen</button></div>
+      </div>
+    </div>
+
+    <div class="modal" id="docsModal" role="dialog" aria-modal="true" aria-labelledby="docsTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close-docs="true"></div>
+      <div class="modal__panel docs__panel" role="document">
+        <header class="docs__header">
+          <h2 class="modal__title" id="docsTitle">System-Anleitung</h2>
+          <p class="docs__doc-title" id="docsDocumentTitle">-</p>
+        </header>
+        <div class="docs__body">
+          <nav class="docs__list" id="docsList" aria-label="Dokumente"></nav>
+          <div class="docs__reader">
+            <p class="docs__status" id="docsStatus" hidden aria-live="polite"></p>
+            <article class="docs__content md" id="docsContent"></article>
+          </div>
+        </div>
+        <div class="docs__actions">
+          <button class="btn" id="docsPrevBtn" type="button">Zurück</button>
+          <span class="docs__pager" id="docsPagerLabel">-</span>
+          <button class="btn" id="docsNextBtn" type="button">Weiter</button>
+          <button class="btn btn--close" id="docsCloseBtn" type="button">Schließen</button>
+        </div>
       </div>
     </div>
 

@@ -155,7 +155,10 @@
       border-top:2px solid var(--line);
     }
 
-    .network-block__title{
+    /* Every mini heading inside a card shares one rule so the three cards
+       cannot drift apart again. */
+    .network-block__title,
+    .remote-maintenance__title{
       margin:0;
       font-size:11px;
       line-height:1;
@@ -486,6 +489,43 @@
       display:none;
     }
 
+    .spindle-facts{
+      display:grid;
+      grid-template-columns:minmax(0, 1.35fr) minmax(0, 1fr);
+      gap:0;
+      align-items:center;
+    }
+
+    .spindle-fact{
+      min-width:0;
+      display:grid;
+      gap:2px;
+    }
+
+    .spindle-fact:not(:first-child){
+      padding-left:8px;
+      border-left:2px solid var(--line);
+    }
+
+    .spindle-fact__label{
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:0.14em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .spindle-fact__value{
+      min-width:0;
+      font-size:17px;
+      line-height:1.1;
+      font-weight:900;
+      font-variant-numeric:tabular-nums;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
     .remote-card__body{
       display:grid;
       grid-template-columns:108px minmax(0, 1fr);
@@ -538,15 +578,6 @@
       gap:7px;
       padding-top:9px;
       border-top:2px solid var(--line);
-    }
-
-    .remote-maintenance__title{
-      margin:0;
-      font-size:11px;
-      line-height:1;
-      font-weight:900;
-      letter-spacing:0.13em;
-      text-transform:uppercase;
     }
 
     .remote-maintenance__row{
@@ -757,6 +788,19 @@
                 </div>
               </div>
             </section>
+
+            <section class="system-cluster system-cluster--spindle" aria-label="Spindel">
+              <div class="spindle-facts">
+                <div class="spindle-fact">
+                  <span class="spindle-fact__label">Spindel zuletzt aktiv</span>
+                  <strong class="spindle-fact__value" id="systemSpindleLastActiveValue">-</strong>
+                </div>
+                <div class="spindle-fact">
+                  <span class="spindle-fact__label">Spindelanläufe</span>
+                  <strong class="spindle-fact__value" id="systemSpindleStartsValue">0</strong>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       </article>
@@ -830,6 +874,10 @@
             </div>
             <p class="remote-maintenance__hint" id="tailscaleHint">Sicherer Wartungszugang über Tailscale.</p>
           </section>
+        </div>
+
+        <div class="sys-card__footer sys-card__footer--stacked">
+          <button class="sys-card__btn" id="openDocsBtn" type="button">System-Anleitung</button>
         </div>
       </article>
     </section>
@@ -927,7 +975,10 @@
     const systemStorageValue = document.getElementById("systemStorageValue");
     const systemStorageBar = document.getElementById("systemStorageBar");
     const systemVersionValue = document.getElementById("systemVersionValue");
+    const systemSpindleLastActiveValue = document.getElementById("systemSpindleLastActiveValue");
+    const systemSpindleStartsValue = document.getElementById("systemSpindleStartsValue");
     const openWifiConfigBtn = document.getElementById("openWifiConfigBtn");
+    const openDocsBtn = document.getElementById("openDocsBtn");
     const openSmbGuideBtn = document.getElementById("openSmbGuideBtn");
     const smbGuideModal = document.getElementById("smbGuideModal");
     const smbSharePath = document.getElementById("smbSharePath");
@@ -954,7 +1005,7 @@
     let wifiSsid = "";
     let wifiIssue = "";
     let wifiIpAddress = "";
-    let lastQrIp = "";
+    let lastQrValue = "";
     let tailscaleConnected = false;
 
     function setBar(el, percent){
@@ -980,6 +1031,32 @@
         return "-";
       }
       return `${Math.round(Number(value))} %`;
+    }
+
+    function pad2(value){
+      return String(value).padStart(2, "0");
+    }
+
+    // Within the last day the date carries no information - only the clock time
+    // is shown. Older entries need the date to stay unambiguous.
+    function formatLastActive(rawValue){
+      const raw = String(rawValue || "").trim();
+      if (!raw){
+        return "Noch nie";
+      }
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())){
+        return "-";
+      }
+      const time = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+      if ((Date.now() - date.getTime()) < 24 * 60 * 60 * 1000){
+        return time;
+      }
+      return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}, ${time}`;
+    }
+
+    function formatCount(value){
+      return String(Math.max(0, Math.floor(Number(value) || 0)));
     }
 
     function normalizeAxisRuntimeSnapshot(raw){
@@ -1024,6 +1101,8 @@
       systemRamValue.textContent = formatPercent(data.ramUsedPercent, !!data.ramAvailable);
       systemStorageValue.textContent = formatPercent(data.storageUsedPercent, !!data.storageAvailable);
       systemVersionValue.textContent = String(data.softwareVersion || "-").trim() || "-";
+      systemSpindleLastActiveValue.textContent = formatLastActive(data.spindleLastActiveAt);
+      systemSpindleStartsValue.textContent = formatCount(data.spindleStartCount);
 
       const bars = data.bars && typeof data.bars === "object" ? data.bars : {};
       setBar(systemEnclosureBar, bars.enclosureTemperaturePercent);
@@ -1034,7 +1113,7 @@
     }
 
     function setRemotePlaceholder(qrText, hintText, urlText){
-      lastQrIp = "";
+      lastQrValue = "";
       remoteCard.classList.remove("is-ready");
       qrContainer.classList.add("is-placeholder");
       qrContainer.textContent = qrText;
@@ -1042,22 +1121,25 @@
       remoteUrlEl.textContent = urlText;
     }
 
+    // The hostname stays valid across DHCP leases, so it is the address that
+    // gets encoded. The IP remains visible as a fallback for networks whose
+    // router does not resolve local hostnames.
     function renderQrCode(ip){
       if (!ip){
         setRemotePlaceholder("IP wird ermittelt", "Die Netzwerkadresse wird noch aufgebaut.", "Wird ermittelt…");
         return;
       }
 
-      const url = `http://${ip}`;
+      const url = `http://${systemHostname}/`;
       remoteCard.classList.add("is-ready");
-      remoteHint.textContent = "QR-Code für den Direktzugriff im Heimnetz.";
+      remoteHint.textContent = `Falls der Name nicht auflöst: http://${ip}`;
       remoteUrlEl.textContent = url;
 
-      if (ip === lastQrIp){
+      if (url === lastQrValue){
         return;
       }
 
-      lastQrIp = ip;
+      lastQrValue = url;
       const qr = qrcode(0, "L");
       qr.addData(url, "Byte");
       qr.make();
@@ -1080,6 +1162,10 @@
     function openSmbGuide(){
       updateSmbSharePath();
       window.parent.postMessage({ type: "openSmbGuideModal", sharePath: currentSmbPath() }, location.origin);
+    }
+
+    function openDocs(){
+      window.parent.postMessage({ type: "openDocsModal" }, location.origin);
     }
 
     function closeSmbGuide(){
@@ -1262,6 +1348,7 @@
 
     openWifiConfigBtn.addEventListener("click", openWifiConfigModal);
     openSmbGuideBtn.addEventListener("click", openSmbGuide);
+    openDocsBtn.addEventListener("click", openDocs);
     closeSmbGuideBtn.addEventListener("click", closeSmbGuide);
     smbGuideModal.addEventListener("click", (ev) => {
       if (ev.target.closest("[data-close-smb-guide='true']")) closeSmbGuide();

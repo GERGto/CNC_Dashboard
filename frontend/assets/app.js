@@ -3,6 +3,7 @@ import { createWifiEastereggController } from "./modules/wifiEasteregg.js?v=2026
 import { createKeyboardController } from "./modules/keyboard.js";
 import { createWifiController } from "./modules/wifi.js";
 import { createMaintenanceController } from "./modules/maintenance.js?v=20260426-05";
+import { createDocsController } from "./modules/docs.js?v=20260811-01";
 
 // -----------------------------
 // Konfiguration
@@ -160,6 +161,15 @@ const wifiConnectFeedbackText = document.getElementById("wifiConnectFeedbackText
 const smbGuideModal = document.getElementById("smbGuideModal");
 const smbSharePath = document.getElementById("smbSharePath");
 const closeSmbGuideBtn = document.getElementById("closeSmbGuideBtn");
+const docsModal = document.getElementById("docsModal");
+const docsList = document.getElementById("docsList");
+const docsContent = document.getElementById("docsContent");
+const docsDocumentTitle = document.getElementById("docsDocumentTitle");
+const docsStatus = document.getElementById("docsStatus");
+const docsPagerLabel = document.getElementById("docsPagerLabel");
+const docsPrevBtn = document.getElementById("docsPrevBtn");
+const docsNextBtn = document.getElementById("docsNextBtn");
+const docsCloseBtn = document.getElementById("docsCloseBtn");
 const keyboardModal = document.getElementById("keyboardModal");
 const keyboardTitle = document.getElementById("keyboardTitle");
 const keyboardDisplayInput = document.getElementById("keyboardDisplayInput");
@@ -299,6 +309,20 @@ const maintenanceController = createMaintenanceController({
     guideNext: maintenanceGuideNext,
     taskDone: maintenanceTaskDone,
     dueDot: maintenanceDueDot,
+  },
+});
+const docsController = createDocsController({
+  apiBase: API_BASE,
+  elements: {
+    modal: docsModal,
+    list: docsList,
+    content: docsContent,
+    documentTitle: docsDocumentTitle,
+    status: docsStatus,
+    pagerLabel: docsPagerLabel,
+    prevButton: docsPrevBtn,
+    nextButton: docsNextBtn,
+    closeButton: docsCloseBtn,
   },
 });
 
@@ -1147,11 +1171,15 @@ smbGuideModal.addEventListener("click", (ev) => {
   }
 });
 closeSmbGuideBtn.addEventListener("click", closeSmbGuideModal);
+docsController.attachEventHandlers();
 window.addEventListener("keydown", (ev) => {
   if (keyboardController.handleDocumentKeydown(ev)){
     return;
   }
   if (maintenanceController.handleDocumentKeydown(ev)){
+    return;
+  }
+  if (docsController.handleDocumentKeydown(ev)){
     return;
   }
 
@@ -1381,6 +1409,7 @@ window.addEventListener("message", (ev) => {
       break;
     case "openWifiConfigModal": openWifiConfigModal(); break;
     case "openSmbGuideModal": openSmbGuideModal(typeof msg.sharePath === "string" ? msg.sharePath : ""); break;
+    case "openDocsModal": void docsController.open(); break;
     case "openKeyboard":
       openKeyboardModal({
         title: typeof msg.title === "string" ? msg.title : "Eingabe",

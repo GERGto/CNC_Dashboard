@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 
@@ -31,8 +32,19 @@ def read_json_dict(path):
 
 
 def write_json_dict(path, data):
-    with open(path, "w", encoding="utf-8") as handle:
+    # The appliance is switched off at the wall, so a plain truncating write can
+    # leave a half-written settings/tasks file behind. Write beside the target
+    # and rename: the reader either sees the old file or the complete new one.
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+    try:
+        os.chmod(temp_path, os.stat(path).st_mode & 0o7777)
+    except OSError:
+        pass
+    os.replace(temp_path, path)
 
 
 def json_response(handler, status, body):

@@ -15,6 +15,7 @@ EnvironmentFile=-/etc/cnc-dashboard/controller-smb.env
 Environment=PROGRAMS_DIRECTORY=/var/lib/cnc-dashboard/programs
 Environment=PROGRAMS_STATE_PATH=/var/lib/cnc-dashboard/programs-state.json
 Environment=PROGRAMS_SHARE_NAME=cnc-programs
+Environment=RECORDINGS_DIRECTORY=/var/lib/cnc-dashboard/recordings
 Environment=PROGRAM_UPLOAD_MAX_BYTES=104857600
 Environment=PROGRAM_SCAN_INTERVAL_SEC=2
 Environment=PROGRAM_SETTLE_SECONDS=5

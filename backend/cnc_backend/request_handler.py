@@ -10,6 +10,7 @@ from cnc_hardware.sensors import HardwareError, HardwareStateConflictError
 
 from .common import clamp, json_response, parse_bool_query_flag, send_sse
 from .program_transfer_service import ProgramTransferError
+from .recording_service import RecordingError
 
 
 def create_request_handler(app):
@@ -60,6 +61,17 @@ def create_request_handler(app):
             if path == "/api/camera/status":
                 ensure_active = parse_bool_query_flag(params, "ensure")
                 return json_response(self, 200, app.get_camera_status(ensure_active=ensure_active))
+
+            if path == "/api/camera/recording":
+                return json_response(self, 200, app.get_camera_recording_status())
+
+            recording_name = self._recording_name_from_suffix(path, "/download")
+            if recording_name is not None:
+                try:
+                    file_path = app.get_camera_recording_path(recording_name)
+                except RecordingError as exc:
+                    return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
+                return self._send_binary_file(file_path, os.path.basename(file_path), "video/mp4")
 
             if path == "/api/machine/status":
                 return json_response(self, 200, app.get_machine_status())
@@ -120,6 +132,15 @@ def create_request_handler(app):
                 except ProgramTransferError as exc:
                     return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
 
+            if path == "/api/docs":
+                document_id = str((params.get("id") or [""])[0]).strip()
+                if not document_id:
+                    return json_response(self, 200, app.get_docs_index())
+                document = app.get_doc(document_id)
+                if document is None:
+                    return json_response(self, 404, {"error": "Document not found"})
+                return json_response(self, 200, document)
+
             if path == "/api/maintenance/tasks":
                 return json_response(self, 200, {"tasks": app.get_maintenance_tasks()})
 
@@ -166,6 +187,15 @@ def create_request_handler(app):
                     http_status,
                     {"ok": ok, "message": message, "status": status},
                 )
+
+            if parsed.path in {"/api/camera/recording/start", "/api/camera/recording/stop"}:
+                try:
+                    if parsed.path.endswith("/start"):
+                        return json_response(self, 201, {"ok": True, "status": app.start_camera_recording()})
+                    status, recording = app.stop_camera_recording()
+                    return json_response(self, 200, {"ok": True, "status": status, "recording": recording})
+                except RecordingError as exc:
+                    return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
 
             if parsed.path == "/api/shutdown":
                 ok, message = app.request_system_shutdown()
@@ -384,6 +414,13 @@ def create_request_handler(app):
 
         def do_DELETE(self):
             parsed = urlparse(self.path)
+            recording_name = self._recording_name_from_suffix(parsed.path, "")
+            if recording_name is not None:
+                try:
+                    return json_response(self, 200, app.delete_camera_recording(recording_name))
+                except RecordingError as exc:
+                    return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
+
             program_name = self._program_name_from_suffix(parsed.path, "")
             if program_name is None:
                 return json_response(self, 404, {"error": "Not found"})
@@ -453,8 +490,7 @@ def create_request_handler(app):
             return json_response(self, 200, {"ok": True, **result})
 
         @staticmethod
-        def _program_name_from_suffix(path, suffix):
-            prefix = "/api/programs/"
+        def _name_from_path(path, prefix, suffix):
             if not path.startswith(prefix):
                 return None
             encoded_name = path[len(prefix) :]
@@ -466,11 +502,25 @@ def create_request_handler(app):
                 return None
             return unquote(encoded_name)
 
+        @classmethod
+        def _program_name_from_suffix(cls, path, suffix):
+            return cls._name_from_path(path, "/api/programs/", suffix)
+
+        @classmethod
+        def _recording_name_from_suffix(cls, path, suffix):
+            return cls._name_from_path(path, "/api/camera/recordings/", suffix)
+
         def _send_program_file(self, file_path, metadata):
+            return self._send_binary_file(
+                file_path,
+                str(metadata.get("name", "programm.nc")),
+                "application/octet-stream",
+            )
+
+        def _send_binary_file(self, file_path, file_name, content_type):
             file_size = os.path.getsize(file_path)
-            file_name = str(metadata.get("name", "programm.nc"))
             self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(file_size))
             self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(file_name)}")
             self.send_header("Access-Control-Allow-Origin", "*")

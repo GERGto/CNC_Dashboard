@@ -67,6 +67,19 @@ class SystemInfoService:
                     "z": 0,
                 }
 
+        spindle_start_count = 0
+        spindle_last_active_at = ""
+        if self.backend_app is not None and hasattr(self.backend_app, "get_spindle_start_count"):
+            try:
+                spindle_start_count = max(0, int(self.backend_app.get_spindle_start_count() or 0))
+            except (ValueError, TypeError):
+                spindle_start_count = 0
+        if self.backend_app is not None and hasattr(self.backend_app, "get_spindle_last_active_at"):
+            try:
+                spindle_last_active_at = str(self.backend_app.get_spindle_last_active_at() or "").strip()
+            except (ValueError, TypeError):
+                spindle_last_active_at = ""
+
         enclosure = self.hardware_backend.get_enclosure_temperature(force_refresh=False)
         enclosure_temp_c = enclosure.get("temperatureC") if isinstance(enclosure, dict) else None
         enclosure_available = bool(isinstance(enclosure, dict) and enclosure.get("available"))
@@ -87,6 +100,8 @@ class SystemInfoService:
                 axis: round(axis_runtime_sec[axis] / 3600.0, 1)
                 for axis in ("x", "y", "z")
             },
+            "spindleStartCount": spindle_start_count,
+            "spindleLastActiveAt": spindle_last_active_at,
             "enclosureTemperatureC": enclosure_temp_c if enclosure_available else None,
             "enclosureTemperatureAvailable": enclosure_available,
             "cpuTemperatureC": cpu_temp_c,

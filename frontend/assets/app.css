@@ -638,3 +638,246 @@ body.is-shutting-down .app{
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* -----------------------------
+   System-Anleitung (Docs-Modal)
+   ----------------------------- */
+
+/* Doubled class selector: ui-common.css sets .modal__panel afterwards and
+   would otherwise win the width with equal specificity. */
+.modal__panel.docs__panel{
+  width: min(980px, 96vw);
+  height: min(560px, 94vh);
+  height: min(560px, 94dvh);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.docs__header{
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+}
+
+.docs__header .modal__title{
+  margin: 0;
+}
+
+.docs__doc-title{
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.docs__body{
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.docs__list{
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding-right: 8px;
+  border-right: 2px solid var(--line);
+  -webkit-overflow-scrolling: touch;
+}
+
+.docs__group{
+  margin: 10px 0 2px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #777;
+}
+
+.docs__group:first-child{
+  margin-top: 0;
+}
+
+.docs__entry{
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 2px solid transparent;
+  border-radius: 2px;
+  background: #f2f2f2;
+  color: #000;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.docs__entry.is-active{
+  border-color: var(--line);
+  background: #fff;
+  font-weight: 900;
+}
+
+.docs__reader{
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+}
+
+.docs__status{
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #555;
+}
+
+.docs__content{
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 8px;
+  -webkit-overflow-scrolling: touch;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.docs__actions{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.docs__pager{
+  font-size: 14px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  min-width: 58px;
+  text-align: center;
+}
+
+/* Rendered Markdown */
+
+.md{
+  font-size: 15px;
+  line-height: 1.45;
+  color: #000;
+}
+
+.md__heading{
+  margin: 18px 0 6px;
+  line-height: 1.15;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.md__heading:first-child{
+  margin-top: 0;
+}
+
+.md__heading--1{ font-size: 22px; }
+.md__heading--2{
+  font-size: 18px;
+  padding-top: 10px;
+  border-top: 2px solid var(--line);
+}
+.md__heading--3{ font-size: 16px; }
+.md__heading--4,
+.md__heading--5,
+.md__heading--6{ font-size: 14px; }
+
+.md__paragraph{
+  margin: 0 0 10px;
+}
+
+.md__list{
+  margin: 0 0 10px;
+  padding-left: 22px;
+  display: grid;
+  gap: 4px;
+}
+
+.md__list .md__list{
+  margin: 4px 0 0;
+}
+
+.md__pre{
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 2px solid var(--line);
+  background: #f2f2f2;
+  overflow-x: auto;
+  font: 700 13px/1.35 Consolas, "Courier New", monospace;
+  white-space: pre;
+}
+
+.md__code{
+  padding: 1px 4px;
+  border: 1px solid #ccc;
+  background: #f2f2f2;
+  font: 700 13px/1.2 Consolas, "Courier New", monospace;
+  overflow-wrap: anywhere;
+}
+
+.md__quote{
+  margin: 0 0 12px;
+  padding: 8px 11px;
+  border-left: 5px solid var(--line);
+  background: #f2f2f2;
+  font-weight: 700;
+}
+
+.md__rule{
+  margin: 14px 0;
+  border: 0;
+  border-top: 2px solid var(--line);
+}
+
+.md__table-scroll{
+  margin: 0 0 12px;
+  overflow-x: auto;
+}
+
+.md__table{
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.md__table th,
+.md__table td{
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md__table th{
+  background: #f2f2f2;
+  font-weight: 900;
+}
+
+.md__link{
+  color: #000;
+  font-weight: 900;
+  text-decoration: underline;
+}
+
+.md__url{
+  font: 700 12px/1.2 Consolas, "Courier New", monospace;
+  color: #555;
+  overflow-wrap: anywhere;
+}

@@ -101,6 +101,7 @@ class SettingsStore:
             "wifiPassword": "",
             "wifiAutoConnect": False,
             "wifiConnected": False,
+            "tailscaleEnabled": False,
             "axisVisibility": {
                 "spindle": True,
                 "x": True,
@@ -126,6 +127,7 @@ class SettingsStore:
             },
             "backendStartCount": 0,
             "spindleStartCount": 0,
+            "spindleLastActiveAt": "",
             "eStopCount": 0,
             "manualEStopCount": 0,
             "hardwareEStopCount": 0,
@@ -184,6 +186,11 @@ class SettingsStore:
 
     def sanitize_machine_counter(self, raw_value):
         return self.sanitize_spindle_runtime_sec(raw_value)
+
+    def sanitize_timestamp(self, raw_value):
+        if not isinstance(raw_value, str):
+            return ""
+        return raw_value.strip()
 
     def normalize_axis_runtime_sec(self, raw_value):
         defaults = self.default_machine_stats()["axisRuntimeSec"]
@@ -360,6 +367,7 @@ class SettingsStore:
             "wifiPassword": wifi_password,
             "wifiAutoConnect": bool(data.get("wifiAutoConnect", defaults["wifiAutoConnect"])),
             "wifiConnected": False,
+            "tailscaleEnabled": bool(data.get("tailscaleEnabled", defaults["tailscaleEnabled"])),
             "axisVisibility": self.normalize_axis_visibility(data.get("axisVisibility")),
             "axisLoadCalibration": self.normalize_axis_load_calibration(data.get("axisLoadCalibration")),
         }
@@ -402,6 +410,9 @@ class SettingsStore:
             "spindleStartCount": self.sanitize_machine_counter(
                 raw.get("spindleStartCount", defaults["spindleStartCount"])
             ),
+            "spindleLastActiveAt": self.sanitize_timestamp(
+                raw.get("spindleLastActiveAt", defaults["spindleLastActiveAt"])
+            ),
             "eStopCount": self.sanitize_machine_counter(
                 raw.get("eStopCount", defaults["eStopCount"])
             ),
@@ -422,6 +433,7 @@ class SettingsStore:
             "axisRuntimeSec": self.normalize_axis_runtime_sec(merged.get("axisRuntimeSec", {})),
             "backendStartCount": self.sanitize_machine_counter(merged.get("backendStartCount", 0)),
             "spindleStartCount": self.sanitize_machine_counter(merged.get("spindleStartCount", 0)),
+            "spindleLastActiveAt": self.sanitize_timestamp(merged.get("spindleLastActiveAt", "")),
             "eStopCount": self.sanitize_machine_counter(merged.get("eStopCount", 0)),
             "manualEStopCount": self.sanitize_machine_counter(merged.get("manualEStopCount", 0)),
             "hardwareEStopCount": self.sanitize_machine_counter(merged.get("hardwareEStopCount", 0)),

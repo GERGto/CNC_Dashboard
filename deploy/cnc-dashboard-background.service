@@ -4,5 +4,5 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/systemctl start caddy.service smbd.service nmbd.service tailscaled.service
+ExecStart=/usr/local/bin/cnc-dashboard-background.sh
 RemainAfterExit=yes

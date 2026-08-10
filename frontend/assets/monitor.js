@@ -141,30 +141,27 @@ const state = {
   backendStartCount: 0,
   activeTab: "files",
   files: [],
+  programs: [],
   programController: { enabled: false, configured: false, issue: "" },
   allowedProgramExtensions: [".gcode", ".nc", ".tap", ".ngc"],
   uploadBusy: false,
   cameraReaderSupported:
     typeof window.MediaMTXWebRTCReader === "function" && typeof window.RTCPeerConnection !== "undefined",
-  recordingSupported: typeof window.MediaRecorder !== "undefined",
+  recordingSupported: false,
   recordingActive: false,
   recordingSeconds: 0,
+  recordingBusy: false,
+  recordingError: "",
+  recordings: [],
   pollingBusy: false,
 };
 
+// The recording itself runs on the Pi; the browser only drives start/stop and
+// keeps a local seconds counter between status polls.
 const recording = {
-  canvas: null,
-  context: null,
-  stream: null,
-  mediaRecorder: null,
-  chunks: [],
-  mimeType: "",
-  downloadOnStop: true,
-  drawTimer: null,
   timer: null,
 };
 
-const dynamicObjectUrls = new Set();
 const completingTaskIds = new Set();
 const completedTaskIds = new Set();
 let axesSource = null;
@@ -224,13 +221,6 @@ function createCameraStreamBase() {
   }
 
   return window.location.origin;
-}
-
-function generateId() {
-  if (window.crypto && typeof window.crypto.randomUUID === "function") {
-    return window.crypto.randomUUID();
-  }
-  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function clampPercent(value) {
@@ -400,9 +390,7 @@ function ensureCameraReader() {
       if (connectionToken !== cameraConnectionToken || cameraReaderUrl !== whepUrl) {
         return;
       }
-      if (state.recordingActive) {
-        stopRecording(false);
-      }
+      // The recording runs on the Pi and survives a broken browser stream.
       state.cameraLoaded = false;
       state.cameraError = message
         ? `MediaMTX/WebRTC-Verbindung unterbrochen: ${message}`
@@ -467,12 +455,13 @@ function renderToolbar() {
     ? "Gehäuse-Lüfter schalten"
     : "Gehäuse-Lüfter ist aktuell nicht konfiguriert";
 
+  const recordingReady = state.recordingSupported && !state.recordingBusy;
   dom.recordToggleBtn.classList.toggle("is-recording", state.recordingActive);
-  dom.recordToggleBtn.classList.toggle("is-disabled", !state.recordingSupported);
-  dom.recordToggleBtn.disabled = !state.recordingSupported;
+  dom.recordToggleBtn.classList.toggle("is-disabled", !recordingReady);
+  dom.recordToggleBtn.disabled = !recordingReady;
   dom.recordToggleBtn.title = state.recordingSupported
-    ? "Browser-Aufnahme des Livebilds"
-    : "MediaRecorder wird im Browser nicht unterstuetzt";
+    ? state.recordingError || "MP4-Aufnahme des Livebilds auf dem Pi"
+    : "Aufnahme steht auf diesem System nicht zur Verfuegung";
 
   dom.recordToggleIcon.innerHTML = state.recordingActive ? ICONS.stop : ICONS.rec;
   dom.recordToggleLabel.textContent = state.recordingActive
@@ -568,24 +557,25 @@ function renderTabs() {
   dom.maintenancePanel.hidden = filesActive;
 }
 
-function createFileEntry(name, sizeBytes, downloadUrl) {
-  return {
-    id: generateId(),
-    name: String(name || "datei"),
-    sizeLabel: formatFileSize(sizeBytes),
-    dateLabel: formatDate(new Date()),
-    downloadUrl,
-    source: "browser",
-    transferState: "localBrowser",
-    transferMessage: "Nur in dieser Browser-Sitzung verfügbar",
-  };
-}
+// Recordings and CNC programs both live on the Pi, so the list is composed
+// from the two latest snapshots instead of being mutated in place.
+function rebuildFileList() {
+  const recordingFiles = state.recordings.map((entry) => {
+    const name = String(entry?.name || "aufnahme.mp4");
+    const createdAt = new Date(String(entry?.createdAt || ""));
+    return {
+      id: `recording:${name}`,
+      name,
+      sizeLabel: formatFileSize(entry?.sizeBytes),
+      dateLabel: Number.isNaN(createdAt.getTime()) ? "-" : formatDate(createdAt),
+      downloadUrl: `${state.apiBase}${String(entry?.downloadPath || "")}`,
+      source: "recording",
+      transferState: "recording",
+      transferMessage: "Kamera-Aufnahme auf dem Pi",
+    };
+  });
 
-function applyProgramsSnapshot(snapshot) {
-  const payload = snapshot && typeof snapshot === "object" ? snapshot : {};
-  const browserFiles = state.files.filter((file) => file.source === "browser");
-  const programs = Array.isArray(payload.programs) ? payload.programs : [];
-  const serverFiles = programs.map((program) => {
+  const programFiles = state.programs.map((program) => {
     const name = String(program?.name || "programm.nc");
     const modifiedAt = new Date(String(program?.modifiedAt || ""));
     return {
@@ -599,7 +589,14 @@ function applyProgramsSnapshot(snapshot) {
       transferMessage: String(program?.transferMessage || ""),
     };
   });
-  state.files = [...browserFiles, ...serverFiles];
+
+  state.files = [...recordingFiles, ...programFiles];
+}
+
+function applyProgramsSnapshot(snapshot) {
+  const payload = snapshot && typeof snapshot === "object" ? snapshot : {};
+  state.programs = Array.isArray(payload.programs) ? payload.programs : [];
+  rebuildFileList();
   state.programController = payload.controller && typeof payload.controller === "object"
     ? payload.controller
     : { enabled: false, configured: false, issue: "" };
@@ -616,7 +613,7 @@ function getTransferStateView(file) {
     failed: { label: "Übertragung fehlgeschlagen", className: "is-error" },
     waitingForController: { label: "Lokal bereit · Controller fehlt", className: "is-waiting" },
     pending: { label: "Lokal bereit", className: "is-pending" },
-    localBrowser: { label: "Browser-Datei", className: "is-waiting" },
+    recording: { label: "Kamera-Aufnahme", className: "is-success" },
   };
   return views[stateId] || views.pending;
 }
@@ -977,18 +974,21 @@ async function refreshStaticData() {
   state.pollingBusy = true;
   try {
     const cameraStatusPath = shouldEnsureCameraStream() ? "/api/camera/status?ensure=1" : "/api/camera/status";
-    const [hardware, machineStatus, maintenanceTasks, cameraStatus, programsSnapshot] = await Promise.all([
-      fetchJson("/api/hardware?refresh=1"),
-      fetchJson("/api/machine/status"),
-      fetchJson("/api/maintenance/tasks"),
-      fetchJson(cameraStatusPath),
-      fetchJson("/api/programs"),
-    ]);
+    const [hardware, machineStatus, maintenanceTasks, cameraStatus, programsSnapshot, recordingStatus] =
+      await Promise.all([
+        fetchJson("/api/hardware?refresh=1"),
+        fetchJson("/api/machine/status"),
+        fetchJson("/api/maintenance/tasks"),
+        fetchJson(cameraStatusPath),
+        fetchJson("/api/programs"),
+        fetchJson("/api/camera/recording"),
+      ]);
 
     applyHardwareSnapshot(hardware);
     applyMachineStatus(machineStatus);
     applyTasks(maintenanceTasks?.tasks);
     applyCameraStatus(cameraStatus);
+    applyRecordingStatus(recordingStatus);
     applyProgramsSnapshot(programsSnapshot);
     renderAll();
   } catch (_error) {
@@ -1088,37 +1088,22 @@ async function completeMaintenanceTask(taskId) {
 }
 
 async function deleteFile(file) {
-  if (file?.source === "server") {
-    try {
-      const response = await fetch(`${state.apiBase}/api/programs/${encodeURIComponent(file.name)}`, {
-        method: "DELETE",
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload?.ok === false) {
-        throw new Error(payload?.error || `HTTP ${response.status}`);
-      }
-      showToast(`Gelöscht: ${file.name}`);
-      await refreshStaticData();
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Datei konnte nicht gelöscht werden.", true);
-    }
-    return;
-  }
+  const deletePath =
+    file?.source === "recording"
+      ? `/api/camera/recordings/${encodeURIComponent(file.name)}`
+      : `/api/programs/${encodeURIComponent(file?.name || "")}`;
 
-  const nextFiles = [];
-  state.files.forEach((candidate) => {
-    if (candidate.id === file?.id) {
-      if (candidate.downloadUrl && dynamicObjectUrls.has(candidate.downloadUrl)) {
-        URL.revokeObjectURL(candidate.downloadUrl);
-        dynamicObjectUrls.delete(candidate.downloadUrl);
-      }
-      return;
+  try {
+    const response = await fetch(`${state.apiBase}${deletePath}`, { method: "DELETE" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.error || `HTTP ${response.status}`);
     }
-    nextFiles.push(candidate);
-  });
-  state.files = nextFiles;
-  renderFiles();
-  renderTabs();
+    showToast(`Gelöscht: ${file.name}`);
+    await refreshStaticData();
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "Datei konnte nicht gelöscht werden.", true);
+  }
 }
 
 async function uploadProgramFiles(fileList) {
@@ -1166,178 +1151,108 @@ async function uploadProgramFiles(fileList) {
   }
 }
 
-function chooseRecordingMimeType() {
-  if (typeof window.MediaRecorder === "undefined") {
-    return "";
-  }
-  const candidates = ["video/mp4", "video/webm;codecs=vp8", "video/webm"];
-  if (typeof window.MediaRecorder.isTypeSupported !== "function") {
-    return candidates[candidates.length - 1];
-  }
-  return candidates.find((type) => window.MediaRecorder.isTypeSupported(type)) || "";
-}
-
-function cleanupRecordingResources(clearChunks = true) {
+function stopRecordingTicker() {
   if (recording.timer) {
     window.clearInterval(recording.timer);
     recording.timer = null;
   }
-  if (recording.drawTimer) {
-    window.clearInterval(recording.drawTimer);
-    recording.drawTimer = null;
-  }
-  if (recording.stream) {
-    recording.stream.getTracks().forEach((track) => track.stop());
-  }
-  recording.canvas = null;
-  recording.context = null;
-  recording.stream = null;
-  recording.mediaRecorder = null;
-  recording.mimeType = "";
-  recording.downloadOnStop = true;
-  if (clearChunks) {
-    recording.chunks = [];
-  }
 }
 
-function drawRecordingFrame() {
-  if (!recording.context || !recording.canvas || !state.cameraLoaded) {
-    return;
-  }
-  try {
-    recording.context.drawImage(dom.cameraFeed, 0, 0, recording.canvas.width, recording.canvas.height);
-  } catch (_error) {
-    // Ignore transient draw errors while the video element renegotiates.
-  }
-}
-
-function finalizeRecording() {
-  const mimeType = recording.mimeType || "video/webm";
-  const shouldSave = recording.downloadOnStop !== false;
-  const blob = new Blob(recording.chunks, { type: mimeType });
-  cleanupRecordingResources();
-
-  if (!shouldSave) {
-    recording.chunks = [];
-    return;
-  }
-
-  if (!blob.size) {
-    showToast("Aufnahme enthaelt keine Daten.", true);
-    recording.chunks = [];
-    return;
-  }
-
-  const extension = mimeType.includes("mp4") ? "mp4" : "webm";
-  const fileName = `aufnahme_${formatFileNameTimestamp(new Date())}.${extension}`;
-  const url = URL.createObjectURL(blob);
-  dynamicObjectUrls.add(url);
-  state.files = [createFileEntry(fileName, blob.size, url), ...state.files];
-  setActiveTab("files");
-  renderFiles();
-  renderTabs();
-  triggerDownload(url, fileName);
-  showToast(`Aufnahme gespeichert: ${fileName}`);
-  recording.chunks = [];
-}
-
-function startRecording() {
-  if (!state.recordingSupported) {
-    showToast("MediaRecorder wird im Browser nicht unterstuetzt.", true);
-    return;
-  }
-  if (!state.cameraLoaded || !dom.cameraFeed.srcObject) {
-    showToast("Kamera-Stream muss zuerst geladen sein.", true);
-    return;
-  }
-
-  const mimeType = chooseRecordingMimeType();
-  if (!mimeType) {
-    showToast("Kein passendes Aufnahmeformat im Browser verfuegbar.", true);
-    return;
-  }
-
-  const canvas = document.createElement("canvas");
-  const width = Math.max(640, dom.cameraFeed.videoWidth || 1280);
-  const height = Math.max(360, dom.cameraFeed.videoHeight || 720);
-  canvas.width = width;
-  canvas.height = height;
-  if (typeof canvas.captureStream !== "function") {
-    showToast("Canvas-Aufnahme wird im Browser nicht unterstuetzt.", true);
-    return;
-  }
-
-  const context = canvas.getContext("2d", { alpha: false });
-  if (!context) {
-    showToast("Aufnahme konnte nicht vorbereitet werden.", true);
-    return;
-  }
-
-  recording.canvas = canvas;
-  recording.context = context;
-  recording.chunks = [];
-  recording.mimeType = mimeType;
-  recording.downloadOnStop = true;
-  state.recordingSeconds = 0;
-  state.recordingActive = true;
-
-  const fps = 12;
-  drawRecordingFrame();
-  recording.drawTimer = window.setInterval(drawRecordingFrame, Math.max(60, Math.round(1000 / fps)));
+function startRecordingTicker() {
+  stopRecordingTicker();
   recording.timer = window.setInterval(() => {
     state.recordingSeconds += 1;
     renderToolbar();
     renderCamera();
   }, 1000);
-
-  const stream = canvas.captureStream(fps);
-  recording.stream = stream;
-
-  try {
-    recording.mediaRecorder = new window.MediaRecorder(stream, { mimeType });
-  } catch (_error) {
-    state.recordingActive = false;
-    cleanupRecordingResources();
-    showToast("Aufnahme konnte nicht gestartet werden.", true);
-    renderToolbar();
-    renderCamera();
-    return;
-  }
-
-  recording.mediaRecorder.ondataavailable = (event) => {
-    if (event.data && event.data.size > 0) {
-      recording.chunks.push(event.data);
-    }
-  };
-  recording.mediaRecorder.onstop = finalizeRecording;
-  recording.mediaRecorder.start(1000);
-  renderToolbar();
-  renderCamera();
-  showToast("Aufnahme gestartet.");
 }
 
-function stopRecording(downloadOnStop = true) {
-  if (!state.recordingActive && !recording.mediaRecorder) {
-    return;
-  }
-  state.recordingActive = false;
-  recording.downloadOnStop = downloadOnStop;
-  renderToolbar();
-  renderCamera();
+function applyRecordingStatus(status) {
+  const payload = status && typeof status === "object" ? status : {};
+  const wasActive = state.recordingActive;
 
-  const recorder = recording.mediaRecorder;
-  if (recorder && recorder.state !== "inactive") {
-    recorder.stop();
+  state.recordingSupported = !!payload.available;
+  state.recordingActive = !!payload.active;
+  state.recordingSeconds = Math.max(0, Math.round(Number(payload.elapsedSec) || 0));
+  state.recordingError = String(payload.error || "").trim();
+  state.recordings = Array.isArray(payload.recordings) ? payload.recordings : [];
+  rebuildFileList();
+
+  if (state.recordingActive && !recording.timer) {
+    startRecordingTicker();
+  }
+  if (!state.recordingActive) {
+    stopRecordingTicker();
+  }
+  if (wasActive && !state.recordingActive && state.recordingError) {
+    showToast(state.recordingError, true);
+  }
+}
+
+async function postRecording(path) {
+  const response = await fetch(`${state.apiBase}${path}`, { method: "POST", cache: "no-store" });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+async function startRecording() {
+  if (state.recordingBusy) {
     return;
   }
-  cleanupRecordingResources();
+  state.recordingBusy = true;
+  renderToolbar();
+  try {
+    const payload = await postRecording("/api/camera/recording/start");
+    applyRecordingStatus(payload.status);
+    showToast("Aufnahme gestartet.");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "Aufnahme konnte nicht gestartet werden.", true);
+  } finally {
+    state.recordingBusy = false;
+    renderToolbar();
+    renderCamera();
+    renderFiles();
+    renderTabs();
+  }
+}
+
+async function stopRecording() {
+  if (state.recordingBusy) {
+    return;
+  }
+  state.recordingBusy = true;
+  renderToolbar();
+  try {
+    const payload = await postRecording("/api/camera/recording/stop");
+    applyRecordingStatus(payload.status);
+
+    const finished = payload.recording;
+    if (finished && finished.name) {
+      const downloadUrl = `${state.apiBase}${finished.downloadPath}`;
+      triggerDownload(downloadUrl, finished.name);
+      showToast(`Aufnahme gespeichert: ${finished.name}`);
+      setActiveTab("files");
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "Aufnahme konnte nicht gestoppt werden.", true);
+  } finally {
+    state.recordingBusy = false;
+    stopRecordingTicker();
+    renderToolbar();
+    renderCamera();
+    renderFiles();
+    renderTabs();
+  }
 }
 
 function toggleRecording() {
   if (state.recordingActive) {
-    stopRecording(true);
+    void stopRecording();
   } else {
-    startRecording();
+    void startRecording();
   }
 }
 
@@ -1445,11 +1360,7 @@ function attachEvents() {
       axesSource = null;
     }
     stopCameraReader(true);
-    if (state.recordingActive) {
-      stopRecording(false);
-    }
-    dynamicObjectUrls.forEach((url) => URL.revokeObjectURL(url));
-    dynamicObjectUrls.clear();
+    stopRecordingTicker();
   });
 }
 

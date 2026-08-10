@@ -71,14 +71,34 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
 - GET `/api/wifi/status`
   - `{ wifiAvailable, wifiInterface, wifiConnected, wifiSsid, wifiIpAddress, wifiState, wifiIssueCode, wifiIssue, wifiAutoConnect }`
 - GET `/api/system/status`
-  - `{ time, hostname, spindleRuntimeSec, spindleRuntimeHours, axisRuntimeSec, axisRuntimeHours, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, cpuUsagePercent, cpuUsageAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
+  - `{ time, hostname, spindleRuntimeSec, spindleRuntimeHours, axisRuntimeSec, axisRuntimeHours, spindleStartCount, spindleLastActiveAt, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, cpuUsagePercent, cpuUsageAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
+  - `spindleLastActiveAt` is the ISO timestamp of the last sample in which the spindle was running; empty until the spindle has run once
   - `softwareVersion` comes from `SOFTWARE_VERSION`, then Git metadata, then the repo-root `VERSION` file
 - GET `/api/tailscale/status`
-  - `{ installed, connected, backendState, needsLogin, ipAddress, dnsName, operationInProgress, requestedEnabled, error }`
+  - `{ installed, connected, backendState, needsLogin, ipAddress, dnsName, operationInProgress, requestedEnabled, desiredEnabled, error }`
+  - `desiredEnabled` is the stored switch position; while it is `false` a stopped daemon is reported as `Stopped` without an error
 - POST `/api/tailscale/enable`
-  - Reconnects an already enrolled Tailscale node in a background worker
+  - Starts `tailscaled` and reconnects an already enrolled node in a background worker
 - POST `/api/tailscale/disable`
-  - Disconnects the node with `tailscale down` while keeping its enrollment for the next activation
+  - Disconnects with `tailscale down`, stops the daemon and keeps the enrollment for the next activation
+- Both routes persist `tailscaleEnabled` in `settings.json` before doing any work.
+  `cnc-dashboard-background.sh` reads that flag at boot and starts `tailscaled`
+  only when it is set. The unit itself stays systemd-disabled so an enabled
+  tunnel cannot compete with the kiosk cold start.
+- GET `/api/camera/recording`
+  - `{ available, active, fileName, startedAt, elapsedSec, maxDurationSec, freeBytes, error, recordings }`
+- POST `/api/camera/recording/start`
+  - Records the MediaMTX RTSP stream to MP4 with `ffmpeg -c copy` (remux only, no re-encoding)
+  - Waits for the on-demand camera services to actually publish before starting; `503` if the stream stays unavailable
+  - `507` when free disk space is below `RECORDING_MIN_FREE_BYTES`, `409` while a recording is already running
+- POST `/api/camera/recording/stop`
+  - `{ ok, status, recording }`; stops via `SIGINT` so ffmpeg writes the MP4 index
+- GET `/api/camera/recordings/<name>/download`
+- DELETE `/api/camera/recordings/<name>`
+- GET `/api/docs`
+  - `{ documents: [{ id, group, title }] }` for the built-in system guide
+- GET `/api/docs?id=<relative path>`
+  - `{ id, group, title, markdown }`; only ids present in the index are served
 - GET `/api/programs`
   - Lists CNC program files in the persistent Pi staging directory and their SMB transfer state
 - POST `/api/programs/upload?name=<filename>`
@@ -326,4 +346,9 @@ The shared camera environment lives in `backend/camera-stream.env`.
 
 - `settings.json`: UI settings (`graphWindowSec`, RGB strip, spindle/enclosure fan settings, Wi-Fi, `axisVisibility`)
 - `tasks.json`: maintenance tasks (`maintenanceTasks`)
-- `machine_stats.json`: machine statistics (`machineOnTimeSec`, `spindleRuntimeSec`, `axisRuntimeSec`, `backendStartCount`, `spindleStartCount`, `eStopCount`, `manualEStopCount`, `hardwareEStopCount`)
+- `machine_stats.json`: machine statistics (`machineOnTimeSec`, `spindleRuntimeSec`, `axisRuntimeSec`, `backendStartCount`, `spindleStartCount`, `spindleLastActiveAt`, `eStopCount`, `manualEStopCount`, `hardwareEStopCount`)
+- `/var/lib/cnc-dashboard/recordings`: camera recordings (`RECORDINGS_DIRECTORY`), capped by `RECORDING_MAX_DURATION_SEC`, `RECORDING_MAX_FILES` and `RECORDING_MAX_TOTAL_BYTES`
+
+All three JSON files are written atomically (temporary file plus `os.replace`).
+The appliance is switched off at the wall, and a truncating write could otherwise
+leave a half-written settings or maintenance file behind.

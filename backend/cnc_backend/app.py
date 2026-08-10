@@ -9,8 +9,10 @@ from cnc_hardware import create_hardware_backend
 from .camera_service import CameraService
 from .common import iso_now_utc
 from .config import load_app_config
+from .docs_service import DocsService
 from .machine_status import MachineStatusService
 from .program_transfer_service import ProgramTransferService
+from .recording_service import RecordingService
 from .settings_store import SettingsStore
 from .system_service import ShutdownService, SystemInfoService, mock_axes_load
 from .tailscale_service import TailscaleService
@@ -61,6 +63,8 @@ class BackendApp:
         camera_service,
         tailscale_service,
         program_transfer_service,
+        docs_service=None,
+        recording_service=None,
     ):
         self.config = config
         self.store = store
@@ -72,6 +76,12 @@ class BackendApp:
         self.camera_service = camera_service
         self.tailscale_service = tailscale_service
         self.program_transfer_service = program_transfer_service
+        self.docs_service = docs_service if docs_service is not None else DocsService(config)
+        self.recording_service = (
+            recording_service
+            if recording_service is not None
+            else RecordingService(config, camera_service=camera_service)
+        )
         if self.system_info_service is not None:
             self.system_info_service.backend_app = self
         self._spindle_runtime_lock = threading.Lock()
@@ -81,6 +91,7 @@ class BackendApp:
         self._axis_runtime_sec = None
         self._backend_start_count = None
         self._spindle_start_count = None
+        self._spindle_last_active_at = ""
         self._estop_count = None
         self._manual_estop_count = None
         self._hardware_estop_count = None
@@ -97,6 +108,7 @@ class BackendApp:
         self._last_spindle_running_observed = None
         self._last_hardware_estop_engaged = None
         self._backend_start_recorded = False
+        self._tailscale_preference_stored = True
         self._spindle_fan_last_running = False
         self._spindle_fan_last_stop_monotonic = None
         self._fan_manual_overrides = {
@@ -109,8 +121,13 @@ class BackendApp:
         }
 
     def ensure_storage(self):
+        # Read before the settings file is normalised: normalising fills in the
+        # default for a missing tailscaleEnabled, which would hide whether the
+        # operator ever made a choice.
+        self._tailscale_preference_stored = "tailscaleEnabled" in self.store.load_legacy_settings()
         self.store.ensure_split_storage()
         self.program_transfer_service.ensure_storage()
+        self.recording_service.ensure_storage()
         self._load_spindle_runtime_state()
         self._record_backend_startup()
         self._apply_status_indicator_preferences()
@@ -123,7 +140,18 @@ class BackendApp:
         threading.Thread(target=self._spindle_runtime_worker, daemon=True).start()
         threading.Thread(target=self._fan_control_worker, daemon=True).start()
         threading.Thread(target=self._status_indicator_worker, daemon=True).start()
+        # Off the startup path on purpose: reading the Tailscale status can take
+        # seconds, and the kiosk waits for this backend to report healthy.
+        threading.Thread(target=self._adopt_tailscale_preference, daemon=True).start()
         self.camera_service.start_background_tasks()
+
+    def _adopt_tailscale_preference(self):
+        try:
+            self.tailscale_service.adopt_current_state_as_preference(
+                already_stored=self._tailscale_preference_stored
+            )
+        except Exception as exc:  # pragma: no cover - background safety net
+            print(f"Tailscale preference seeding failed: {exc}", flush=True)
 
     def get_health(self):
         return {"status": "ok", "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
@@ -331,6 +359,27 @@ class BackendApp:
     def request_tailscale_enabled(self, enabled):
         return self.tailscale_service.request_enabled(enabled)
 
+    def get_camera_recording_status(self):
+        return self.recording_service.get_status()
+
+    def start_camera_recording(self):
+        return self.recording_service.start()
+
+    def stop_camera_recording(self):
+        return self.recording_service.stop()
+
+    def get_camera_recording_path(self, name):
+        return self.recording_service.resolve_recording_path(name)
+
+    def delete_camera_recording(self, name):
+        return self.recording_service.delete_recording(name)
+
+    def get_docs_index(self):
+        return self.docs_service.get_index()
+
+    def get_doc(self, document_id):
+        return self.docs_service.get_document(document_id)
+
     def get_programs(self):
         return self.program_transfer_service.get_snapshot()
 
@@ -518,6 +567,18 @@ class BackendApp:
                 self._load_spindle_runtime_state_locked()
             return max(0, int(self._backend_start_count or 0))
 
+    def get_spindle_start_count(self):
+        with self._spindle_runtime_lock:
+            if self._spindle_start_count is None:
+                self._load_spindle_runtime_state_locked()
+            return max(0, int(self._spindle_start_count or 0))
+
+    def get_spindle_last_active_at(self):
+        with self._spindle_runtime_lock:
+            if self._spindle_runtime_sec is None:
+                self._load_spindle_runtime_state_locked()
+            return str(self._spindle_last_active_at or "")
+
     def set_spindle_runtime_sec(self, value, persist=False):
         normalized = max(0, int(value or 0))
         with self._spindle_runtime_lock:
@@ -544,6 +605,7 @@ class BackendApp:
         }
         self._backend_start_count = max(0, int(machine_stats.get("backendStartCount", 0) or 0))
         self._spindle_start_count = max(0, int(machine_stats.get("spindleStartCount", 0) or 0))
+        self._spindle_last_active_at = str(machine_stats.get("spindleLastActiveAt", "") or "").strip()
         self._estop_count = max(0, int(machine_stats.get("eStopCount", 0) or 0))
         self._manual_estop_count = max(0, int(machine_stats.get("manualEStopCount", 0) or 0))
         self._hardware_estop_count = max(0, int(machine_stats.get("hardwareEStopCount", 0) or 0))
@@ -576,6 +638,7 @@ class BackendApp:
                     },
                     "backendStartCount": max(0, int(self._backend_start_count or 0)),
                     "spindleStartCount": max(0, int(self._spindle_start_count or 0)),
+                    "spindleLastActiveAt": str(self._spindle_last_active_at or ""),
                     "eStopCount": max(0, int(self._estop_count or 0)),
                     "manualEStopCount": max(0, int(self._manual_estop_count or 0)),
                     "hardwareEStopCount": max(0, int(self._hardware_estop_count or 0)),
@@ -589,6 +652,7 @@ class BackendApp:
                 },
                 "backendStartCount": max(0, int(self._backend_start_count or 0)),
                 "spindleStartCount": max(0, int(self._spindle_start_count or 0)),
+                "spindleLastActiveAt": str(self._spindle_last_active_at or ""),
                 "eStopCount": max(0, int(self._estop_count or 0)),
                 "manualEStopCount": max(0, int(self._manual_estop_count or 0)),
                 "hardwareEStopCount": max(0, int(self._hardware_estop_count or 0)),
@@ -892,6 +956,12 @@ class BackendApp:
                     delta_sec = now - last_sample if last_sample is not None else 0.0
                     self._spindle_runtime_last_sample_monotonic = now
 
+                    # Stamped on every sample while the spindle turns, so the
+                    # stored value is the moment it last stopped - not the
+                    # moment it started.
+                    if spindle_running:
+                        self._spindle_last_active_at = iso_now_utc()
+
                     if 0.0 < delta_sec <= self.SPINDLE_RUNTIME_DELTA_CLAMP_SEC:
                         self._machine_on_time_sec += delta_sec
                         if spindle_running:
@@ -973,7 +1043,7 @@ def create_backend_app():
     shutdown_service = ShutdownService(config, hardware_backend=hardware_backend)
     machine_status_service = MachineStatusService()
     camera_service = CameraService(config)
-    tailscale_service = TailscaleService()
+    tailscale_service = TailscaleService(store=store)
     program_transfer_service = ProgramTransferService(config)
     system_info_service = SystemInfoService(config, hardware_backend, backend_app=None)
     return BackendApp(

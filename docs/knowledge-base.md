@@ -93,12 +93,15 @@ Inhalt der Kacheln:
 - unterhalb der Laufzeiten folgt ein einzelner Vollbreiten-Block mit Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion untereinander
 - für Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM und Speicher werden einfache Balkenanzeigen verwendet
 - unnötige Beschreibungstexte innerhalb der Kacheln werden vermieden, um die Höhe für `1024x600` klein zu halten
+- unter den Systemwerten folgt eine zweispaltige Zeile mit `Spindel zuletzt aktiv` und `Spindelanläufe`
+- `Spindel zuletzt aktiv` zeigt innerhalb der letzten 24 Stunden nur die Uhrzeit `hh:mm`, danach zusätzlich das Datum; ohne bisherigen Spindellauf steht dort `Noch nie`
 - `NETZWERK`: zuerst WLAN-Verbindungsstatus, SSID und IP-Adresse mit dem Button zum WLAN-Modal; darunter der per SMB-Port geprüfte DDCS-V4.1-Verbindungsstatus und die gemeinsame DDCS-/Windows-Anleitung
-- `Remote-Dashboard`: QR-Code und Zieladresse ohne separate Status-Unterkachel
+- `Remote-Dashboard`: QR-Code und Zieladresse, darunter die Remote-Wartung und ganz unten der Vollbreiten-Button `System-Anleitung`
+- alle kleinen Zwischenüberschriften der Seite (`WLAN-VERBINDUNG`, `CNC-CONTROLLER`, `REMOTE-WARTUNG`) teilen sich bewusst eine einzige CSS-Regel, damit sie nicht auseinanderlaufen
 
 Datenquellen der Seite:
 
-- `GET /api/system/status` für Hostname, Spindellaufzeit, X/Y/Z-Laufzeiten, Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion
+- `GET /api/system/status` für Hostname, Spindellaufzeit, X/Y/Z-Laufzeiten, Spindelanläufe, letzten Spindellauf, Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion
 - `GET /api/wifi/status` für Live-Status wie `wifiConnected`, `wifiSsid`, `wifiIpAddress` und `wifiIssue`
 - `GET /api/programs` prueft fuer den DDCS-Status die SMB-Ports `445` und `139`
   von `192.168.2.5`; `verbunden` bedeutet damit, dass der konfigurierte
@@ -114,8 +117,33 @@ Interaktion:
 Remote-Dashboard:
 
 - der QR-Code wird clientseitig über `frontend/assets/vendor/qrcode.min.js` erzeugt
-- als Ziel wird aktuell `http://<wifiIpAddress>` verwendet
+- als Ziel wird `http://<hostname>/` verwendet, also `http://cncpi/`; der Hostname bleibt über DHCP-Leases hinweg gültig, die IP nicht
+- die IP-Adresse steht weiterhin als Hinweistext unter dem Code, weil die Namensauflösung vom Router abhängt
+- gemessen im Zielnetz: die FritzBox löst `cncpi` direkt auf `192.168.178.61` auf; auf Geräten im Tailnet greift stattdessen MagicDNS und liefert die Tailscale-IP, was ebenfalls funktioniert, den Zugriff aber durch den Tunnel leitet
+- `cncpi.local` ist keine Alternative über den Router-DNS, das wäre reines mDNS
 - ohne aktives WLAN oder ohne vergebene IP zeigt die Karte einen kompakten Platzhalterzustand
+
+### Eingebaute System-Anleitung
+
+Der Vollbreiten-Button `System-Anleitung` in der Kachel `Remote-Dashboard` öffnet
+ein globales Modal, in dem die komplette Repository-Dokumentation gelesen werden
+kann. Die Seite schickt dafür nur `postMessage({type:"openDocsModal"})` an das
+Parent-Dashboard, das Modal selbst liegt in `frontend/index.html`.
+
+Aufbau:
+
+- `backend/cnc_backend/docs_service.py` erzeugt den Index und liefert den Rohtext
+- `GET /api/docs` liefert die Liste, `GET /api/docs?id=<relativer Pfad>` ein einzelnes Dokument
+- nur Dokumente aus dem erzeugten Index sind abrufbar; damit kann eine id den Installationsordner nicht verlassen
+- `frontend/assets/modules/markdown.js` rendert Markdown ohne Fremdbibliothek: Überschriften, Absätze, Listen, Codeblöcke, Inline-Code, Tabellen, Zitate, Trenner und Links
+- `frontend/assets/modules/docs.js` steuert Dokumentenliste, Blättern, interne Verweise und den Cache
+
+Bewusste Entscheidungen:
+
+- der gesamte Text wird zuerst escaped und erst danach ausgezeichnet, damit Dokumentinhalte kein HTML einschleusen können
+- Verweise auf andere `.md`-Dateien bleiben im Modal; externe Adressen werden **nicht** verlinkt, sondern als Text ausgegeben, weil der Kiosk kein Browserfenster und keinen Zurück-Weg hat
+- Ressourcenbedarf ist unkritisch: die gesamte Dokumentation umfasst rund 110 KB, das Rendern aller 13 Dokumente wurde headless auf dem Pi ohne Fehler durchgemessen
+- `.modal__panel.docs__panel` nutzt bewusst zwei Klassen, weil `ui-common.css` nach `app.css` geladen wird und `.modal__panel` sonst die Breite gewinnt
 
 ### Kamera-Live-Stream via MediaMTX/WebRTC
 
@@ -156,6 +184,51 @@ Schnelle Verifikation:
 - `curl -i -X OPTIONS http://127.0.0.1:8889/camera/whep`
 - `systemctl status cnc-dashboard-camera-publisher.service --no-pager`
 - `systemctl status cnc-dashboard-mediamtx.service --no-pager`
+
+### Kamera-Aufnahme als MP4 auf dem Pi
+
+Die Aufnahme lief frueher im Browser: ein Canvas hat das Videobild mit 12 fps
+abgegriffen und `MediaRecorder` daraus eine Datei gebaut. Ergebnis war je nach
+Browser eine `.webm`, weil Firefox MP4-Aufnahme gar nicht kann und Chrome
+explizite Codec-Angaben verlangt.
+
+Aktuelles Zielbild:
+
+- `backend/cnc_backend/recording_service.py` startet `ffmpeg` auf dem Pi
+- Quelle ist der bereits vorhandene H.264-RTSP-Stream `rtsp://127.0.0.1:8554/camera`
+- `-c copy` remuxt nur, es wird kein Bild neu kodiert; die Aufnahme kostet damit praktisch keine CPU und behaelt 1280x720 bei 30 fps
+- `-movflags +faststart` schiebt den `moov`-Atom an den Dateianfang, die Datei ist also sofort abspielbar
+- Ablage in `/var/lib/cnc-dashboard/recordings`, gesteuert ueber `RECORDINGS_DIRECTORY`
+
+Routen:
+
+- `GET /api/camera/recording` liefert Status, Restplatz und die Liste der Aufnahmen
+- `POST /api/camera/recording/start` und `.../stop`
+- `GET /api/camera/recordings/<name>/download` und `DELETE /api/camera/recordings/<name>`
+- alle vier Routen sind zusaetzlich in der `Caddyfile` fuer das Remote-UI freigegeben
+
+Zwei Fallstricke, die real aufgetreten sind:
+
+- **Der Stream ist nicht sofort da.** `systemctl is-active` meldet den Publisher
+  bereits als aktiv, waehrend `ffmpeg` die USB-Kamera noch oeffnet. Verbindet
+  sich der Recorder in diesem Fenster, beendet MediaMTX ihn sofort mit
+  `no stream is available on path 'camera'` und die Aufnahme bricht nach
+  Sekundenbruchteilen ab. Der Dienst probet deshalb den Pfad vorher mit einem
+  kurzen `ffmpeg -t 0.2 -f null -` und wartet bis zu 30 Sekunden.
+- **Der Leerlauf-Watchdog stoppt den Stream.** `CameraService` faehrt
+  MediaMTX und Publisher 20 Sekunden nach der letzten Nachfrage herunter. Ohne
+  Gegenmassnahme trifft das eine laufende Aufnahme, sobald der letzte Browser
+  aufhoert zu pollen. Ein Hold-Worker meldet deshalb waehrend der Aufnahme
+  regelmaessig Bedarf an.
+
+Grenzen: 10 Minuten pro Aufnahme, maximal 12 Dateien beziehungsweise 3 GB im
+Archiv, Start nur bei mindestens 2 GB freiem Speicher. Bei rund 6 Mbit/s
+entspricht eine Minute etwa 45 MB.
+
+Schnelle Verifikation:
+
+- `curl -sS -X POST http://127.0.0.1:8080/api/camera/recording/start`
+- `ffprobe -v error -show_entries format=duration:stream=codec_name,width,height <datei>`
 
 ### Ethernet fuer DDCS V4.1 als lokales Netz
 
@@ -367,6 +440,34 @@ das lokale UI nicht erforderlich und werden deshalb erst bei Sekunde 25 durch
 kurz nach dem lokalen Bedienbild bereit, konkurrieren aber nicht mehr mit dessen
 Kaltstart. MediaMTX und der Kamera-Publisher bleiben deaktiviert, bis das Backend
 sie fuer einen tatsaechlichen Kameraabruf bedarfsgesteuert startet.
+
+#### Tailscale folgt dem Schalter im UI, nicht systemd
+
+`cnc-dashboard-background.timer` ruft `/usr/local/bin/cnc-dashboard-background.sh`
+auf. Das Skript startet Caddy, Samba und NMBD immer, Tailscale dagegen nur, wenn
+`tailscaleEnabled` in `backend/settings.json` gesetzt ist; andernfalls stoppt es
+den Daemon aktiv.
+
+Warum nicht ueber `systemctl enable`: Eine aktivierte Unit wuerde beim Boot
+sofort ueber `multi-user.target` starten und damit genau die Konkurrenz zum
+Kiosk-Kaltstart zurueckholen, die der Timer vermeidet. Der Schalterzustand
+gehoert deshalb dem Dashboard.
+
+Warum nicht auf Tailscales eigene Praeferenz verlassen: `tailscale down` setzt
+`WantRunning=false` in `/var/lib/tailscale/tailscaled.state`, und das ueberlebt
+gemessen auch einen Daemon-Neustart. Verlassen kann man sich darauf trotzdem
+nicht, weil das Bootskript den Daemon frueher bedingungslos gestartet hat und
+damit zwei Quellen der Wahrheit existierten.
+
+Beim ersten Start nach diesem Umbau uebernimmt das Backend den tatsaechlichen
+Zustand einmalig als Praeferenz (`adopt_current_state_as_preference`). Das muss
+passieren, **bevor** `ensure_split_storage()` die Einstellungen normalisiert -
+das Normalisieren traegt sonst den Standardwert `false` ein und ein aktiver
+Wartungszugang waere beim naechsten Neustart still verschwunden.
+
+Verifiziert durch einen echten Neustart: ausgeschaltet gelassen, rebootet,
+danach `tailscaled inactive`, `backendState = Stopped` und keine Fehlermeldung
+im UI.
 
 #### Schritt 1: Kernel-Ausgabe auf ein unsichtbares Terminal verschieben
 

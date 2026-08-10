@@ -22,6 +22,7 @@ Der Installer richtet alle weiteren Komponenten ein:
 - Tailscale für die über das lokale UI schaltbare Remote-Wartung
 - ein separates Ethernetnetz für den DDCS V4.1 (`Pi: 192.168.2.8`, `DDCS: 192.168.2.5`)
 - den persistenten Programmordner `/var/lib/cnc-dashboard/programs`
+- den Aufnahmeordner `/var/lib/cnc-dashboard/recordings` für die MP4-Kameraaufnahmen
 - eine authentifizierte WLAN-Samba-Freigabe `cnc-programs`
 - den vorbereiteten SMB1-Transfer zur DDCS-Freigabe `cncdisk`
 
@@ -134,8 +135,10 @@ Durchlauf erhalten.
 
 - Anwendung: `/opt/cnc-dashboard`
 - lokales UI: `http://127.0.0.1:8081/`
-- Remote-Monitor im LAN oder Tailnet: `http://<IP-des-Geräts>/`
+- Remote-Monitor im LAN oder Tailnet: `http://cncpi/` beziehungsweise `http://<IP-des-Geräts>/`
 - Backend-API: `http://127.0.0.1:8080/`
+- CNC-Programme: `/var/lib/cnc-dashboard/programs`
+- Kamera-Aufnahmen: `/var/lib/cnc-dashboard/recordings`
 
 Die Displayparameter können vor dem Aufruf bei Bedarf über eine angepasste Version
 der Dateien unter `deploy/` geändert werden. MediaMTX ist standardmäßig auf die auf

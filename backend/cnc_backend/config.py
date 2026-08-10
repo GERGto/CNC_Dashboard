@@ -73,6 +73,11 @@ class AppConfig:
     camera_stream_path: str
     camera_webrtc_port: int
     camera_rtsp_port: int
+    recordings_directory: str
+    recording_max_duration_sec: int
+    recording_max_files: int
+    recording_max_total_bytes: int
+    recording_min_free_bytes: int
 
 
 def load_app_config():
@@ -145,4 +150,17 @@ def load_app_config():
         camera_stream_path=str(os.getenv("CAMERA_STREAM_PATH", "camera")).strip().strip("/") or "camera",
         camera_webrtc_port=_read_non_negative_int_env("CAMERA_WEBRTC_PORT", 8889),
         camera_rtsp_port=_read_non_negative_int_env("CAMERA_RTSP_PORT", 8554),
+        recordings_directory=str(
+            os.getenv("RECORDINGS_DIRECTORY", os.path.join(backend_root, "recordings"))
+        ).strip(),
+        # At ~6 Mbit/s a recording grows by roughly 45 MB per minute, so the
+        # limits below keep the archive well clear of the SD card's capacity.
+        recording_max_duration_sec=_read_non_negative_int_env("RECORDING_MAX_DURATION_SEC", 600),
+        recording_max_files=_read_non_negative_int_env("RECORDING_MAX_FILES", 12),
+        recording_max_total_bytes=_read_non_negative_int_env(
+            "RECORDING_MAX_TOTAL_BYTES", 3 * 1024 * 1024 * 1024
+        ),
+        recording_min_free_bytes=_read_non_negative_int_env(
+            "RECORDING_MIN_FREE_BYTES", 2 * 1024 * 1024 * 1024
+        ),
     )

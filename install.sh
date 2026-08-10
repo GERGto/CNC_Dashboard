@@ -148,7 +148,9 @@ if ! command -v tailscale >/dev/null 2>&1; then
   curl -fsSL https://tailscale.com/install.sh -o "$tailscale_dir/install-tailscale.sh"
   sh "$tailscale_dir/install-tailscale.sh"
 fi
-systemctl enable --now tailscaled.service
+# Started but deliberately not enabled: the boot-time start belongs to
+# cnc-dashboard-background.sh, which honours the switch stored by the dashboard.
+systemctl start tailscaled.service
 
 info "Lokales CNC-Ethernetnetz wird eingerichtet"
 install -d -m 0755 /etc/network/interfaces.d
@@ -177,6 +179,7 @@ elif grep -q '^CNC_CONTROLLER_SMB_ENABLED=0$' /etc/cnc-dashboard/controller-smb.
   install -m 0600 "$INSTALL_DIR/deploy/controller-smb.env" /etc/cnc-dashboard/controller-smb.env
 fi
 install -d -m 0770 -o "$KIOSK_USER" -g "$KIOSK_USER" /var/lib/cnc-dashboard/programs
+install -d -m 0770 -o "$KIOSK_USER" -g "$KIOSK_USER" /var/lib/cnc-dashboard/recordings
 if [ -f /etc/samba/smb.conf ]; then
   sed -i '/^# BEGIN CNC DASHBOARD$/,/^# END CNC DASHBOARD$/d' /etc/samba/smb.conf
   printf '\n' >> /etc/samba/smb.conf
@@ -221,6 +224,7 @@ install -m 0644 "$INSTALL_DIR/deploy/cnc-dashboard-kiosk.service" /etc/systemd/s
 # idle I/O class, and delayed the first kiosk frame by ~8 seconds.
 systemctl disable --now cnc-dashboard-browser-preload.service >/dev/null 2>&1 || true
 rm -f /etc/systemd/system/cnc-dashboard-browser-preload.service
+install -m 0755 "$INSTALL_DIR/deploy/cnc-dashboard-background.sh" /usr/local/bin/cnc-dashboard-background.sh
 install -m 0644 "$INSTALL_DIR/deploy/cnc-dashboard-background.service" /etc/systemd/system/cnc-dashboard-background.service
 install -m 0644 "$INSTALL_DIR/deploy/cnc-dashboard-background.timer" /etc/systemd/system/cnc-dashboard-background.timer
 install -d -m 0755 /etc/X11/xorg.conf.d
