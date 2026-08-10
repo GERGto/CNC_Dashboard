@@ -496,9 +496,9 @@ class HardwareBackend:
         with self._status_indicator_lock:
             return self.status_indicator_controller.set_warmup_fill_progress(progress_0_to_1)
 
-    def start_status_indicator_boot_sequence(self, on_full_blue_callback=None):
+    def start_status_indicator_boot_sequence(self, on_complete_callback=None):
         with self._status_indicator_lock:
-            return self.status_indicator_controller.start_boot_sequence(on_full_blue_callback=on_full_blue_callback)
+            return self.status_indicator_controller.start_boot_sequence(on_complete_callback=on_complete_callback)
 
     def start_status_indicator_shutdown_sequence(self, on_complete_callback=None):
         with self._status_indicator_lock:
@@ -553,23 +553,23 @@ class HardwareBackend:
                 time.sleep(self.relay_startup_initialization_interval_sec)
 
     def initialize_outputs_on_startup(self):
-        indicator_ready = threading.Event()
+        indicator_sequence_done = threading.Event()
         boot_sequence_started = self.start_status_indicator_boot_sequence(
-            on_full_blue_callback=indicator_ready.set,
+            on_complete_callback=indicator_sequence_done.set,
         )
         if boot_sequence_started:
             print("Status indicator startup sequence started.", flush=True)
         else:
-            indicator_ready.set()
+            indicator_sequence_done.set()
 
         # Relay discovery can retry forever on installations where the board is
         # absent. It must never hold the independent status strip in its off state.
         relay_ready = self.initialize_relay_board_on_startup()
         if relay_ready and self.relay_light_on_after_startup:
-            indicator_ready.wait(
-                self.status_indicator_controller.BOOT_EXPAND_DURATION_SEC
-                + self.status_indicator_controller.SYSTEM_CHECK_FADE_DURATION_SEC
-                + 1.0
+            # The enclosure light comes on only once the strip animation has
+            # finished, so both reach their final state together.
+            indicator_sequence_done.wait(
+                self.status_indicator_controller.BOOT_SEQUENCE_DURATION_SEC + 2.0
             )
             try:
                 self._turn_machine_light_on_after_status_boot()
@@ -581,7 +581,7 @@ class HardwareBackend:
         with self._relay_operation_lock:
             light_channel = self.relay_controller.set_output("light", True)
         print(
-            "Status indicator startup reached full blue: machine light on "
+            "Status indicator startup sequence complete: machine light on "
             f"(channel {light_channel.get('channel', '?')}).",
             flush=True,
         )

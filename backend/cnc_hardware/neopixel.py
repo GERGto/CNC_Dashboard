@@ -103,9 +103,16 @@ class NeoPixelStatusStripController:
     RUNNING_TAIL_PIXELS = 44.0
     RUNNING_SMOOTHING_TIME_SEC = 0.28
     ANIMATION_FPS = 60.0
-    BOOT_EXPAND_DURATION_SEC = 1.8
-    SYSTEM_CHECK_FADE_DURATION_SEC = 1.2
-    STATE_BLEND_DURATION_SEC = 1.6
+    # The boot animation is timed to cover the whole system startup: from the
+    # moment the strip lights up until the dashboard is fully up takes about
+    # twelve seconds on the target hardware. The three phases keep their
+    # original proportions.
+    BOOT_EXPAND_DURATION_SEC = 4.8
+    SYSTEM_CHECK_FADE_DURATION_SEC = 3.2
+    STATE_BLEND_DURATION_SEC = 4.0
+    BOOT_SEQUENCE_DURATION_SEC = (
+        BOOT_EXPAND_DURATION_SEC + SYSTEM_CHECK_FADE_DURATION_SEC + STATE_BLEND_DURATION_SEC
+    )
     SHUTDOWN_COLLAPSE_DURATION_SEC = 0.45
     STATIC_REFRESH_SEC = 0.25
     STARTUP_RENDER_STATE = "startupExpand"
@@ -301,7 +308,12 @@ class NeoPixelStatusStripController:
                 self._wake_event.set()
             return self._build_snapshot_locked()
 
-    def start_boot_sequence(self, on_full_blue_callback=None):
+    def start_boot_sequence(self, on_complete_callback=None):
+        """Run the boot animation; the callback fires when it has finished.
+
+        Without a usable strip there is no animation to wait for, so the
+        callback runs immediately.
+        """
         callback_to_run = None
         command_at = iso_now_utc()
 
@@ -313,21 +325,17 @@ class NeoPixelStatusStripController:
             self._boot_completed = False
             self._boot_phase = "expand"
             self._boot_phase_started_monotonic = time.monotonic()
-            self._boot_light_callback = on_full_blue_callback if callable(on_full_blue_callback) else None
+            self._boot_light_callback = on_complete_callback if callable(on_complete_callback) else None
             self._boot_light_triggered = False
 
             driver = self._load_driver_locked()
             if not self.enabled or driver is None:
-                callback_to_run = self._boot_light_callback
-                self._boot_completed = True
-                self._boot_phase = "skipped"
+                callback_to_run = self._finish_boot_sequence_locked("skipped")
                 return_value = False
             else:
                 strip = self._ensure_strip_locked()
                 if strip is None:
-                    callback_to_run = self._boot_light_callback
-                    self._boot_completed = True
-                    self._boot_phase = "failed"
+                    callback_to_run = self._finish_boot_sequence_locked("failed")
                     return_value = False
                 else:
                     self._ensure_animator_running_locked()
@@ -341,6 +349,23 @@ class NeoPixelStatusStripController:
                 with self._lock:
                     self._last_error = f"Startup-Callback fuer Statusleiste fehlgeschlagen: {exc}"
         return return_value
+
+    def _finish_boot_sequence_locked(self, phase="done"):
+        """End the boot animation and hand back the completion callback.
+
+        The callback switches the machine light on, so it must fire when the
+        animation is over - not at an intermediate phase. Callers run it
+        outside the lock. Returns None if it already ran.
+        """
+        self._boot_completed = True
+        self._boot_phase = phase
+        self._boot_phase_started_monotonic = None
+        if self._boot_light_triggered:
+            return None
+        self._boot_light_triggered = True
+        callback = self._boot_light_callback
+        self._boot_light_callback = None
+        return callback
 
     def start_shutdown_sequence(self, on_complete_callback=None):
         callback_to_run = None
@@ -577,11 +602,8 @@ class NeoPixelStatusStripController:
 
         if self._desired_state == "eStop":
             if self._boot_started and not self._boot_completed:
-                self._boot_completed = True
-                self._boot_phase = "interrupted"
-                self._boot_phase_started_monotonic = None
-                self._boot_light_callback = None
-            return self._render_estop_double_pulse_frame(now), self.ESTOP_RENDER_STATE, None, 1.0 / self.ANIMATION_FPS
+                callback_to_run = self._finish_boot_sequence_locked("interrupted")
+            return self._render_estop_double_pulse_frame(now), self.ESTOP_RENDER_STATE, callback_to_run, 1.0 / self.ANIMATION_FPS
 
         if self._boot_started and not self._boot_completed:
             if self._boot_phase == "expand":
@@ -589,12 +611,10 @@ class NeoPixelStatusStripController:
                 progress = min(1.0, max(0.0, (now - phase_start) / self.BOOT_EXPAND_DURATION_SEC))
                 frame = self._render_boot_expand_frame(progress)
                 render_state = self.STARTUP_RENDER_STATE
-                if progress >= 1.0 and not self._boot_light_triggered:
-                    self._boot_light_triggered = True
-                    callback_to_run = self._boot_light_callback
+                if progress >= 1.0:
                     self._boot_phase = "systemCheck"
                     self._boot_phase_started_monotonic = now
-                return frame, render_state, callback_to_run, 1.0 / self.ANIMATION_FPS
+                return frame, render_state, None, 1.0 / self.ANIMATION_FPS
 
             if self._boot_phase == "systemCheck":
                 phase_start = self._boot_phase_started_monotonic or now
@@ -606,27 +626,21 @@ class NeoPixelStatusStripController:
                         self._boot_phase = "stateBlend"
                         self._boot_phase_started_monotonic = now
                     else:
-                        self._boot_completed = True
-                        self._boot_phase = "done"
-                        self._boot_phase_started_monotonic = None
-                return frame, render_state, None, 1.0 / self.ANIMATION_FPS
+                        callback_to_run = self._finish_boot_sequence_locked()
+                return frame, render_state, callback_to_run, 1.0 / self.ANIMATION_FPS
 
             if self._boot_phase == "stateBlend":
                 if self._desired_state not in {"idle", "warning"}:
-                    self._boot_completed = True
-                    self._boot_phase = "done"
-                    self._boot_phase_started_monotonic = None
-                    return self._render_static_frame(self._desired_state), self._desired_state, None, self.STATIC_REFRESH_SEC
+                    callback_to_run = self._finish_boot_sequence_locked()
+                    return self._render_static_frame(self._desired_state), self._desired_state, callback_to_run, self.STATIC_REFRESH_SEC
 
                 phase_start = self._boot_phase_started_monotonic or now
                 progress = min(1.0, max(0.0, (now - phase_start) / self.STATE_BLEND_DURATION_SEC))
                 frame = self._render_target_transition_frame(progress, now)
                 render_state = self.STATE_BLEND_RENDER_STATE
                 if progress >= 1.0:
-                    self._boot_completed = True
-                    self._boot_phase = "done"
-                    self._boot_phase_started_monotonic = None
-                return frame, render_state, None, 1.0 / self.ANIMATION_FPS
+                    callback_to_run = self._finish_boot_sequence_locked()
+                return frame, render_state, callback_to_run, 1.0 / self.ANIMATION_FPS
 
         if self._desired_state == "idle":
             return self._render_idle_breathing_frame(), "idle", None, 1.0 / self.ANIMATION_FPS

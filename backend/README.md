@@ -117,7 +117,7 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
 - On first contact after board power-up, the backend sends an empty DUELink command and retries briefly before the real relay command.
 - On backend startup, a background warmup initializes the relay board before the first frontend action.
 - Optional: the backend can power-cycle the relay board on startup through a GPIO-controlled 3.3V feed.
-- After a successful startup initialization, the backend can automatically switch the machine light on.
+- After a successful startup initialization, the backend can automatically switch the machine light on. It waits for the status strip boot animation to finish first.
 - Channel mapping:
   - `1`: machine light
   - `2`: spindle fan
@@ -150,10 +150,12 @@ The project is now prepared for a `WS2812B` RGB strip as a machine status indica
 - Supply: `5V`
 - Data pin: `GPIO18`
 - Current strip length: `59` LEDs
-- Startup sequence:
-  - blue expansion from the center to the outside
-  - once the strip is fully blue, the machine light is switched on
-  - the strip then fades from blue to white for the system check
+- Startup sequence (12 s total, matching how long the system needs to boot):
+  - blue expansion from the center to the outside (`4.8 s`)
+  - fade from blue to white for the system check (`3.2 s`)
+  - blend into the target state, e.g. idle (`4.0 s`)
+  - the machine light is switched on when the whole sequence has finished, so
+    strip and light reach their final state together
 - Shutdown sequence:
   - on frontend-triggered shutdown, the current strip image collapses quickly from the outside to the center
   - exactly when the strip turns fully off, the machine light is switched off
