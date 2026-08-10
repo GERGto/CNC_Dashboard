@@ -447,23 +447,49 @@ Kiosk-Session neu starten:
 sudo systemctl restart cnc-dashboard-kiosk.service
 ```
 
-### Displaytiming: 51,20 MHz wegen 2,4-GHz-WLAN-Interferenz
+### Verzerrtes ("warped") Panelbild: Core-Takt pinnen
 
-Das Panel lief zunaechst mit einem 49,00-MHz-Timing (1312x624 Totals). Dabei
-betraegt die TMDS-Datenrate 490 Mbit/s pro Lane; deren 5. Harmonische liegt bei
-exakt 2,45 GHz - mitten im 2,4-GHz-WLAN-Band. Folge: Jede aktive WLAN-Phase
-(Scan im WLAN-Dialog, Association beim Boot, periodische Hintergrund-Scans)
-stoerte den HDMI-Link, und der Panel-Receiver verlor fuer Sekunden den
-H-Sync - sichtbar als diagonal verzerrtes ("warped") Bild. Nachweis: Waehrend
-der Verzerrung waren x11grab-Frames sauber und `hvs_underrun` blieb 0; die
-Stoerung passiert also hinter dem Framebuffer auf dem Kabelweg.
+Das Panel zeigte sporadisch fuer 5-20 Sekunden ein diagonal verschobenes Bild.
+Ausgeloest hat es jede Art von Lastwechsel: ein Dropdown im UI oeffnen, ein
+WLAN-Scan, der Chromium-Kaltstart - und beim Booten exakt in dem Moment, in dem
+`initial_turbo` ablief.
 
-Aktuelles Timing ueberall (Firmware `hdmi_timings:1`, EDID-DTD aus
-`generate-edid.py`, Xorg-Modeline): `51.20 MHz, 1024 1072 1168 1344,
-600 611 621 635, -HSync +VSync` (59,99 Hz). Die 5. Harmonische liegt damit bei
-2,56 GHz, ausserhalb des WLAN-Bands. Bei einer kuenftigen Timing-Aenderung
-darauf achten, dass `Pixeltakt x 10 x n` fuer kleine `n` nicht in
-2,401-2,484 GHz faellt.
+Ursache: Auf dem Pi 4 wird der HDMI-Pixeltakt aus der Core-Taktdomaene
+abgeleitet. Der Core-Takt skalierte dynamisch zwischen **333 MHz (Leerlauf) und
+500 MHz (Last)**, und jeder dieser Uebergaenge stoert die laufende Ausgabe. Der
+Nachweis ist direkt messbar:
+
+```bash
+for i in 1 2 3 4 5; do vcgencmd measure_clock core; sleep 1; done
+```
+
+Vorher wechselten die Werte zwischen `333333984` und `500000992`, nach dem Fix
+steht dort konstant `500000992`.
+
+Fix in `config.txt` (setzt der Installer):
+
+```ini
+core_freq=500
+core_freq_min=500
+```
+
+Damit gibt es keine Taktwechsel mehr. Die Leerlauftemperatur steigt dadurch nur
+unwesentlich (gemessen 49 °C, Limit `temp_limit=75`).
+
+Wichtig fuer die Fehlersuche: Waehrend der Verzerrung sind x11grab-Frames
+**sauber** und `hvs_underrun` bleibt `0`. Der Framebuffer-Inhalt ist also
+korrekt - die Stoerung entsteht erst bei der Ausgabe. Ein sauberer Screenshot
+schliesst dieses Problem daher nicht aus.
+
+Nebenbefund zum Displaytiming: Der Pixeltakt liegt bei 51,20 MHz
+(`1024 1072 1168 1344, 600 611 621 635`, 59,99 Hz) - identisch in Firmware
+(`hdmi_timings:1`), EDID-DTD (`generate-edid.py`) und Xorg-Modeline. Er wurde
+urspruenglich von 49,00 MHz aus einem anderen Verdacht heraus angehoben (dessen
+5. Harmonische bei 2,45 GHz lag). Das war nicht die Ursache der Verzerrung, das
+Timing laeuft aber stabil und blieb deshalb so. Zu beachten: Bei 51,20 MHz faellt
+die 11. Harmonische auf 5632 MHz und damit in einen 80-MHz-Kanal um 5610 MHz.
+Sollte es dort einmal WLAN-Probleme geben, ist der Pixeltakt der erste
+Verdaechtige.
 
 Auf dem Zielsystem wurde der Chromium-Kiosk erfolgreich so eingerichtet, dass das Dashboard ohne schwarzen Balken und ohne abgeschnittenen rechten Rand auf dem `1024x600`-Display angezeigt wird.
 

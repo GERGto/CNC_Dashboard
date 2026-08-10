@@ -299,8 +299,15 @@ set_boot_config_value 'hdmi_mode:1' 87 "$boot_config"
 sed -i '/^[[:space:]]*hdmi_cvt:1=/d' "$boot_config"
 set_boot_config_value 'hdmi_timings:1' '1024 0 48 96 176 600 1 11 10 14 0 0 0 60 0 51200000 6' "$boot_config"
 set_boot_config_value 'hdmi_drive:1' 2 "$boot_config"
-# Keep CPU/core clocks at turbo through the Chromium cold start. Display
-# shearing (HVS underruns) was observed exactly during that load peak.
+# Pin the GPU core clock. On the Pi 4 the HDMI pixel clock is derived from the
+# core clock domain, so every dynamic core transition (measured: 333 MHz idle
+# <-> 500 MHz under load) briefly disturbs the output - the panel then shows a
+# diagonally sheared image for several seconds. Any load spike triggered it:
+# opening a dropdown, a Wi-Fi scan, or the Chromium cold start. It was also
+# exactly reproducible at boot the moment initial_turbo expired.
+set_boot_config_value core_freq 500 "$boot_config"
+set_boot_config_value core_freq_min 500 "$boot_config"
+# Keep CPU clocks at turbo through the Chromium cold start as well.
 set_boot_config_value initial_turbo 30 "$boot_config"
 # No HDMI audio: Chromium's audio service opens the vc4 HDMI audio device
 # lazily (~30s after boot), and the newly started audio infoframes visibly
