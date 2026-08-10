@@ -8,6 +8,7 @@ rtspTransports: [tcp]
 rtmp: false
 hls: false
 srt: false
+moq: false
 
 webrtc: true
 webrtcAddress: :8889

@@ -553,20 +553,26 @@ class HardwareBackend:
                 time.sleep(self.relay_startup_initialization_interval_sec)
 
     def initialize_outputs_on_startup(self):
-        relay_ready = self.initialize_relay_board_on_startup()
-
-        light_callback = None
-        if relay_ready and self.relay_light_on_after_startup:
-            light_callback = self._turn_machine_light_on_after_status_boot
-
-        boot_sequence_started = self.start_status_indicator_boot_sequence(on_full_blue_callback=light_callback)
+        indicator_ready = threading.Event()
+        boot_sequence_started = self.start_status_indicator_boot_sequence(
+            on_full_blue_callback=indicator_ready.set,
+        )
         if boot_sequence_started:
             print("Status indicator startup sequence started.", flush=True)
-            return relay_ready
+        else:
+            indicator_ready.set()
 
-        if light_callback is not None:
+        # Relay discovery can retry forever on installations where the board is
+        # absent. It must never hold the independent status strip in its off state.
+        relay_ready = self.initialize_relay_board_on_startup()
+        if relay_ready and self.relay_light_on_after_startup:
+            indicator_ready.wait(
+                self.status_indicator_controller.BOOT_EXPAND_DURATION_SEC
+                + self.status_indicator_controller.SYSTEM_CHECK_FADE_DURATION_SEC
+                + 1.0
+            )
             try:
-                light_callback()
+                self._turn_machine_light_on_after_status_boot()
             except HardwareError as exc:
                 print(f"Machine light startup activation failed: {exc}", flush=True)
         return relay_ready

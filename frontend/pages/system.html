@@ -140,6 +140,129 @@
       transform:translateY(1px);
     }
 
+    .sys-card__footer--stacked{
+      grid-template-columns:1fr;
+    }
+
+    .network-block{
+      display:grid;
+      gap:9px;
+      align-content:start;
+    }
+
+    .network-block + .network-block{
+      padding-top:12px;
+      border-top:2px solid var(--line);
+    }
+
+    .network-block__title{
+      margin:0;
+      font-size:11px;
+      line-height:1;
+      font-weight:900;
+      letter-spacing:0.13em;
+      text-transform:uppercase;
+      color:var(--muted);
+    }
+
+    .smb-guide__panel{
+      width:min(720px, 94vw);
+      max-height:92vh;
+      max-height:92dvh;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      padding:16px;
+    }
+
+    .smb-guide__content{
+      min-height:0;
+      overflow:auto;
+      display:grid;
+      gap:12px;
+      font-size:15px;
+      line-height:1.35;
+    }
+
+    .smb-guide__path{
+      display:block;
+      padding:10px 12px;
+      border:2px solid var(--line);
+      background:#f2f2f2;
+      font:800 17px/1.2 Consolas,"Courier New",monospace;
+      overflow-wrap:anywhere;
+      user-select:text;
+      -webkit-user-select:text;
+    }
+
+    .smb-guide__steps{
+      margin:0;
+      padding-left:24px;
+      display:grid;
+      gap:7px;
+    }
+
+    .smb-guide__note{
+      margin:0;
+      padding:9px 11px;
+      border-left:5px solid var(--line);
+      background:#f2f2f2;
+      font-weight:700;
+    }
+
+    .smb-guide__section-title{
+      margin:4px 0 0;
+      padding-top:12px;
+      border-top:2px solid var(--line);
+      font-size:18px;
+      line-height:1.15;
+    }
+
+    .smb-guide__params{
+      display:grid;
+      border:2px solid var(--line);
+    }
+
+    .smb-guide__param{
+      display:grid;
+      grid-template-columns:62px minmax(0, 1fr) auto;
+      gap:9px;
+      align-items:center;
+      padding:7px 9px;
+    }
+
+    .smb-guide__param + .smb-guide__param{
+      border-top:1px solid var(--line);
+    }
+
+    .smb-guide__param-number,
+    .smb-guide__param-value{
+      font-family:Consolas,"Courier New",monospace;
+      font-weight:900;
+    }
+
+    .smb-guide__param-label{
+      min-width:0;
+      font-weight:700;
+    }
+
+    .smb-guide__actions{
+      display:flex;
+      justify-content:flex-end;
+      gap:8px;
+    }
+
+    .smb-guide__btn{
+      min-height:44px;
+      padding:8px 14px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      color:#000;
+      font-size:14px;
+      font-weight:900;
+    }
+
     .status-pill{
       display:flex;
       align-items:center;
@@ -409,6 +532,78 @@
       align-content:start;
     }
 
+    .remote-maintenance{
+      grid-column:1 / -1;
+      display:grid;
+      gap:7px;
+      padding-top:9px;
+      border-top:2px solid var(--line);
+    }
+
+    .remote-maintenance__title{
+      margin:0;
+      font-size:11px;
+      line-height:1;
+      font-weight:900;
+      letter-spacing:0.13em;
+      text-transform:uppercase;
+    }
+
+    .remote-maintenance__row{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) auto;
+      gap:8px;
+      align-items:center;
+    }
+
+    .remote-maintenance__status{
+      min-width:0;
+      display:grid;
+      grid-template-columns:auto minmax(0, 1fr);
+      column-gap:7px;
+      row-gap:2px;
+      align-items:center;
+      font-size:13px;
+      font-weight:800;
+    }
+
+    .remote-maintenance__address{
+      grid-column:2;
+      min-width:0;
+      color:var(--muted);
+      font-size:11px;
+      font-weight:700;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .remote-maintenance__btn{
+      min-width:108px;
+      min-height:38px;
+      padding:7px 10px;
+      border:2px solid var(--line);
+      border-radius:2px;
+      background:#fff;
+      color:#000;
+      font-size:13px;
+      font-weight:900;
+    }
+
+    .remote-maintenance__btn:disabled{
+      color:var(--muted-soft);
+      border-color:var(--muted-soft);
+    }
+
+    .remote-maintenance__hint{
+      margin:0;
+      min-height:15px;
+      color:var(--muted);
+      font-size:11px;
+      line-height:1.25;
+      font-weight:700;
+    }
+
     .sys-card--system .system-cluster + .system-cluster{
       padding-top:8px;
       border-top:2px solid var(--line);
@@ -472,6 +667,7 @@
         border-right:0;
         border-bottom:2px solid var(--line);
       }
+
     }
   </style>
 </head>
@@ -565,28 +761,38 @@
         </div>
       </article>
 
-      <article class="sys-card sys-card--wifi" aria-label="WLAN">
+      <article class="sys-card sys-card--wifi" aria-label="Netzwerk">
         <header class="sys-card__header">
-          <h2 class="sys-card__title">WLAN</h2>
+          <h2 class="sys-card__title">Netzwerk</h2>
         </header>
 
         <div class="sys-card__body">
-          <div class="status-pill">
-            <span class="cfg__dot" id="wifiStateDot" aria-hidden="true"></span>
-            <span id="wifiStateText">Nicht verbunden</span>
-          </div>
-
-          <div class="sys-meta">
-            <div class="sys-meta__row">
-              <span class="sys-meta__label">IP-Adresse</span>
-              <strong class="sys-meta__value" id="wifiIpText">-</strong>
+          <section class="network-block" aria-label="WLAN-Verbindung">
+            <p class="network-block__title">WLAN-Verbindung</p>
+            <div class="status-pill">
+              <span class="cfg__dot" id="wifiStateDot" aria-hidden="true"></span>
+              <span id="wifiStateText">Nicht verbunden</span>
             </div>
-          </div>
-        </div>
 
-        <footer class="sys-card__footer">
-          <button class="sys-card__btn" id="openWifiConfigBtn" type="button">WLAN konfigurieren</button>
-        </footer>
+            <div class="sys-meta">
+              <div class="sys-meta__row">
+                <span class="sys-meta__label">IP-Adresse</span>
+                <strong class="sys-meta__value" id="wifiIpText">-</strong>
+              </div>
+            </div>
+
+            <button class="sys-card__btn" id="openWifiConfigBtn" type="button">WLAN konfigurieren</button>
+          </section>
+
+          <section class="network-block" aria-label="DDCS V4.1">
+            <p class="network-block__title">CNC-Controller</p>
+            <div class="status-pill">
+              <span class="cfg__dot" id="ddcsStateDot" aria-hidden="true"></span>
+              <span id="ddcsStateText">DDCS V4.1 wird geprüft</span>
+            </div>
+            <button class="sys-card__btn" id="openSmbGuideBtn" type="button">DDCS- &amp; Windows-Anleitung</button>
+          </section>
+        </div>
       </article>
 
       <article class="sys-card remote-card" id="remoteCard" aria-label="Remote-Dashboard">
@@ -609,10 +815,81 @@
 
             <p class="sys-card__hint" id="remoteHint">QR-Code für den Direktzugriff im Heimnetz.</p>
           </div>
+
+          <section class="remote-maintenance" aria-label="Remote-Wartung">
+            <p class="remote-maintenance__title">Remote-Wartung</p>
+            <div class="remote-maintenance__row">
+              <div class="remote-maintenance__status">
+                <span class="cfg__dot is-off" id="tailscaleStateDot" aria-hidden="true"></span>
+                <span id="tailscaleStateText">Status wird ermittelt</span>
+                <span class="remote-maintenance__address" id="tailscaleAddress">Tailscale</span>
+              </div>
+              <button class="remote-maintenance__btn" id="tailscaleToggleBtn" type="button" disabled>
+                Aktivieren
+              </button>
+            </div>
+            <p class="remote-maintenance__hint" id="tailscaleHint">Sicherer Wartungszugang über Tailscale.</p>
+          </section>
         </div>
       </article>
     </section>
   </main>
+
+  <div class="modal" id="smbGuideModal" role="dialog" aria-modal="true" aria-labelledby="smbGuideTitle" aria-hidden="true">
+    <div class="modal__backdrop" data-close-smb-guide="true"></div>
+    <div class="modal__panel smb-guide__panel" role="document">
+      <h2 class="modal__title" id="smbGuideTitle">SMB und DDCS V4.1 einrichten</h2>
+      <div class="smb-guide__content">
+        <h3 class="smb-guide__section-title">Windows-Freigabe</h3>
+        <strong class="smb-guide__path" id="smbSharePath">\\cncpi\cnc-programs</strong>
+        <ol class="smb-guide__steps">
+          <li>Am Windows-PC <strong>Win + E</strong> drücken.</li>
+          <li>Die oben angezeigte Adresse in die Adresszeile des Explorers eingeben.</li>
+          <li>Als Benutzer <strong>dietpi</strong> und Passwort <strong>marcusbierusmaschienus</strong> verwenden.</li>
+          <li>Optional unter „Dieser PC“ die Freigabe als Netzlaufwerk verbinden.</li>
+        </ol>
+        <p class="smb-guide__note">Dateien in dieser Freigabe erscheinen automatisch im Dashboard und werden an den DDCS V4.1 übertragen.</p>
+
+        <h3 class="smb-guide__section-title">DDCS-V4.1-Netzwerkparameter</h3>
+        <div class="smb-guide__params" aria-label="DDCS-V4.1-Netzwerkparameter">
+          <div class="smb-guide__param">
+            <span class="smb-guide__param-number">#325</span>
+            <span class="smb-guide__param-label">Disable network functionality</span>
+            <strong class="smb-guide__param-value">No</strong>
+          </div>
+          <div class="smb-guide__param">
+            <span class="smb-guide__param-number">#326</span>
+            <span class="smb-guide__param-label">Obtain IP address automatically</span>
+            <strong class="smb-guide__param-value">No</strong>
+          </div>
+          <div class="smb-guide__param">
+            <span class="smb-guide__param-number">#327</span>
+            <span class="smb-guide__param-label">Local IP address</span>
+            <strong class="smb-guide__param-value">192.168.2.5</strong>
+          </div>
+          <div class="smb-guide__param">
+            <span class="smb-guide__param-number">#328</span>
+            <span class="smb-guide__param-label">Net mask</span>
+            <strong class="smb-guide__param-value">255.255.255.0</strong>
+          </div>
+          <div class="smb-guide__param">
+            <span class="smb-guide__param-number">#329</span>
+            <span class="smb-guide__param-label">Router IP address</span>
+            <strong class="smb-guide__param-value">192.168.2.8</strong>
+          </div>
+          <div class="smb-guide__param">
+            <span class="smb-guide__param-number">#330</span>
+            <span class="smb-guide__param-label">Shared host IP address</span>
+            <strong class="smb-guide__param-value">192.168.2.8</strong>
+          </div>
+        </div>
+        <p class="smb-guide__note">Nach dem Speichern den DDCS neu starten. „Net Disk“ zeigt anschließend die Pi-Freigabe <strong>share</strong>.</p>
+      </div>
+      <div class="smb-guide__actions">
+        <button class="smb-guide__btn" id="closeSmbGuideBtn" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
 
   <script src="../assets/vendor/qrcode.min.js"></script>
   <script>
@@ -651,21 +928,34 @@
     const systemStorageBar = document.getElementById("systemStorageBar");
     const systemVersionValue = document.getElementById("systemVersionValue");
     const openWifiConfigBtn = document.getElementById("openWifiConfigBtn");
+    const openSmbGuideBtn = document.getElementById("openSmbGuideBtn");
+    const smbGuideModal = document.getElementById("smbGuideModal");
+    const smbSharePath = document.getElementById("smbSharePath");
+    const closeSmbGuideBtn = document.getElementById("closeSmbGuideBtn");
     const wifiStateDot = document.getElementById("wifiStateDot");
     const wifiStateText = document.getElementById("wifiStateText");
     const wifiIpText = document.getElementById("wifiIpText");
+    const ddcsStateDot = document.getElementById("ddcsStateDot");
+    const ddcsStateText = document.getElementById("ddcsStateText");
     const remoteCard = document.getElementById("remoteCard");
     const qrContainer = document.getElementById("qrContainer");
     const remoteUrlEl = document.getElementById("remoteUrl");
     const remoteHint = document.getElementById("remoteHint");
+    const tailscaleStateDot = document.getElementById("tailscaleStateDot");
+    const tailscaleStateText = document.getElementById("tailscaleStateText");
+    const tailscaleAddress = document.getElementById("tailscaleAddress");
+    const tailscaleToggleBtn = document.getElementById("tailscaleToggleBtn");
+    const tailscaleHint = document.getElementById("tailscaleHint");
 
     let spindleRuntimeSec = 0;
     let axisRuntimeSec = { x: 0, y: 0, z: 0 };
+    let systemHostname = "cncpi";
     let wifiConnected = false;
     let wifiSsid = "";
     let wifiIssue = "";
     let wifiIpAddress = "";
     let lastQrIp = "";
+    let tailscaleConnected = false;
 
     function setBar(el, percent){
       if (!el) return;
@@ -710,6 +1000,11 @@
 
     function applySystemStatus(snapshot){
       const data = snapshot && typeof snapshot === "object" ? snapshot : {};
+      const reportedHostname = String(data.hostname || "").trim();
+      if (/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(reportedHostname)){
+        systemHostname = reportedHostname;
+      }
+      updateSmbSharePath();
       spindleRuntimeSec = Math.max(0, Math.floor(Number(data.spindleRuntimeSec) || 0));
       axisRuntimeSec = normalizeAxisRuntimeSnapshot(data.axisRuntimeSec);
       renderRuntimeValues();
@@ -774,11 +1069,31 @@
       window.parent.postMessage({ type: "openWifiConfigModal" }, location.origin);
     }
 
+    function currentSmbPath(){
+      return `\\\\${systemHostname}\\cnc-programs`;
+    }
+
+    function updateSmbSharePath(){
+      smbSharePath.textContent = currentSmbPath();
+    }
+
+    function openSmbGuide(){
+      updateSmbSharePath();
+      window.parent.postMessage({ type: "openSmbGuideModal", sharePath: currentSmbPath() }, location.origin);
+    }
+
+    function closeSmbGuide(){
+      smbGuideModal.classList.remove("is-open");
+      smbGuideModal.setAttribute("aria-hidden", "true");
+      openSmbGuideBtn.focus();
+    }
+
     function setWifiStatus(connected, ssid = "", issue = "", ipAddress = ""){
       wifiConnected = !!connected;
       if (typeof ssid === "string") wifiSsid = ssid.trim();
       if (typeof issue === "string") wifiIssue = issue.trim();
       if (typeof ipAddress === "string") wifiIpAddress = ipAddress.trim();
+      updateSmbSharePath();
 
       wifiStateDot.classList.toggle("is-on", wifiConnected);
       wifiStateDot.classList.toggle("is-off", !wifiConnected);
@@ -798,6 +1113,59 @@
       }
     }
 
+    function applyDdcsStatus(snapshot){
+      const data = snapshot && typeof snapshot === "object" ? snapshot : {};
+      const configured = !!data.configured;
+      const connected = !!data.connected;
+
+      ddcsStateDot.classList.toggle("is-on", connected);
+      ddcsStateDot.classList.toggle("is-off", configured && !connected);
+
+      if (connected){
+        ddcsStateText.textContent = "DDCS V4.1 verbunden";
+      } else if (configured){
+        ddcsStateText.textContent = "DDCS V4.1 nicht verbunden";
+      } else {
+        ddcsStateText.textContent = "DDCS V4.1 nicht eingerichtet";
+      }
+    }
+
+    function applyTailscaleStatus(snapshot, actionMessage = ""){
+      const data = snapshot && typeof snapshot === "object" ? snapshot : {};
+      const installed = !!data.installed;
+      const inProgress = !!data.operationInProgress;
+      const needsLogin = !!data.needsLogin;
+      tailscaleConnected = !!data.connected;
+
+      tailscaleStateDot.classList.toggle("is-on", tailscaleConnected);
+      tailscaleStateDot.classList.toggle("is-off", !tailscaleConnected);
+      tailscaleToggleBtn.disabled = !installed || inProgress || needsLogin;
+
+      if (!installed){
+        tailscaleStateText.textContent = "Nicht installiert";
+      } else if (inProgress){
+        tailscaleStateText.textContent = data.requestedEnabled ? "Wird aktiviert…" : "Wird deaktiviert…";
+      } else if (needsLogin){
+        tailscaleStateText.textContent = "Einrichtung erforderlich";
+      } else {
+        tailscaleStateText.textContent = tailscaleConnected ? "Aktiv" : "Deaktiviert";
+      }
+
+      tailscaleToggleBtn.textContent = tailscaleConnected ? "Deaktivieren" : "Aktivieren";
+      tailscaleAddress.textContent = String(data.dnsName || data.ipAddress || "Tailscale").trim();
+
+      const error = String(data.error || "").trim();
+      if (actionMessage){
+        tailscaleHint.textContent = actionMessage;
+      } else if (error){
+        tailscaleHint.textContent = error;
+      } else if (needsLogin){
+        tailscaleHint.textContent = "";
+      } else {
+        tailscaleHint.textContent = "Sicherer Wartungszugang über Tailscale.";
+      }
+    }
+
     function toBool(value){
       if (typeof value === "boolean") return value;
       if (typeof value === "number" && (value === 0 || value === 1)) return Boolean(value);
@@ -814,9 +1182,11 @@
 
     async function loadSystemPageData(){
       try{
-        const [systemStatus, wifiStatus] = await Promise.all([
+        const [systemStatus, wifiStatus, tailscaleStatus, programsStatus] = await Promise.all([
           fetchJson("/api/system/status"),
           fetchJson("/api/wifi/status"),
+          fetchJson("/api/tailscale/status"),
+          fetchJson("/api/programs"),
         ]);
 
         applySystemStatus(systemStatus);
@@ -826,7 +1196,25 @@
         const issue = typeof wifiStatus?.wifiIssue === "string" ? wifiStatus.wifiIssue : "";
         const ipAddress = typeof wifiStatus?.wifiIpAddress === "string" ? wifiStatus.wifiIpAddress : "";
         setWifiStatus(connected === null ? false : connected, ssid, issue, ipAddress);
+        applyTailscaleStatus(tailscaleStatus);
+        applyDdcsStatus(programsStatus?.controller);
       }catch (_error){
+      }
+    }
+
+    async function toggleTailscale(){
+      tailscaleToggleBtn.disabled = true;
+      const action = tailscaleConnected ? "disable" : "enable";
+      try{
+        const response = await fetch(`${API_BASE}/api/tailscale/${action}`, {
+          method: "POST",
+          cache: "no-store",
+        });
+        const payload = await response.json();
+        applyTailscaleStatus(payload.status, String(payload.message || "").trim());
+      }catch (_error){
+        tailscaleHint.textContent = "Tailscale ist momentan nicht erreichbar.";
+        tailscaleToggleBtn.disabled = false;
       }
     }
 
@@ -864,15 +1252,32 @@
       if (msg.type === "openWifiConfig" && msg.openModal !== false){
         openWifiConfigModal();
       }
+      if (msg.type === "smbGuideClosed"){
+        openSmbGuideBtn.focus();
+      }
       if (msg.type === "pageShown"){
         loadSystemPageData();
       }
     });
 
     openWifiConfigBtn.addEventListener("click", openWifiConfigModal);
+    openSmbGuideBtn.addEventListener("click", openSmbGuide);
+    closeSmbGuideBtn.addEventListener("click", closeSmbGuide);
+    smbGuideModal.addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-close-smb-guide='true']")) closeSmbGuide();
+    });
+    tailscaleToggleBtn.addEventListener("click", toggleTailscale);
+
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && smbGuideModal.classList.contains("is-open")){
+        closeSmbGuide();
+      }
+    });
 
     applySystemStatus({});
     setWifiStatus(wifiConnected);
+    applyTailscaleStatus({});
+    applyDdcsStatus({});
     loadSystemPageData();
     window.setInterval(loadSystemPageData, 5000);
   </script>

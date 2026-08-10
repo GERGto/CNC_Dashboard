@@ -71,8 +71,31 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
 - GET `/api/wifi/status`
   - `{ wifiAvailable, wifiInterface, wifiConnected, wifiSsid, wifiIpAddress, wifiState, wifiIssueCode, wifiIssue, wifiAutoConnect }`
 - GET `/api/system/status`
-  - `{ time, spindleRuntimeSec, spindleRuntimeHours, axisRuntimeSec, axisRuntimeHours, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, cpuUsagePercent, cpuUsageAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
+  - `{ time, hostname, spindleRuntimeSec, spindleRuntimeHours, axisRuntimeSec, axisRuntimeHours, enclosureTemperatureC, enclosureTemperatureAvailable, cpuTemperatureC, cpuTemperatureAvailable, cpuUsagePercent, cpuUsageAvailable, ramUsedPercent, ramAvailable, storageUsedPercent, storageAvailable, softwareVersion, softwareVersionSource, bars }`
   - `softwareVersion` comes from `SOFTWARE_VERSION`, then Git metadata, then the repo-root `VERSION` file
+- GET `/api/tailscale/status`
+  - `{ installed, connected, backendState, needsLogin, ipAddress, dnsName, operationInProgress, requestedEnabled, error }`
+- POST `/api/tailscale/enable`
+  - Reconnects an already enrolled Tailscale node in a background worker
+- POST `/api/tailscale/disable`
+  - Disconnects the node with `tailscale down` while keeping its enrollment for the next activation
+- GET `/api/programs`
+  - Lists CNC program files in the persistent Pi staging directory and their SMB transfer state
+- POST `/api/programs/upload?name=<filename>`
+  - Raw request body; accepts `.gcode`, `.nc`, `.tap` and `.ngc` up to the configured size limit
+- GET `/api/programs/<filename>/download`
+  - Downloads a staged program
+- DELETE `/api/programs/<filename>`
+  - Removes a staged program
+- POST `/api/programs/<filename>/transfer`
+  - Queues or retries the background transfer to the configured controller SMB share
+
+The DietPi deployment defaults to the DDCS V4.1 SMB endpoint
+`//192.168.2.5/cncdisk`. Because this controller uses the legacy SMB1 dialect,
+`CNC_CONTROLLER_SMB_PROTOCOL=NT1` is applied only to the outbound controller client.
+The Pi also exposes the staging directory as authenticated WLAN share
+`cnc-programs` and as the DDCS Net Disk share `share`, restricted to controller IP
+`192.168.2.5`.
 - POST `/api/wifi/connect`
   - Request: `{ ssid, password, autoConnect }`
   - Response: `{ ok, connected, ssid, autoConnect }`

@@ -1,0 +1,56 @@
+[Unit]
+Description=CNC Dashboard early fullscreen kiosk
+After=local-fs.target plymouth-start.service
+Wants=cnc-dashboard-backend.service cnc-dashboard-frontend.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=dietpi
+Group=dietpi
+# Deliberately no PAMName: a pam_systemd/logind session would order this start
+# behind user@1000.service -> systemd-user-sessions.service -> network.target,
+# making the first kiosk frame wait for WLAN DHCP. Xorg gets its VT and DRM
+# access from the setuid wrapper (xserver-xorg-legacy, needs_root_rights=yes).
+# Without a logind session there are no per-seat device ACLs either, so grant
+# the GPU nodes (Chromium needs /dev/dri/renderD128) via groups instead.
+SupplementaryGroups=render video
+WorkingDirectory=/home/dietpi
+Environment=HOME=/home/dietpi
+Environment=USER=dietpi
+Environment=DISPLAY=:0
+RuntimeDirectory=cnc-kiosk
+Environment=XDG_RUNTIME_DIR=/run/cnc-kiosk
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=no
+# Plymouth handover. Xorg cannot come up while the plymouthd process exists
+# (measured: the X server banner always appears ~0.5s after the daemon exits,
+# even when the daemon was merely deactivated). Waiting for plymouth-quit.service
+# is not an option either: it is ordered after systemd-user-sessions.service and
+# therefore network.target - the screen would wait for DHCP. So: wait until the
+# splash has actually been painted, then quit retaining the framebuffer content
+# and only continue once the daemon really is gone. A quit issued while the
+# renderer is still activating is silently deferred - hence the paint check.
+ExecStartPre=-+/bin/sh -c 'i=0; while [ "$i" -lt 15 ]; do /usr/bin/plymouth --has-active-vt && break; i=$((i+1)); sleep 0.2; done; sleep 0.3'
+ExecStartPre=-+/bin/sh -c '/usr/bin/timeout 3 /usr/bin/plymouth quit --retain-splash; i=0; while [ "$i" -lt 20 ] && pgrep -x plymouthd >/dev/null; do i=$((i+1)); sleep 0.1; done'
+ExecStart=/var/lib/dietpi/dietpi-software/installed/chromium-autostart.sh
+# On stop (shutdown/reboot) Chromium's windows disappear a moment before Xorg
+# exits, exposing the X root - which carries the "SYSTEM WIRD GESTARTET" boot
+# bitmap. Paint the root black first (matching the app's dark shutdown
+# overlay), so the teardown shows no stray frame before Plymouth takes over.
+ExecStop=-+/bin/sh -c 'DISPLAY=:0 /usr/bin/timeout 2 /usr/bin/xsetroot -solid "#000000"'
+Restart=always
+RestartSec=2
+TimeoutStartSec=20
+TimeoutStopSec=10
+Nice=-5
+CPUWeight=10000
+IOWeight=10000
+
+[Install]
+WantedBy=multi-user.target

@@ -80,10 +80,10 @@ Die lokale Seite `frontend/pages/system.html` ist die kompakte Systemübersicht 
 
 Aktueller Aufbau:
 
-- ein festes, nicht scrollendes Drei-Kachel-Layout für `Systemdaten`, `WLAN` und `Remote-Dashboard`
+- ein festes, nicht scrollendes Drei-Kachel-Layout für `Systemdaten`, `NETZWERK` und `Remote-Dashboard`
 - das Design ist bewusst kantig und orientiert sich an den schwarzen Konturen und rechteckigen Kacheln des restlichen lokalen Systems
 - es gibt keine zusätzliche Seitenüberschrift oder erklärende Hero-Fläche auf dieser Seite
-- innerhalb der Seite bleiben nur die drei Hauptkacheln `Systemdaten`, `WLAN` und `Remote-Dashboard`; innere Unterboxen werden vermieden
+- innerhalb der Seite bleiben nur die drei Hauptkacheln `Systemdaten`, `NETZWERK` und `Remote-Dashboard`; innere Unterboxen werden vermieden
 - die Kacheln nutzen direkt ihre Haupttitel; kleine Oberüberschriften wie `Maschine`, `Netzwerk` oder `Zugriff` werden nicht zusätzlich gezeigt
 
 Inhalt der Kacheln:
@@ -93,13 +93,16 @@ Inhalt der Kacheln:
 - unterhalb der Laufzeiten folgt ein einzelner Vollbreiten-Block mit Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion untereinander
 - für Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM und Speicher werden einfache Balkenanzeigen verwendet
 - unnötige Beschreibungstexte innerhalb der Kacheln werden vermieden, um die Höhe für `1024x600` klein zu halten
-- `WLAN`: Verbindungsstatus, SSID, IP-Adresse und der Button zum bestehenden WLAN-Modal
+- `NETZWERK`: zuerst WLAN-Verbindungsstatus, SSID und IP-Adresse mit dem Button zum WLAN-Modal; darunter der per SMB-Port geprüfte DDCS-V4.1-Verbindungsstatus und die gemeinsame DDCS-/Windows-Anleitung
 - `Remote-Dashboard`: QR-Code und Zieladresse ohne separate Status-Unterkachel
 
 Datenquellen der Seite:
 
-- `GET /api/system/status` für Spindellaufzeit, X/Y/Z-Laufzeiten, Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion
+- `GET /api/system/status` für Hostname, Spindellaufzeit, X/Y/Z-Laufzeiten, Gehäusetemperatur, CPU-Temperatur, CPU-Auslastung, RAM-Auslastung, Speicher-Auslastung und Softwareversion
 - `GET /api/wifi/status` für Live-Status wie `wifiConnected`, `wifiSsid`, `wifiIpAddress` und `wifiIssue`
+- `GET /api/programs` prueft fuer den DDCS-Status die SMB-Ports `445` und `139`
+  von `192.168.2.5`; `verbunden` bedeutet damit, dass der konfigurierte
+  Controller-SMB-Dienst tatsaechlich erreichbar ist
 - die Softwareversion nutzt bevorzugt `SOFTWARE_VERSION`, danach Git-Metadaten und ohne `.git` als Fallback die Datei `VERSION` im Repo-Root
 
 Interaktion:
@@ -154,7 +157,7 @@ Schnelle Verifikation:
 - `systemctl status cnc-dashboard-camera-publisher.service --no-pager`
 - `systemctl status cnc-dashboard-mediamtx.service --no-pager`
 
-### Ethernet fuer CNC-Controller als lokales Netz
+### Ethernet fuer DDCS V4.1 als lokales Netz
 
 Der Raspberry Pi wurde so umgestellt, dass `eth0` nicht mehr per DHCP im Heimnetz sucht, sondern ein eigenes lokales Netz fuer den CNC-Controller bereitstellt.
 
@@ -162,14 +165,15 @@ Zielbild:
 
 - `wlan0`: Verbindung ins Heimnetz und Zugriff auf das lokale Web-UI
 - `eth0`: separates Punkt-zu-Punkt-/Lokalsegment fuer den CNC-Controller
-- Dateifluss spaeter: Upload ins Web-UI auf dem Pi und Weitergabe vom Pi an das CNC-Board
+- Dateifluss: Upload ins Web-UI, persistente Zwischenablage auf dem Pi und SMB-Weitergabe an den DDCS V4.1
 
 Aktive Konfiguration auf dem Pi:
 
-- Statische IP des Pi auf `eth0`: `192.168.137.1/24`
+- Statische IP des Pi auf `eth0`: `192.168.2.8/24`
+- Statische Soll-IP des DDCS V4.1: `192.168.2.5/24`
 - DHCP-Server auf `eth0` via `dnsmasq`
-- DHCP-Bereich fuer den CNC-Controller: `192.168.137.100` bis `192.168.137.150`
-- Gateway-Option per DHCP: `192.168.137.1`
+- DHCP-Fallbackbereich: `192.168.2.100` bis `192.168.2.150`
+- Gateway-Option per DHCP: `192.168.2.8`
 - DNS ist in `dnsmasq` bewusst deaktiviert (`port=0`), da fuer den lokalen SMB-Dateitransfer zunaechst nur DHCP benoetigt wird
 
 Geaenderte Dateien auf dem Pi:
@@ -184,14 +188,14 @@ port=0
 interface=eth0
 bind-interfaces
 dhcp-authoritative
-dhcp-range=192.168.137.100,192.168.137.150,255.255.255.0,12h
-dhcp-option=option:router,192.168.137.1
+dhcp-range=192.168.2.100,192.168.2.150,255.255.255.0,12h
+dhcp-option=option:router,192.168.2.8
 dhcp-leasefile=/var/lib/misc/dnsmasq.eth0.leases
 ```
 
 Verifikation:
 
-- `ip -4 addr show eth0` zeigt `192.168.137.1/24`
+- `ip -4 addr show eth0` zeigt `192.168.2.8/24`
 - `systemctl status dnsmasq --no-pager` zeigt einen laufenden Dienst
 - `journalctl -u dnsmasq -n 20 --no-pager` bestaetigt, dass DHCP exklusiv auf `eth0` gebunden ist
 
@@ -199,6 +203,32 @@ Nutzen fuer den Bootvorgang:
 
 - Vor der Umstellung wartete `eth0` beim Booten auf DHCP und blockierte dadurch den Kiosk-Start deutlich.
 - Mit der statischen `eth0`-Konfiguration sollte dieser Blocker beim naechsten Neustart entfallen oder stark reduziert sein.
+
+### CNC-Programmablage und SMB-Weitergabe
+
+Die Programmdatei-Pipeline ist fuer den DDCS V4.1 vorbereitet:
+
+- erlaubte Formate: `.gcode`, `.nc`, `.tap`, `.ngc`
+- persistenter Zwischenordner: `/var/lib/cnc-dashboard/programs`
+- Upload, Liste, Download und Loeschen ueber die Backend-API
+- derselbe Ordner wird vom Pi authentifiziert als Samba-Freigabe `cnc-programs` angeboten
+- stabiler Windows-Pfad unabhaengig von DHCP: `\\cncpi\cnc-programs`
+- Namensaufloesung ueber Samba/NetBIOS (`CNCPI`) und Avahi/mDNS (`cncpi.local`)
+- Windows-Anmeldung: Benutzer `dietpi`, Passwort `marcusbierusmaschienus`
+- fuer den DDCS wird derselbe Ordner als `share` anonym bereitgestellt; der Zugriff ist auf `192.168.2.5` begrenzt
+- manuell ueber Samba abgelegte Programmdateien werden vom Backend automatisch erkannt
+- ein Hintergrund-Worker uebertraegt wartende Dateien per SMB1 an `//192.168.2.5/cncdisk`
+- Controller-Kennwort wird ueber die Prozessumgebung an `smbclient` gegeben und erscheint nicht in dessen Argumentliste
+- vor dem finalen Zielnamen wird eine temporaere SMB-Datei vollstaendig hochgeladen
+
+Am DDCS werden die Parameter #325 (`Disable network functionality: No`), #326 (kein DHCP), #327
+(`192.168.2.5`), #328 (`255.255.255.0`), #329 (`192.168.2.8`) und #330
+(`192.168.2.8`) gesetzt. Die Controller-Konfiguration liegt root-lesbar unter
+`/etc/cnc-dashboard/controller-smb.env`.
+
+Fuer diesen Dateifluss ist kein IP-Forwarding zwischen `wlan0` und `eth0` erforderlich:
+Der Pi ist auf beiden Netzen selbst Endpunkt und arbeitet als kontrolliertes
+Anwendungs-Gateway. Layer-3-Forwarding oder NAT wird daher weiterhin nicht aktiviert.
 
 ## Aktuell bekannte I2C-Hardware
 
@@ -271,35 +301,111 @@ Aktuelle E-Stop-Logik:
   - Versorgung: `5V`
   - Datensignal: `GPIO18`
   - Aktuelle Laenge: `59` LEDs
+  - Die LED-Bootsequenz startet unabhaengig von der Relaisboard-Erkennung. Ein
+    fehlendes oder noch nicht initialisiertes Relaisboard darf den Streifen nicht
+    im ausgeschalteten Zustand halten.
   - Startup-Sequenz: blau von der Mitte nach aussen, danach Systemcheck auf Weiss
   - Idle-Sequenz: langsame wandernde weisse Wellen zwischen `RGB 28` und `127`, gedeckelt auf `50%` Maximalhelligkeit
   - Warn-Sequenz: langsames Pulsieren in tieferem Orange mit leichtem Rotanteil
 
 ## Getesteter Systemzustand auf DietPi
 
-### Clean Boot ohne Kernel-Logs
+### Eigener Bootscreen und frueher Kiosk-Start
 
-Auf dem Zielsystem wurde ein sauberer schwarzer Bootvorgang bis zum Login-Prompt erfolgreich getestet.
-Ziel dieses Setups ist, Kernel-Logs und stoerende Firmware-Meldungen waehrend des Bootens zu unterdruecken.
+Eine Messung des bisherigen Live-Systems zeigte `1,497 s` Kernelzeit und `16,970 s`
+Userspace bis `graphical.target`. Der groesste einzelne Blocker war
+`ifup@wlan0.service` mit `11,264 s`. Der lokale Backend- und Frontend-Dienst war
+dagegen bereits nach rund `4,6 s` gestartet. Der fruehere DietPi-Autostart wartete
+auf den automatischen Login: `getty@tty1` startete erst nach rund `16,5 s`, X nach
+rund `19 s` und Chromium nochmals spaeter.
+
+Der Installer verwendet deshalb DietPis Chromium-Paket und Displaykonfiguration,
+stellt `dietpi-autostart` aber auf den konfliktfreien manuellen Modus `0`. Ein eigener
+`cnc-dashboard-kiosk.service` startet X und Chromium parallel zum WLAN-Aufbau und
+besitzt `tty1` direkt. `getty@tty1` ist fuer den Appliance-Betrieb maskiert; die
+Wartung bleibt ueber SSH moeglich. `TimeoutStopSec=10` verhindert, dass ein nicht
+rechtzeitig beendeter Chromium-Prozess einen Neustart bis zum systemd-Standardtimeout
+verzoegert. Die Plymouth-Uebergabe folgt dem Display-Manager-Muster: Der Kiosk
+wartet kurz, bis Plymouth tatsaechlich gezeichnet hat (`--has-active-vt`), und ruft
+dann `plymouth deactivate` auf. Das gibt VT und DRM-Master frei, laesst den
+Framebuffer-Inhalt aber stehen, so dass Xorg mit `-background none` nahtlos
+uebernimmt. Ein hartes `plymouth quit` an dieser Stelle waere falsch: Der Daemon
+verschiebt sein Ende dann auf `plymouth-quit.service`, das ueber
+`systemd-user-sessions.service` an `network.target` haengt - Xorg blockierte am
+gehaltenen VT, bis DHCP fertig war (gemessen: Bildschirmstart erst bei Sekunde 17).
+Den finalen Daemon-Exit erledigt weiterhin `plymouth-quit.service`; zu diesem
+Zeitpunkt besitzt Xorg laengst das Display, der Quit ist reine Aufraeumarbeit.
+Die X-Sitzung wird explizit auf Display `:0` gestartet. Damit wechselt sie bei einem
+schnellen Dienstneustart nicht unbemerkt auf `:1`, und Backend-Aktionen wie das
+Abdunkeln beim Herunterfahren treffen immer die laufende Kiosk-Sitzung.
+Der Dienst ruft `xinit` und Xorg direkt auf. Der allgemeine `startx`-Wrapper wird
+nicht benoetigt; er kostete beim gemessenen Kaltstart rund acht Sekunden fuer
+Session- und Xauthority-Vorbereitung. Xorg lauscht nicht auf TCP und laeuft auf dem
+exklusiv vom Kiosk belegten `tty1`.
+Die Unit verwendet bewusst kein `PAMName=` mehr: `pam_systemd` blockiert die
+Session-Erstellung, bis `session-N.scope` startet, dieser wartet auf
+`user@1000.service`, der wiederum ueber `systemd-user-sessions.service` nach
+`network.target` geordnet ist. Das erste Kiosk-Bild wartete dadurch auf WLAN-DHCP
+(gemessen: Xorg-Start erst bei Sekunde 12-18 statt 6). Stattdessen laeuft Xorg
+ueber den setuid-Wrapper aus `xserver-xorg-legacy`
+(`/etc/X11/Xwrapper.config`: `allowed_users=anybody`, `needs_root_rights=yes`)
+mit Root-Rechten direkt auf VT und DRM. Ohne logind-Session gibt es auch keine
+Seat-ACLs auf den GPU-Geraeten; Chromium erhaelt `/dev/dri/renderD128` deshalb
+ueber `SupplementaryGroups=render video` in der Unit.
+Der Kiosk besitzt außerdem keine Ordering-Abhaengigkeit zu
+`systemd-user-sessions.service`: Diese zog auf DietPi indirekt `network.target` und
+damit den langsamen `ifup@wlan0.service` in den kritischen Startpfad. X und Chromium
+koennen als Systemdienst bereits nach `local-fs.target` parallel zum WLAN starten.
+Der Kiosk erhaelt waehrend des Starts die hoechste CPU-/I/O-Gewichtung. Der
+fruehere `cnc-dashboard-browser-preload.service` (Chromium-Binary per `dd` in
+den Dateicache lesen) wurde wieder entfernt: Die SD-Karte nutzt den
+`mq-deadline`-Scheduler, der die `idle`-I/O-Klasse ignoriert. Der Preload
+konkurrierte dadurch mit dem Xorg-Kaltstart um die SD-Bandbreite und
+verzoegerte das erste Kiosk-Bild um rund acht Sekunden. Caddy, Samba und Tailscale sind fuer
+das lokale UI nicht erforderlich und werden deshalb erst bei Sekunde 25 durch
+`cnc-dashboard-background.timer` gestartet. Remote-UI und Freigabe stehen damit
+kurz nach dem lokalen Bedienbild bereit, konkurrieren aber nicht mehr mit dessen
+Kaltstart. MediaMTX und der Kamera-Publisher bleiben deaktiviert, bis das Backend
+sie fuer einen tatsaechlichen Kameraabruf bedarfsgesteuert startet.
 
 #### Schritt 1: Kernel-Ausgabe auf ein unsichtbares Terminal verschieben
 
 Datei: `/boot/firmware/cmdline.txt`
 
-Die bestehende Zeile wird beibehalten und am Ende um die benoetigten Parameter ergaenzt.
-Getestetes Beispiel:
+Die bestehende Zeile wird beibehalten und am Ende um die benoetigten Parameter ergaenzt:
 
 ```txt
-root=PARTUUID=XXXXX-02 rootfstype=ext4 rootwait fsck.repair=yes net.ifnames=0 logo.nologo console=ttyS0,115200 console=tty3 loglevel=0 vt.global_cursor_default=0 quiet
+root=PARTUUID=XXXXX-02 rootfstype=ext4 rootwait fsck.repair=yes net.ifnames=0 drm.edid_firmware=HDMI-A-2:edid/cnc-dashboard-1024x600.bin video=HDMI-A-1:d video=HDMI-A-2:1024x600@60e console=tty3 fbcon=map:2 loglevel=0 quiet splash plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 systemd.show_status=false rd.systemd.show_status=false udev.log_level=3
 ```
 
 Relevante Anpassungen gegenueber dem DietPi-Standard:
 
 - `console=tty1` wurde auf `console=tty3` umgestellt, damit die Kernel-Ausgabe nicht auf dem sichtbaren Terminal erscheint.
+- `fbcon=map:2` haelt die Framebuffer-Konsole komplett vom Panel fern: kein Konsolen-Clear ueber dem Plymouth-Frame, keine Streuzeichen, und der zurueckbehaltene Splash (`--retain-splash`) bleibt bis zur Xorg-Uebernahme stehen. Wartungszugriff erfolgt ueber SSH.
 - `loglevel=0` reduziert die Ausgabe auf kritische Kernel-Fehler.
 - `vt.global_cursor_default=0` blendet den blinkenden Textcursor aus.
 - `quiet` unterdrueckt weitere nicht-kritische Boot-Meldungen.
 - `logo.nologo` war bereits vorhanden.
+- `splash plymouth.ignore-serial-consoles` aktiviert den grafischen CNC-Bootscreen.
+- `systemd.show_status=false` unterdrueckt die normalen systemd-Statuszeilen.
+
+Das Dashboard benoetigt fuer das feste Pi-System kein Initramfs. Der Installer setzt
+`auto_initramfs=0`, sodass der Kernel das Root-Dateisystem direkt startet und Plymouth
+anschliessend sehr frueh aus dem Root-System uebernimmt. Das vermeidet das Laden und
+Entpacken des rund 22 MB grossen bisherigen Initramfs. `disable_fw_kms_setup=1` verhindert
+zugleich, dass die Firmware konkurrierende EDID-Modi an den Kernel anhaengt. HDMI-A-1
+wird deaktiviert und der angeschlossene HDMI-A-2-Ausgang durchgaengig auf 1024x600
+gezwungen.
+
+Das MPI7002 meldet 1024x600 zwar als bevorzugte Aufloesung, sein originales
+Sync-Timing wird vom Raspberry-Pi-`vc4`-KMS-Treiber jedoch verworfen. In der Folge
+wechselte der Boot mehrfach von 1024x600 ueber 1920x1080 und 1152x864 zurueck auf
+1024x600. Der Installer kopiert deshalb die echte Monitor-EDID, ersetzt nur den
+ersten detaillierten Timing-Block durch das bereits bewaehrte vc4-kompatible Timing
+und installiert sie unter `/usr/lib/firmware/edid/cnc-dashboard-1024x600.bin`.
+CEA-Erweiterung, Monitoridentitaet und die uebrigen Modi bleiben erhalten. Eine
+Xorg-Konfiguration markiert denselben Modus zusaetzlich als bevorzugt; `xrandr`
+bleibt nur noch als Rueckfallebene bestehen.
 
 #### Schritt 2: Bluetooth deaktivieren
 
@@ -313,13 +419,33 @@ dtoverlay=disable-bt
 
 Damit verschwinden zusaetzliche Bluetooth-bezogene Firmware-Meldungen waehrend des Bootvorgangs.
 
-#### Schritt 3: Verifikation
+#### Uebergabe an den Kiosk
 
-Nach `sudo reboot` war das erwartete Ergebnis ein sauberer schwarzer Bildschirm ohne Logs bis zum Login-Prompt.
+- Plymouth zeigt frueh den weissen CNC-Dashboard-Bootscreen (mit pulsierendem
+  Balken; beim Herunterfahren lautet der Text "SYSTEM WIRD BEENDET").
+- Der Kiosk-Dienst wartet, bis Plymouth tatsaechlich gezeichnet hat, beendet es
+  mit `--retain-splash` und wartet auf den echten Daemon-Exit (siehe oben).
+- In den ersten Millisekunden der X-Session setzt `xsetroot -bitmap` den beim
+  Install vorgerenderten Splash (`generate-splash-xbm.py`) als Root-Hintergrund.
+- Der native X11/Cairo-Splash (`cnc-dashboard-xsplash.py`) liegt mit animiertem
+  Balken ueber Chromiums leeren Startflaechen und zeichnet sich bei Expose-Events
+  selbst neu. Er verschwindet erst, wenn app.js das fertig gerenderte Dashboard
+  ueber den Fenstertitel "CNC Dashboard bereit" meldet - direkt auf das fertige
+  Bedienbild, ohne Browser-Weissbild.
+- Chromium laedt `/` direkt; eine separate Boot-Seite gibt es nicht mehr. Das
+  Kiosk-Skript wartet vor dem Chromium-Start, bis Frontend (`:8081`) und
+  Backend-Health (`:8080/api/health`) antworten; solange deckt der Splash ab.
+  Die Chromium-Flags gegen Occlusion-Backgrounding sind dabei zwingend: ein
+  vollstaendig verdecktes Chromium friert sonst rAF ein und das "bereit"-Signal
+  entstuende nie.
+- Der Kiosk ist nicht von `network-online.target` abhaengig. Der langsame WLAN-Aufbau
+  darf parallel weiterlaufen.
 
-#### Naechster geplanter Ausbauschritt
+Kiosk-Session neu starten:
 
-Als naechstes soll auf diesem sauberen Boot-Zustand ein eigener Custom Bootscreen aufgebaut werden.
+```bash
+sudo systemctl restart cnc-dashboard-kiosk.service
+```
 
 ### Chromium-Kiosk korrekt auf `1024x600`
 
@@ -412,7 +538,7 @@ exec "$STARTX" /usr/local/bin/cnc-dashboard-kiosk.sh $CHROMIUM_OPTS "${URL:-http
 Zum Uebernehmen der Aenderungen wurde erfolgreich verwendet:
 
 ```bash
-sudo systemctl restart getty@tty1
+sudo systemctl restart cnc-dashboard-kiosk.service
 ```
 
 Alternativ funktioniert auch ein kompletter Neustart des Pi.
@@ -423,7 +549,8 @@ Die funktionierende Endkonfiguration war erreicht, als folgende Bedingungen glei
 
 - `xrandr` meldete `current 1024 x 600`
 - `HDMI-2` war `primary`
-- Chromium startete mit `--window-size=1024,600`
+- Chromium fordert ohne Window-Manager eine Aussenflaeche von `1025x601` an; X schneidet
+  sie auf 1024x600 zu, sodass der Chromium-Content exakt 1024x600 statt 1023x599 misst
 - Das Dashboard wurde im Kiosk-Modus vollstaendig angezeigt, ohne schwarzen Balken unten und ohne abgeschnittenen rechten Rand
 
 ### Mauszeiger im Touch-Kiosk ausblenden
@@ -493,7 +620,7 @@ exec /usr/bin/chromium "$@"
 #### Kiosk-Session neu starten
 
 ```bash
-sudo systemctl restart getty@tty1
+sudo systemctl restart cnc-dashboard-kiosk.service
 ```
 
 #### Erfolgreiche Verifikation
@@ -551,7 +678,7 @@ Die folgenden Werte wurden erfolgreich gesetzt:
 #### Schritt 3: Kiosk-Session neu starten
 
 ```bash
-sudo systemctl restart getty@tty1
+sudo systemctl restart cnc-dashboard-kiosk.service
 ```
 
 #### Erfolgreiche Verifikation

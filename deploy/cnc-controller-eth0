@@ -1,0 +1,5 @@
+# Dedicated point-to-point network for the DDCS V4.1 controller.
+allow-hotplug eth0
+iface eth0 inet static
+    address 192.168.2.8
+    netmask 255.255.255.0

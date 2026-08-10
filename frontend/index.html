@@ -6,12 +6,21 @@
   <meta name="color-scheme" content="light" />
   <title>CNC Dashboard</title>
 
-  <link rel="stylesheet" href="assets/app.css?v=20260426-02" />
+  <link rel="stylesheet" href="assets/boot.css?v=20260809-01" />
+  <link rel="stylesheet" href="assets/app.css?v=20260810-01" />
   <link rel="stylesheet" href="assets/ui-common.css?v=20260426-05" />
-  <script type="module" src="assets/app.js?v=20260426-05"></script>
+  <script type="module" src="assets/app.js?v=20260810-02"></script>
 </head>
 
 <body>
+  <div class="startup-cover" id="startupCover" role="status" aria-live="polite">
+    <div class="boot">
+      <h1 class="boot__title">CNC DASHBOARD</h1>
+      <p class="boot__eyebrow">MASCHINENSTEUERUNG</p>
+      <div class="boot__progress" aria-hidden="true"></div>
+      <p class="boot__status">SYSTEM WIRD GESTARTET</p>
+    </div>
+  </div>
   <div class="app">
 
     <header class="statusbar" role="banner">
@@ -202,6 +211,35 @@
         <div class="wifi-feedback__icon wifi-feedback__icon--ok" id="wifiFeedbackSuccess" hidden aria-hidden="true">✓</div>
         <div class="wifi-feedback__icon wifi-feedback__icon--error" id="wifiFeedbackError" hidden aria-hidden="true">✕</div>
         <div class="wifi-feedback__text" id="wifiConnectFeedbackText">WLAN wird verbunden ...</div>
+      </div>
+    </div>
+
+    <div class="modal" id="smbGuideModal" role="dialog" aria-modal="true" aria-labelledby="smbGuideTitle" aria-hidden="true">
+      <div class="modal__backdrop" data-close-smb-guide="true"></div>
+      <div class="modal__panel smb-guide__panel" role="document">
+        <h2 class="modal__title" id="smbGuideTitle">SMB und DDCS V4.1 einrichten</h2>
+        <div class="smb-guide__content">
+          <h3 class="smb-guide__section-title">Windows-Freigabe</h3>
+          <strong class="smb-guide__path" id="smbSharePath">\\cncpi\cnc-programs</strong>
+          <ol class="smb-guide__steps">
+            <li>Am Windows-PC <strong>Win + E</strong> drücken.</li>
+            <li>Die oben angezeigte Adresse in die Adresszeile des Explorers eingeben.</li>
+            <li>Als Benutzer <strong>dietpi</strong> und Passwort <strong>marcusbierusmaschienus</strong> verwenden.</li>
+            <li>Optional unter „Dieser PC“ die Freigabe als Netzlaufwerk verbinden.</li>
+          </ol>
+          <p class="smb-guide__note">Dateien in dieser Freigabe erscheinen automatisch im Dashboard und werden an den DDCS V4.1 übertragen.</p>
+          <h3 class="smb-guide__section-title">DDCS-V4.1-Netzwerkparameter</h3>
+          <div class="smb-guide__params" aria-label="DDCS-V4.1-Netzwerkparameter">
+            <div class="smb-guide__param"><span class="smb-guide__param-number">#325</span><span class="smb-guide__param-label">Disable network functionality</span><strong class="smb-guide__param-value">No</strong></div>
+            <div class="smb-guide__param"><span class="smb-guide__param-number">#326</span><span class="smb-guide__param-label">Obtain IP address automatically</span><strong class="smb-guide__param-value">No</strong></div>
+            <div class="smb-guide__param"><span class="smb-guide__param-number">#327</span><span class="smb-guide__param-label">Local IP address</span><strong class="smb-guide__param-value">192.168.2.5</strong></div>
+            <div class="smb-guide__param"><span class="smb-guide__param-number">#328</span><span class="smb-guide__param-label">Net mask</span><strong class="smb-guide__param-value">255.255.255.0</strong></div>
+            <div class="smb-guide__param"><span class="smb-guide__param-number">#329</span><span class="smb-guide__param-label">Router IP address</span><strong class="smb-guide__param-value">192.168.2.8</strong></div>
+            <div class="smb-guide__param"><span class="smb-guide__param-number">#330</span><span class="smb-guide__param-label">Shared host IP address</span><strong class="smb-guide__param-value">192.168.2.8</strong></div>
+          </div>
+          <p class="smb-guide__note">Nach dem Speichern den DDCS neu starten. „Net Disk“ zeigt anschließend die Pi-Freigabe <strong>share</strong>.</p>
+        </div>
+        <div class="smb-guide__actions"><button class="btn" id="closeSmbGuideBtn" type="button">Schließen</button></div>
       </div>
     </div>
 

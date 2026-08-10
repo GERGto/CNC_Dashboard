@@ -10,8 +10,10 @@ from .camera_service import CameraService
 from .common import iso_now_utc
 from .config import load_app_config
 from .machine_status import MachineStatusService
+from .program_transfer_service import ProgramTransferService
 from .settings_store import SettingsStore
 from .system_service import ShutdownService, SystemInfoService, mock_axes_load
+from .tailscale_service import TailscaleService
 from .wifi_service import WiFiService
 
 
@@ -57,6 +59,8 @@ class BackendApp:
         hardware_backend,
         machine_status_service,
         camera_service,
+        tailscale_service,
+        program_transfer_service,
     ):
         self.config = config
         self.store = store
@@ -66,6 +70,8 @@ class BackendApp:
         self.hardware_backend = hardware_backend
         self.machine_status_service = machine_status_service
         self.camera_service = camera_service
+        self.tailscale_service = tailscale_service
+        self.program_transfer_service = program_transfer_service
         if self.system_info_service is not None:
             self.system_info_service.backend_app = self
         self._spindle_runtime_lock = threading.Lock()
@@ -104,11 +110,13 @@ class BackendApp:
 
     def ensure_storage(self):
         self.store.ensure_split_storage()
+        self.program_transfer_service.ensure_storage()
         self._load_spindle_runtime_state()
         self._record_backend_startup()
         self._apply_status_indicator_preferences()
 
     def start_background_tasks(self):
+        self.program_transfer_service.start_background_tasks()
         threading.Thread(target=self.wifi_service.autoconnect_wifi_on_startup, daemon=True).start()
         threading.Thread(target=self.hardware_backend.initialize_outputs_on_startup, daemon=True).start()
         threading.Thread(target=self._hardware_estop_worker, daemon=True).start()
@@ -313,6 +321,27 @@ class BackendApp:
 
     def get_system_status(self):
         return self.system_info_service.build_snapshot()
+
+    def get_tailscale_status(self):
+        return self.tailscale_service.get_status()
+
+    def request_tailscale_enabled(self, enabled):
+        return self.tailscale_service.request_enabled(enabled)
+
+    def get_programs(self):
+        return self.program_transfer_service.get_snapshot()
+
+    def upload_program(self, name, source, content_length):
+        return self.program_transfer_service.store_upload(name, source, content_length)
+
+    def get_program_download(self, name):
+        return self.program_transfer_service.get_download(name)
+
+    def delete_program(self, name):
+        return self.program_transfer_service.delete_program(name)
+
+    def request_program_transfer(self, name):
+        return self.program_transfer_service.request_transfer(name)
 
     def save_settings(self, patch):
         payload = patch if isinstance(patch, dict) else {}
@@ -941,6 +970,8 @@ def create_backend_app():
     shutdown_service = ShutdownService(config, hardware_backend=hardware_backend)
     machine_status_service = MachineStatusService()
     camera_service = CameraService(config)
+    tailscale_service = TailscaleService()
+    program_transfer_service = ProgramTransferService(config)
     system_info_service = SystemInfoService(config, hardware_backend, backend_app=None)
     return BackendApp(
         config=config,
@@ -951,4 +982,6 @@ def create_backend_app():
         hardware_backend=hardware_backend,
         machine_status_service=machine_status_service,
         camera_service=camera_service,
+        tailscale_service=tailscale_service,
+        program_transfer_service=program_transfer_service,
     )

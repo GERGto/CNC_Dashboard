@@ -1,0 +1,51 @@
+Window.SetBackgroundTopColor(1, 1, 1);
+Window.SetBackgroundBottomColor(1, 1, 1);
+
+# Same layout as the X11 splash and the dashboard startup cover so every boot
+# stage shows one visually identical frame: title, eyebrow, progress, status.
+title_image = Image.Text("CNC DASHBOARD", 0, 0, 0, "Sans Bold 39", "center");
+title_sprite = Sprite(title_image);
+
+subtitle_image = Image.Text("M A S C H I N E N S T E U E R U N G", 0.28, 0.28, 0.28, "Sans Bold 10", "center");
+subtitle_sprite = Sprite(subtitle_image);
+
+track_image = Image("progress-track.png");
+track_sprite = Sprite(track_image);
+
+fill_image = Image("progress-fill.png");
+fill_sprite = Sprite(fill_image);
+
+# The shutdown path reuses this theme; the status line must not claim a start.
+if (Plymouth.GetMode() == "shutdown" || Plymouth.GetMode() == "reboot")
+    status_label = "SYSTEM WIRD BEENDET";
+else
+    status_label = "SYSTEM WIRD GESTARTET";
+
+status_image = Image.Text(status_label, 0, 0, 0, "Sans Bold 10", "center");
+status_sprite = Sprite(status_image);
+
+counter = 0;
+
+fun refresh_callback() {
+    center_x = Window.GetX() + Window.GetWidth() / 2;
+    center_y = Window.GetY() + Window.GetHeight() / 2;
+
+    title_sprite.SetX(center_x - title_image.GetWidth() / 2);
+    title_sprite.SetY(center_y - 48 - title_image.GetHeight() * 0.8);
+    subtitle_sprite.SetX(center_x - subtitle_image.GetWidth() / 2);
+    subtitle_sprite.SetY(center_y + 4 - subtitle_image.GetHeight() * 0.8);
+    track_sprite.SetX(center_x - track_image.GetWidth() / 2);
+    track_sprite.SetY(center_y + 67);
+    fill_sprite.SetX(center_x - track_image.GetWidth() / 2);
+    fill_sprite.SetY(center_y + 67);
+    fill_sprite.SetZ(1);
+    status_sprite.SetX(center_x - status_image.GetWidth() / 2);
+    status_sprite.SetY(center_y + 101 - status_image.GetHeight() * 0.8);
+
+    # Subtle pulse instead of a sliding animation: the script module cannot
+    # clip sprites, and a static bar would look frozen during a long start.
+    counter++;
+    fill_sprite.SetOpacity(0.62 + 0.38 * Math.Sin(counter / 12));
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);

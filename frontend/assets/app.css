@@ -346,6 +346,19 @@ body.is-shutting-down .app{
   padding: 14px;
 }
 
+.smb-guide__panel{width:min(720px,94vw);max-height:92vh;max-height:92dvh;display:flex;flex-direction:column;gap:12px;padding:16px}
+.smb-guide__content{min-height:0;overflow:auto;display:grid;gap:12px;font-size:15px;line-height:1.35}
+.smb-guide__path{display:block;padding:10px 12px;border:2px solid #000;background:#f2f2f2;font:800 17px/1.2 Consolas,"Courier New",monospace;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+.smb-guide__steps{margin:0;padding-left:24px;display:grid;gap:7px}
+.smb-guide__note{margin:0;padding:9px 11px;border-left:5px solid #000;background:#f2f2f2;font-weight:700}
+.smb-guide__section-title{margin:4px 0 0;padding-top:12px;border-top:2px solid #000;font-size:18px;line-height:1.15}
+.smb-guide__params{display:grid;border:2px solid #000}
+.smb-guide__param{display:grid;grid-template-columns:62px minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 9px}
+.smb-guide__param + .smb-guide__param{border-top:1px solid #000}
+.smb-guide__param-number,.smb-guide__param-value{font-family:Consolas,"Courier New",monospace;font-weight:900}
+.smb-guide__param-label{min-width:0;font-weight:700}
+.smb-guide__actions{display:flex;justify-content:flex-end;gap:8px}
+
 .wifi-cfg__content{
   flex: 1 1 auto;
   min-height: 0;

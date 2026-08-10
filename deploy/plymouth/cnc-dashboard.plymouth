@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=CNC Dashboard
+Description=Minimal CNC Dashboard appliance boot screen
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/cnc-dashboard
+ScriptFile=/usr/share/plymouth/themes/cnc-dashboard/cnc-dashboard.script

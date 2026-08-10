@@ -28,6 +28,21 @@ class AppConfig:
     settings_path: str
     tasks_path: str
     machine_stats_path: str
+    programs_directory: str
+    programs_state_path: str
+    programs_share_name: str
+    program_upload_max_bytes: int
+    program_scan_interval_sec: float
+    program_settle_seconds: float
+    controller_smb_enabled: bool
+    controller_smb_host: str
+    controller_smb_share: str
+    controller_smb_username: str
+    controller_smb_password: str
+    controller_smb_domain: str
+    controller_smb_remote_directory: str
+    controller_smb_protocol: str
+    controller_smb_timeout_sec: float
     enable_real_shutdown: bool
     shutdown_command: str
     kiosk_display: str
@@ -69,6 +84,26 @@ def load_app_config():
         settings_path=os.path.join(backend_root, "settings.json"),
         tasks_path=os.path.join(backend_root, "tasks.json"),
         machine_stats_path=os.path.join(backend_root, "machine_stats.json"),
+        programs_directory=str(
+            os.getenv("PROGRAMS_DIRECTORY", os.path.join(backend_root, "programs"))
+        ).strip(),
+        programs_state_path=str(
+            os.getenv("PROGRAMS_STATE_PATH", os.path.join(backend_root, "programs-state.json"))
+        ).strip(),
+        programs_share_name=str(os.getenv("PROGRAMS_SHARE_NAME", "cnc-programs")).strip() or "cnc-programs",
+        program_upload_max_bytes=_read_non_negative_int_env("PROGRAM_UPLOAD_MAX_BYTES", 100 * 1024 * 1024),
+        program_scan_interval_sec=_read_non_negative_float_env("PROGRAM_SCAN_INTERVAL_SEC", 2.0),
+        program_settle_seconds=_read_non_negative_float_env("PROGRAM_SETTLE_SECONDS", 5.0),
+        controller_smb_enabled=str(os.getenv("CNC_CONTROLLER_SMB_ENABLED", "0")).strip().lower()
+        in {"1", "true", "yes", "on"},
+        controller_smb_host=str(os.getenv("CNC_CONTROLLER_SMB_HOST", "")).strip(),
+        controller_smb_share=str(os.getenv("CNC_CONTROLLER_SMB_SHARE", "")).strip(),
+        controller_smb_username=str(os.getenv("CNC_CONTROLLER_SMB_USERNAME", "")).strip(),
+        controller_smb_password=str(os.getenv("CNC_CONTROLLER_SMB_PASSWORD", "")),
+        controller_smb_domain=str(os.getenv("CNC_CONTROLLER_SMB_DOMAIN", "")).strip(),
+        controller_smb_remote_directory=str(os.getenv("CNC_CONTROLLER_SMB_REMOTE_DIRECTORY", "")).strip(),
+        controller_smb_protocol=str(os.getenv("CNC_CONTROLLER_SMB_PROTOCOL", "")).strip().upper(),
+        controller_smb_timeout_sec=_read_non_negative_float_env("CNC_CONTROLLER_SMB_TIMEOUT_SEC", 30.0),
         enable_real_shutdown=str(os.getenv("ENABLE_REAL_SHUTDOWN", "")).strip().lower() in {"1", "true", "yes", "on"},
         shutdown_command=str(os.getenv("SHUTDOWN_COMMAND", "")).strip(),
         kiosk_display=str(os.getenv("KIOSK_DISPLAY", ":0")).strip() or ":0",

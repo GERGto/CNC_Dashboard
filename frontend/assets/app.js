@@ -157,6 +157,9 @@ const wifiFeedbackSpinner = document.getElementById("wifiFeedbackSpinner");
 const wifiFeedbackSuccess = document.getElementById("wifiFeedbackSuccess");
 const wifiFeedbackError = document.getElementById("wifiFeedbackError");
 const wifiConnectFeedbackText = document.getElementById("wifiConnectFeedbackText");
+const smbGuideModal = document.getElementById("smbGuideModal");
+const smbSharePath = document.getElementById("smbSharePath");
+const closeSmbGuideBtn = document.getElementById("closeSmbGuideBtn");
 const keyboardModal = document.getElementById("keyboardModal");
 const keyboardTitle = document.getElementById("keyboardTitle");
 const keyboardDisplayInput = document.getElementById("keyboardDisplayInput");
@@ -572,6 +575,19 @@ function openWifiConfigModal(){
 
 function closeWifiConfigModal(force = false){
   wifiController.closeConfigModal(force);
+}
+
+function openSmbGuideModal(sharePath = ""){
+  if (sharePath && smbSharePath) smbSharePath.textContent = sharePath;
+  smbGuideModal.classList.add("is-open");
+  smbGuideModal.setAttribute("aria-hidden", "false");
+  closeSmbGuideBtn.focus();
+}
+
+function closeSmbGuideModal(){
+  smbGuideModal.classList.remove("is-open");
+  smbGuideModal.setAttribute("aria-hidden", "true");
+  postToFrame("system", { type: "smbGuideClosed" });
 }
 
 function loadMaintenanceTasks(){
@@ -1114,6 +1130,12 @@ graphModal.addEventListener("click", (ev) => {
 });
 graphWindowSlider.addEventListener("input", (ev) => updateGraphWindowModal(ev.target.value, true));
 maintenanceController.attachEventHandlers();
+smbGuideModal.addEventListener("click", (ev) => {
+  if (ev.target && ev.target.dataset && ev.target.dataset.closeSmbGuide){
+    closeSmbGuideModal();
+  }
+});
+closeSmbGuideBtn.addEventListener("click", closeSmbGuideModal);
 window.addEventListener("keydown", (ev) => {
   if (keyboardController.handleDocumentKeydown(ev)){
     return;
@@ -1142,6 +1164,9 @@ window.addEventListener("keydown", (ev) => {
   }
   if (ev.key === "Escape" && graphModal.classList.contains("is-open")){
     closeGraphModal();
+  }
+  if (ev.key === "Escape" && smbGuideModal.classList.contains("is-open")){
+    closeSmbGuideModal();
   }
 });
 
@@ -1177,6 +1202,20 @@ function createFrames(){
         // Same-origin pages are guarded; ignore if a frame cannot be accessed.
       }
       flushQueuedFrameMessages(p.id);
+      if (p.id === state.activePage){
+        const startupCover = document.getElementById("startupCover");
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            window.setTimeout(() => {
+              // Signal for the native boot splash: the dashboard is on screen.
+              // cnc-dashboard-xsplash.py keeps covering until it sees "bereit".
+              document.title = "CNC Dashboard bereit";
+              startupCover?.classList.add("is-hidden");
+              window.setTimeout(() => startupCover?.remove(), 180);
+            }, 120);
+          });
+        });
+      }
     });
     mainEl.appendChild(f);
     frames.set(p.id, f);
@@ -1330,6 +1369,7 @@ window.addEventListener("message", (ev) => {
       broadcastWifiState();
       break;
     case "openWifiConfigModal": openWifiConfigModal(); break;
+    case "openSmbGuideModal": openSmbGuideModal(typeof msg.sharePath === "string" ? msg.sharePath : ""); break;
     case "openKeyboard":
       openKeyboardModal({
         title: typeof msg.title === "string" ? msg.title : "Eingabe",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import shlex
+import socket
 import subprocess
 import threading
 import time
@@ -78,6 +79,7 @@ class SystemInfoService:
 
         return {
             "time": iso_now_utc(),
+            "hostname": socket.gethostname().strip() or "cncpi",
             "spindleRuntimeSec": spindle_runtime_sec,
             "spindleRuntimeHours": round(spindle_runtime_sec / 3600.0, 1),
             "axisRuntimeSec": axis_runtime_sec,

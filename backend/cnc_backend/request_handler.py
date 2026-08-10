@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from cnc_hardware.sensors import HardwareError, HardwareStateConflictError
 
 from .common import clamp, json_response, parse_bool_query_flag, send_sse
+from .program_transfer_service import ProgramTransferError
 
 
 def create_request_handler(app):
@@ -21,7 +23,7 @@ def create_request_handler(app):
         def do_OPTIONS(self):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.end_headers()
 
@@ -99,6 +101,20 @@ def create_request_handler(app):
             if path == "/api/system/status":
                 return json_response(self, 200, app.get_system_status())
 
+            if path == "/api/tailscale/status":
+                return json_response(self, 200, app.get_tailscale_status())
+
+            if path == "/api/programs":
+                return json_response(self, 200, app.get_programs())
+
+            program_name = self._program_name_from_suffix(path, "/download")
+            if program_name is not None:
+                try:
+                    file_path, metadata = app.get_program_download(program_name)
+                    return self._send_program_file(file_path, metadata)
+                except ProgramTransferError as exc:
+                    return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
+
             if path == "/api/maintenance/tasks":
                 return json_response(self, 200, {"tasks": app.get_maintenance_tasks()})
 
@@ -106,6 +122,46 @@ def create_request_handler(app):
 
         def do_POST(self):
             parsed = urlparse(self.path)
+            if parsed.path == "/api/programs/upload":
+                params = parse_qs(parsed.query or "")
+                name = str((params.get("name") or [""])[0]).strip()
+                try:
+                    content_length = int(self.headers.get("Content-Length", "-1"))
+                except (TypeError, ValueError):
+                    content_length = -1
+                if content_length < 0:
+                    self.close_connection = True
+                    return json_response(self, 411, {"ok": False, "error": "Content-Length fehlt"})
+                try:
+                    program = app.upload_program(name, self.rfile, content_length)
+                    return json_response(self, 201, {"ok": True, "program": program})
+                except ProgramTransferError as exc:
+                    self.close_connection = True
+                    return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
+
+            program_name = self._program_name_from_suffix(parsed.path, "/transfer")
+            if program_name is not None:
+                try:
+                    program = app.request_program_transfer(program_name)
+                    return json_response(self, 202, {"ok": True, "program": program})
+                except ProgramTransferError as exc:
+                    return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
+
+            if parsed.path in {"/api/tailscale/enable", "/api/tailscale/disable"}:
+                enabled = parsed.path.endswith("/enable")
+                ok, message, status = app.request_tailscale_enabled(enabled)
+                if ok:
+                    http_status = 202
+                elif status.get("operationInProgress"):
+                    http_status = 409
+                else:
+                    http_status = 503
+                return json_response(
+                    self,
+                    http_status,
+                    {"ok": ok, "message": message, "status": status},
+                )
+
             if parsed.path == "/api/shutdown":
                 ok, message = app.request_system_shutdown()
                 status = 202 if ok else 503
@@ -307,6 +363,16 @@ def create_request_handler(app):
 
             json_response(self, 404, {"error": "Not found"})
 
+        def do_DELETE(self):
+            parsed = urlparse(self.path)
+            program_name = self._program_name_from_suffix(parsed.path, "")
+            if program_name is None:
+                return json_response(self, 404, {"error": "Not found"})
+            try:
+                return json_response(self, 200, app.delete_program(program_name))
+            except ProgramTransferError as exc:
+                return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
+
         def log_message(self, format, *args):
             return
 
@@ -366,5 +432,35 @@ def create_request_handler(app):
                 )
 
             return json_response(self, 200, {"ok": True, **result})
+
+        @staticmethod
+        def _program_name_from_suffix(path, suffix):
+            prefix = "/api/programs/"
+            if not path.startswith(prefix):
+                return None
+            encoded_name = path[len(prefix) :]
+            if suffix:
+                if not encoded_name.endswith(suffix):
+                    return None
+                encoded_name = encoded_name[: -len(suffix)]
+            if not encoded_name or "/" in encoded_name:
+                return None
+            return unquote(encoded_name)
+
+        def _send_program_file(self, file_path, metadata):
+            file_size = os.path.getsize(file_path)
+            file_name = str(metadata.get("name", "programm.nc"))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(file_name)}")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(file_path, "rb") as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
 
     return Handler

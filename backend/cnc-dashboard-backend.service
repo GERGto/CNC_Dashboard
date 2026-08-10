@@ -1,15 +1,27 @@
 [Unit]
 Description=CNC Dashboard Backend
+After=local-fs.target
 
 [Service]
 Type=simple
-User=dietpi
-Group=dietpi
+User=root
+Group=root
 WorkingDirectory=/opt/cnc-dashboard/backend
 Environment=PORT=8080
 Environment=BIND_HOST=127.0.0.1
 Environment=AXES_INTERVAL_MS=250
 EnvironmentFile=-/opt/cnc-dashboard/backend/camera-stream.env
+EnvironmentFile=-/etc/cnc-dashboard/controller-smb.env
+Environment=PROGRAMS_DIRECTORY=/var/lib/cnc-dashboard/programs
+Environment=PROGRAMS_STATE_PATH=/var/lib/cnc-dashboard/programs-state.json
+Environment=PROGRAMS_SHARE_NAME=cnc-programs
+Environment=PROGRAM_UPLOAD_MAX_BYTES=104857600
+Environment=PROGRAM_SCAN_INTERVAL_SEC=2
+Environment=PROGRAM_SETTLE_SECONDS=5
+Environment=ENABLE_REAL_SHUTDOWN=1
+Environment=SHUTDOWN_DELAY_SEC=0.0
+Environment=KIOSK_DISPLAY=:0
+Environment=KIOSK_XAUTHORITY=/home/dietpi/.Xauthority
 Environment=EMERGENCY_INPUT_MODULE_ENABLED=1
 Environment=EMERGENCY_INPUT_MODULE_I2C_ADDRESS=0x21
 Environment=EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS=1,2
@@ -19,11 +31,18 @@ Environment=SPINDLE_LOAD_SENSOR_I2C_ADDRESS=0x60
 Environment=SPINDLE_LOAD_SENSOR_RSENSE_KOHM=4
 Environment=HARDWARE_ESTOP_POLL_INTERVAL_SEC=0.1
 Environment=STATUS_INDICATOR_LED_COUNT=59
-ExecStart=/usr/bin/python3 /opt/cnc-dashboard/backend/server.py
+Environment=RELAY_BOARD_POWER_CONTROL_ENABLED=1
+Environment=RELAY_BOARD_POWER_GPIO_CHIP=/dev/gpiochip0
+Environment=RELAY_BOARD_POWER_GPIO_LINE_OFFSET=17
+Environment=RELAY_BOARD_POWER_ACTIVE_HIGH=1
+Environment=RELAY_BOARD_POWER_OFF_DELAY_SEC=0.35
+Environment=RELAY_BOARD_POWER_ON_DELAY_SEC=1.20
+Environment=RELAY_BOARD_STARTUP_INITIALIZATION_DELAY_SEC=0.20
+Environment=RELAY_BOARD_STARTUP_INITIALIZATION_ATTEMPTS=0
+Environment=RELAY_BOARD_STARTUP_INITIALIZATION_INTERVAL_SEC=1.00
+ExecStart=/opt/cnc-dashboard/.venv/bin/python /opt/cnc-dashboard/backend/server.py
 Restart=always
 RestartSec=2
-Environment=ENABLE_REAL_SHUTDOWN=1
-Environment=SHUTDOWN_DELAY_SEC=0.0
 
 [Install]
 WantedBy=multi-user.target

@@ -141,6 +141,9 @@ const state = {
   backendStartCount: 0,
   activeTab: "files",
   files: [],
+  programController: { enabled: false, configured: false, issue: "" },
+  allowedProgramExtensions: [".gcode", ".nc", ".tap", ".ngc"],
+  uploadBusy: false,
   cameraReaderSupported:
     typeof window.MediaMTXWebRTCReader === "function" && typeof window.RTCPeerConnection !== "undefined",
   recordingSupported: typeof window.MediaRecorder !== "undefined",
@@ -572,7 +575,50 @@ function createFileEntry(name, sizeBytes, downloadUrl) {
     sizeLabel: formatFileSize(sizeBytes),
     dateLabel: formatDate(new Date()),
     downloadUrl,
+    source: "browser",
+    transferState: "localBrowser",
+    transferMessage: "Nur in dieser Browser-Sitzung verfügbar",
   };
+}
+
+function applyProgramsSnapshot(snapshot) {
+  const payload = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const browserFiles = state.files.filter((file) => file.source === "browser");
+  const programs = Array.isArray(payload.programs) ? payload.programs : [];
+  const serverFiles = programs.map((program) => {
+    const name = String(program?.name || "programm.nc");
+    const modifiedAt = new Date(String(program?.modifiedAt || ""));
+    return {
+      id: `program:${name}`,
+      name,
+      sizeLabel: formatFileSize(program?.sizeBytes),
+      dateLabel: Number.isNaN(modifiedAt.getTime()) ? "-" : formatDate(modifiedAt),
+      downloadUrl: `${state.apiBase}/api/programs/${encodeURIComponent(name)}/download`,
+      source: "server",
+      transferState: String(program?.transferState || "pending"),
+      transferMessage: String(program?.transferMessage || ""),
+    };
+  });
+  state.files = [...browserFiles, ...serverFiles];
+  state.programController = payload.controller && typeof payload.controller === "object"
+    ? payload.controller
+    : { enabled: false, configured: false, issue: "" };
+  state.allowedProgramExtensions = Array.isArray(payload.allowedExtensions)
+    ? payload.allowedExtensions.map((value) => String(value).toLowerCase())
+    : state.allowedProgramExtensions;
+}
+
+function getTransferStateView(file) {
+  const stateId = String(file?.transferState || "");
+  const views = {
+    transferred: { label: "Am CNC-Controller", className: "is-success" },
+    transferring: { label: "Wird übertragen", className: "is-working" },
+    failed: { label: "Übertragung fehlgeschlagen", className: "is-error" },
+    waitingForController: { label: "Lokal bereit · Controller fehlt", className: "is-waiting" },
+    pending: { label: "Lokal bereit", className: "is-pending" },
+    localBrowser: { label: "Browser-Datei", className: "is-waiting" },
+  };
+  return views[stateId] || views.pending;
 }
 
 function triggerDownload(url, fileName) {
@@ -607,8 +653,15 @@ function renderFiles() {
     meta.className = "file-row__meta";
     meta.textContent = `${file.sizeLabel} - ${file.dateLabel}`;
 
+    const transferView = getTransferStateView(file);
+    const transferState = document.createElement("span");
+    transferState.className = `file-row__transfer ${transferView.className}`;
+    transferState.textContent = transferView.label;
+    transferState.title = file.transferMessage || transferView.label;
+
     body.appendChild(name);
     body.appendChild(meta);
+    body.appendChild(transferState);
 
     const actions = document.createElement("div");
     actions.className = "file-row__actions";
@@ -631,7 +684,7 @@ function renderFiles() {
     deleteBtn.title = "Loeschen";
     deleteBtn.innerHTML = `<span class="file-row__action-icon">${ICONS.trash}</span>`;
     deleteBtn.addEventListener("click", () => {
-      deleteFile(file.id);
+      void deleteFile(file);
     });
     actions.appendChild(deleteBtn);
 
@@ -924,17 +977,19 @@ async function refreshStaticData() {
   state.pollingBusy = true;
   try {
     const cameraStatusPath = shouldEnsureCameraStream() ? "/api/camera/status?ensure=1" : "/api/camera/status";
-    const [hardware, machineStatus, maintenanceTasks, cameraStatus] = await Promise.all([
+    const [hardware, machineStatus, maintenanceTasks, cameraStatus, programsSnapshot] = await Promise.all([
       fetchJson("/api/hardware?refresh=1"),
       fetchJson("/api/machine/status"),
       fetchJson("/api/maintenance/tasks"),
       fetchJson(cameraStatusPath),
+      fetchJson("/api/programs"),
     ]);
 
     applyHardwareSnapshot(hardware);
     applyMachineStatus(machineStatus);
     applyTasks(maintenanceTasks?.tasks);
     applyCameraStatus(cameraStatus);
+    applyProgramsSnapshot(programsSnapshot);
     renderAll();
   } catch (_error) {
     showToast("Backend momentan nicht erreichbar.", true);
@@ -1032,40 +1087,83 @@ async function completeMaintenanceTask(taskId) {
   }
 }
 
-function deleteFile(fileId) {
+async function deleteFile(file) {
+  if (file?.source === "server") {
+    try {
+      const response = await fetch(`${state.apiBase}/api/programs/${encodeURIComponent(file.name)}`, {
+        method: "DELETE",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `HTTP ${response.status}`);
+      }
+      showToast(`Gelöscht: ${file.name}`);
+      await refreshStaticData();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Datei konnte nicht gelöscht werden.", true);
+    }
+    return;
+  }
+
   const nextFiles = [];
-  state.files.forEach((file) => {
-    if (file.id === fileId) {
-      if (file.downloadUrl && dynamicObjectUrls.has(file.downloadUrl)) {
-        URL.revokeObjectURL(file.downloadUrl);
-        dynamicObjectUrls.delete(file.downloadUrl);
+  state.files.forEach((candidate) => {
+    if (candidate.id === file?.id) {
+      if (candidate.downloadUrl && dynamicObjectUrls.has(candidate.downloadUrl)) {
+        URL.revokeObjectURL(candidate.downloadUrl);
+        dynamicObjectUrls.delete(candidate.downloadUrl);
       }
       return;
     }
-    nextFiles.push(file);
+    nextFiles.push(candidate);
   });
   state.files = nextFiles;
   renderFiles();
   renderTabs();
 }
 
-function addBrowserFiles(fileList) {
+async function uploadProgramFiles(fileList) {
   const incomingFiles = Array.from(fileList || []);
-  if (!incomingFiles.length) {
+  if (!incomingFiles.length || state.uploadBusy) {
+    return;
+  }
+  const invalidFile = incomingFiles.find((file) => {
+    const lowerName = String(file?.name || "").toLowerCase();
+    return !state.allowedProgramExtensions.some((extension) => lowerName.endsWith(extension));
+  });
+  if (invalidFile) {
+    showToast(`Nicht unterstütztes Dateiformat: ${invalidFile.name}`, true);
     return;
   }
 
-  const entries = incomingFiles.map((file) => {
-    const url = URL.createObjectURL(file);
-    dynamicObjectUrls.add(url);
-    return createFileEntry(file.name, file.size, url);
-  });
-
-  state.files = [...entries, ...state.files];
-  setActiveTab("files");
-  renderFiles();
-  renderTabs();
-  showToast(`${entries.length} Datei(en) hinzugefuegt.`);
+  state.uploadBusy = true;
+  dom.fileDropZone.classList.add("is-uploading");
+  try {
+    let uploadedCount = 0;
+    for (const file of incomingFiles) {
+      showToast(`Upload: ${file.name}`);
+      const response = await fetch(
+        `${state.apiBase}/api/programs/upload?name=${encodeURIComponent(file.name)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: file,
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `Upload fehlgeschlagen: HTTP ${response.status}`);
+      }
+      uploadedCount += 1;
+    }
+    setActiveTab("files");
+    await refreshStaticData();
+    showToast(`${uploadedCount} Programmdatei(en) auf dem Pi gespeichert.`);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "Upload fehlgeschlagen.", true);
+  } finally {
+    state.uploadBusy = false;
+    dom.fileDropZone.classList.remove("is-uploading");
+  }
 }
 
 function chooseRecordingMimeType() {
@@ -1323,11 +1421,11 @@ function attachEvents() {
   dom.fileDropZone.addEventListener("drop", (event) => {
     event.preventDefault();
     dom.fileDropZone.classList.remove("is-dragover");
-    addBrowserFiles(event.dataTransfer?.files || []);
+    void uploadProgramFiles(event.dataTransfer?.files || []);
   });
 
   dom.fileInput.addEventListener("change", () => {
-    addBrowserFiles(dom.fileInput.files || []);
+    void uploadProgramFiles(dom.fileInput.files || []);
     dom.fileInput.value = "";
   });
 

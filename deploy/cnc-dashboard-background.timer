@@ -1,0 +1,10 @@
+[Unit]
+Description=Delay non-critical CNC Dashboard services until kiosk startup
+
+[Timer]
+OnBootSec=25s
+AccuracySec=1s
+Unit=cnc-dashboard-background.service
+
+[Install]
+WantedBy=timers.target
