@@ -1,5 +1,7 @@
 # Adafruit INA228 Achslast-Sensoren
 
+![Adafruit INA228 Sensorplatine](images/adafruit-ina228.jpg)
+
 ## Rolle im System
 
 - Modultyp: `Adafruit INA228 I2C Power Monitor` (Adafruit Produkt `5832`)

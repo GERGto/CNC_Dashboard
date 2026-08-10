@@ -16,8 +16,27 @@ export function escapeHtml(value) {
   );
 }
 
+// Set for the duration of one renderMarkdown() call. Rendering is synchronous,
+// so a module-level slot is enough and keeps the inline helpers simple.
+let activeOptions = {};
+
 function isExternalTarget(target) {
   return /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("//");
+}
+
+// Images are only rendered when the caller supplies a resolver, because only it
+// knows which document the relative path belongs to.
+function renderImage(escapedAlt, escapedSource) {
+  const resolve = activeOptions.resolveAsset;
+  if (typeof resolve !== "function") {
+    return escapedAlt;
+  }
+  const source = escapedSource.replace(/&amp;/g, "&");
+  const url = resolve(source);
+  if (!url) {
+    return escapedAlt;
+  }
+  return `<img class="md__image" src="${escapeHtml(url)}" alt="${escapedAlt}" loading="lazy" />`;
 }
 
 // Documentation links stay inside the modal. External addresses are printed
@@ -43,6 +62,9 @@ function renderLink(label, target) {
 
 function renderInlineSegment(escapedText) {
   return escapedText
+    // Images first: the link pattern would otherwise match their "[alt](src)"
+    // part and leave a stray exclamation mark behind.
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt, source) => renderImage(alt, source))
     .replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, label, target) => renderLink(label, target))
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[\s(])_([^_]+)_(?=$|[\s).,;:!?])/g, "$1<em>$2</em>")
@@ -118,7 +140,8 @@ function renderList(lines, startIndex, baseIndent) {
   return { html: `${html}</${tag}>`, nextIndex: index };
 }
 
-export function renderMarkdown(markdown) {
+export function renderMarkdown(markdown, options = {}) {
+  activeOptions = options && typeof options === "object" ? options : {};
   const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
   let paragraph = [];
@@ -225,5 +248,6 @@ export function renderMarkdown(markdown) {
   }
 
   flushParagraph();
+  activeOptions = {};
   return html.join("\n");
 }

@@ -1,5 +1,7 @@
 # Adafruit AHT20 Gehäusetemperatur-Sensor
 
+![Adafruit AHT20 Sensorplatine](images/adafruit-aht20.jpg)
+
 ## Rolle im System
 
 - Sensor: `Adafruit AHT20`

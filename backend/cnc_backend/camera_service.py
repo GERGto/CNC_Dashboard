@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import threading
 import time
 
@@ -12,6 +13,7 @@ class CameraService:
     MEDIAMTX_SERVICE = "cnc-dashboard-mediamtx.service"
     SERVICE_CHECK_INTERVAL_SEC = 2.0
     START_RETRY_INTERVAL_SEC = 2.0
+    STREAM_PROBE_TIMEOUT_SEC = 2.0
 
     def __init__(self, config):
         self.config = config
@@ -63,20 +65,19 @@ class CameraService:
 
             service_states = self._get_service_states()
             all_active = self._all_services_active(service_states)
+            # "starting" and "inactive" are phases, not errors. Reporting them
+            # in `error` made the UI flash failure messages during every cold
+            # start of the on-demand camera chain.
             if all_active:
-                stream_state = "active"
+                stream_state = "active" if self.is_stream_published() else "starting"
             elif ensure_active and base_ready:
                 stream_state = "starting"
-                if not error:
-                    error = "Kamera-Stream wird gestartet."
             else:
-                if not error:
-                    error = "Kamera-Stream ist inaktiv und wird bei Bedarf gestartet."
+                stream_state = "inactive"
 
-        available = bool(base_ready and (not on_demand_enabled or self._all_services_active(service_states)))
+        available = bool(base_ready and (not on_demand_enabled or stream_state == "active"))
         if available:
             error = ""
-            stream_state = "active"
 
         width = max(0, int(self.config.camera_width))
         height = max(0, int(self.config.camera_height))
@@ -109,6 +110,32 @@ class CameraService:
             "inputFormat": str(self.config.camera_input_format or "").strip(),
             "error": error,
         }
+
+    def is_stream_published(self):
+        """Whether MediaMTX currently has a publisher on the camera path.
+
+        A running systemd unit is not the same as a published stream: the
+        publisher needs several seconds to open the USB camera. Reporting the
+        stream as available in that window made every viewer attempt a WebRTC
+        connection that could not succeed yet.
+        """
+        rtsp_port = max(1, int(self.config.camera_rtsp_port or 8554))
+        stream_path = str(self.config.camera_stream_path or "camera").strip().strip("/") or "camera"
+        request = (
+            f"DESCRIBE rtsp://127.0.0.1:{rtsp_port}/{stream_path} RTSP/1.0\r\n"
+            "CSeq: 1\r\n"
+            "Accept: application/sdp\r\n"
+            "User-Agent: cnc-dashboard\r\n"
+            "\r\n"
+        )
+        try:
+            with socket.create_connection(("127.0.0.1", rtsp_port), timeout=self.STREAM_PROBE_TIMEOUT_SEC) as connection:
+                connection.settimeout(self.STREAM_PROBE_TIMEOUT_SEC)
+                connection.sendall(request.encode("ascii"))
+                response = connection.recv(4096).decode("ascii", "replace")
+        except OSError:
+            return False
+        return response.split("\r\n", 1)[0].strip().endswith("200 OK")
 
     def _supports_on_demand(self):
         return bool(self.config.camera_on_demand_enabled and os.name == "posix")

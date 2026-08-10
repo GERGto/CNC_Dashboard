@@ -132,6 +132,13 @@ def create_request_handler(app):
                 except ProgramTransferError as exc:
                     return json_response(self, exc.status_code, {"ok": False, "error": str(exc)})
 
+            if path == "/api/docs/asset":
+                asset = app.get_doc_asset(str((params.get("id") or [""])[0]).strip())
+                if asset is None:
+                    return json_response(self, 404, {"error": "Asset not found"})
+                asset_path, content_type = asset
+                return self._send_inline_file(asset_path, content_type)
+
             if path == "/api/docs":
                 document_id = str((params.get("id") or [""])[0]).strip()
                 if not document_id:
@@ -516,6 +523,21 @@ def create_request_handler(app):
                 str(metadata.get("name", "programm.nc")),
                 "application/octet-stream",
             )
+
+        def _send_inline_file(self, file_path, content_type):
+            file_size = os.path.getsize(file_path)
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(file_path, "rb") as handle:
+                while True:
+                    chunk = handle.read(256 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
 
         def _send_binary_file(self, file_path, file_name, content_type):
             file_size = os.path.getsize(file_path)

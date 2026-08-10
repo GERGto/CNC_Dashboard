@@ -380,6 +380,9 @@ class BackendApp:
     def get_doc(self, document_id):
         return self.docs_service.get_document(document_id)
 
+    def get_doc_asset(self, asset_id):
+        return self.docs_service.get_asset(asset_id)
+
     def get_programs(self):
         return self.program_transfer_service.get_snapshot()
 

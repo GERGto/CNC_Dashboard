@@ -692,6 +692,10 @@ body.is-shutting-down .app{
   overflow-y: auto;
   overflow-x: hidden;
   display: grid;
+  /* Without this the implicit rows are sized from the single-line intrinsic
+     height of the buttons, and align-items:stretch then squeezes a wrapped
+     title into that row - the grey box was cut open below the second line. */
+  grid-auto-rows: min-content;
   gap: 4px;
   align-content: start;
   padding-right: 8px;
@@ -713,6 +717,7 @@ body.is-shutting-down .app{
 }
 
 .docs__entry{
+  box-sizing: border-box;
   min-height: 38px;
   padding: 8px 10px;
   border: 2px solid transparent;
@@ -723,6 +728,7 @@ body.is-shutting-down .app{
   font-weight: 700;
   text-align: left;
   line-height: 1.2;
+  white-space: normal;
 }
 
 .docs__entry.is-active{
@@ -759,6 +765,10 @@ body.is-shutting-down .app{
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.docs__actions .btn--close{
+  margin-left: auto;
 }
 
 .docs__pager{
@@ -830,6 +840,10 @@ body.is-shutting-down .app{
   background: #f2f2f2;
   font: 700 13px/1.2 Consolas, "Courier New", monospace;
   overflow-wrap: anywhere;
+  /* Without this a chip that breaks across lines keeps padding and border
+     only on the first fragment and the grey box looks cut open. */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .md__quote{
@@ -868,6 +882,15 @@ body.is-shutting-down .app{
 .md__table th{
   background: #f2f2f2;
   font-weight: 900;
+}
+
+.md__image{
+  display: block;
+  max-width: min(300px, 100%);
+  height: auto;
+  margin: 0 0 12px;
+  border: 2px solid var(--line);
+  background: #fff;
 }
 
 .md__link{

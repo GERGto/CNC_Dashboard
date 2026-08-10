@@ -329,7 +329,7 @@ awk '
     for (i = 1; i <= NF; i++) {
       if ($i ~ /^console=/ || $i ~ /^video=HDMI-A-[12]:/ || $i ~ /^(drm.)?edid_firmware=/ ||
           $i == "quiet" || $i == "splash" || $i == "plymouth.ignore-serial-consoles" ||
-          $i ~ /^loglevel=/ || $i == "logo.nologo" || $i ~ /^fbcon=/ ||
+          $i ~ /^loglevel=/ || $i == "logo.nologo" || $i ~ /^fbcon=/ || $i ~ /^fsck\./ ||
           $i ~ /^vt.global_cursor_default=/ || $i ~ /^(rd.)?systemd.show_status=/ || $i ~ /^udev.log_level=/) {
         continue
       }
@@ -338,7 +338,11 @@ awk '
     # fbcon=map:2 keeps the framebuffer console off the panel entirely: no
     # console clear over the Plymouth frame, no stray characters, and the
     # retained splash survives until Xorg takes over. Recovery access is SSH.
-    print output " drm.edid_firmware=HDMI-A-2:edid/cnc-dashboard-1024x600.bin video=HDMI-A-1:d video=HDMI-A-2:1024x600@60e console=tty3 fbcon=map:2 loglevel=0 quiet splash plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 systemd.show_status=false rd.systemd.show_status=false udev.log_level=3"
+    # fsck.mode=auto plus fsck.repair=yes is load-bearing for an appliance that
+    # gets switched off at the wall: without it an unclean filesystem drops the
+    # boot into a maintenance shell, which on a keyboard-less kiosk means a
+    # permanently black screen.
+    print output " drm.edid_firmware=HDMI-A-2:edid/cnc-dashboard-1024x600.bin video=HDMI-A-1:d video=HDMI-A-2:1024x600@60e console=tty3 fbcon=map:2 loglevel=0 quiet splash plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0 systemd.show_status=false rd.systemd.show_status=false udev.log_level=3 fsck.mode=auto fsck.repair=yes"
   }
 ' "$cmdline_file" > "$cmdline_tmp"
 install -m 0644 "$cmdline_tmp" "$cmdline_file"

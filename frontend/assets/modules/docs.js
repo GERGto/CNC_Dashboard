@@ -107,6 +107,29 @@ export function createDocsController({ apiBase, elements }) {
     return byName ? byName.id : "";
   }
 
+  // Documents reference their images relatively ("images/foo.jpg"), so the
+  // path is resolved against the directory of the document showing it.
+  function resolveAssetUrl(documentId, source) {
+    const raw = String(source || "").trim();
+    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//")) {
+      return "";
+    }
+
+    const base = documentId.split("/").slice(0, -1);
+    const segments = raw.replace(/^\.\//, "").split("/");
+    const resolved = raw.startsWith("/") ? [] : base;
+    const parts = [...resolved];
+    for (const segment of segments) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") {
+        parts.pop();
+        continue;
+      }
+      parts.push(segment);
+    }
+    return `${apiBase}/api/docs/asset?id=${encodeURIComponent(parts.join("/"))}`;
+  }
+
   async function showDocument(documentId, anchor = "") {
     const wanted = String(documentId || "").trim();
     if (!wanted) {
@@ -137,7 +160,9 @@ export function createDocsController({ apiBase, elements }) {
     }
 
     setStatus("");
-    content.innerHTML = renderMarkdown(markdownCache.get(wanted));
+    content.innerHTML = renderMarkdown(markdownCache.get(wanted), {
+      resolveAsset: (source) => resolveAssetUrl(wanted, source),
+    });
     content.scrollTop = 0;
     if (anchor) {
       scrollToAnchor(anchor);

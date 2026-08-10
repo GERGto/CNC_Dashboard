@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import threading
 import time
@@ -35,7 +36,8 @@ class RecordingService:
     # The camera publisher needs roughly eight seconds from a cold start until
     # it opens the USB camera and publishes to MediaMTX.
     STREAM_READY_TIMEOUT_SEC = 30.0
-    STREAM_PROBE_INTERVAL_SEC = 1.0
+    STREAM_PROBE_INTERVAL_SEC = 0.25
+    STREAM_PROBE_TIMEOUT_SEC = 2.0
 
     def __init__(self, config, camera_service=None):
         self.config = config
@@ -226,7 +228,7 @@ class RecordingService:
         # A systemd-active publisher is not the same as a published stream:
         # ffmpeg exits instantly with "no stream is available on path" if it
         # connects during the camera's startup window.
-        if not self._wait_for_stream(ffmpeg):
+        if not self._wait_for_stream():
             raise RecordingError("Der Kamera-Stream war nicht rechtzeitig bereit", status_code=503)
 
         with self._lock:
@@ -282,39 +284,47 @@ class RecordingService:
         stream_path = str(self.config.camera_stream_path or "camera").strip().strip("/") or "camera"
         return f"rtsp://127.0.0.1:{rtsp_port}/{stream_path}"
 
-    def _wait_for_stream(self, ffmpeg):
-        deadline = time.monotonic() + self.STREAM_READY_TIMEOUT_SEC
-        probe_command = [
-            ffmpeg,
-            "-hide_banner",
-            "-loglevel", "error",
-            "-rtsp_transport", "tcp",
-            "-i", self._stream_url(),
-            "-t", "0.2",
-            "-f", "null",
-            "-",
-        ]
+    def _stream_is_published(self):
+        """Ask MediaMTX directly whether the path currently has a publisher.
 
-        while time.monotonic() < deadline:
+        An ffmpeg probe would answer the same question, but it spends about two
+        seconds analysing the stream first - that delay was the whole start
+        latency whenever the camera was already running.
+        """
+        if self.camera_service is not None and hasattr(self.camera_service, "is_stream_published"):
+            return bool(self.camera_service.is_stream_published())
+
+        rtsp_port = max(1, int(self.config.camera_rtsp_port or 8554))
+        stream_path = str(self.config.camera_stream_path or "camera").strip().strip("/") or "camera"
+        request = (
+            f"DESCRIBE rtsp://127.0.0.1:{rtsp_port}/{stream_path} RTSP/1.0\r\n"
+            "CSeq: 1\r\n"
+            "Accept: application/sdp\r\n"
+            "User-Agent: cnc-dashboard\r\n"
+            "\r\n"
+        )
+        try:
+            with socket.create_connection(("127.0.0.1", rtsp_port), timeout=self.STREAM_PROBE_TIMEOUT_SEC) as connection:
+                connection.settimeout(self.STREAM_PROBE_TIMEOUT_SEC)
+                connection.sendall(request.encode("ascii"))
+                response = connection.recv(4096).decode("ascii", "replace")
+        except OSError:
+            return False
+        return response.split("\r\n", 1)[0].strip().endswith("200 OK")
+
+    def _wait_for_stream(self):
+        deadline = time.monotonic() + self.STREAM_READY_TIMEOUT_SEC
+        while True:
             if self.camera_service is not None:
                 try:
                     self.camera_service.get_status(ensure_active=True)
                 except Exception as exc:  # pragma: no cover - camera state is reported below
                     print(f"Camera activation before recording failed: {exc}", flush=True)
-            try:
-                probe = subprocess.run(
-                    probe_command,
-                    stdin=subprocess.DEVNULL,
-                    capture_output=True,
-                    timeout=10,
-                    check=False,
-                )
-                if probe.returncode == 0:
-                    return True
-            except (OSError, subprocess.SubprocessError):
-                pass
+            if self._stream_is_published():
+                return True
+            if time.monotonic() >= deadline:
+                return False
             time.sleep(self.STREAM_PROBE_INTERVAL_SEC)
-        return False
 
     def _build_command(self, ffmpeg, target_path):
         max_duration_sec = max(1, int(self.config.recording_max_duration_sec))
@@ -328,7 +338,10 @@ class RecordingService:
             # Remux only: the publisher already delivers H.264, so no frame is
             # re-encoded and the Pi stays idle during a recording.
             "-c", "copy",
-            "-movflags", "+faststart",
+            # Fragmented MP4: the index is written up front and refreshed per
+            # fragment. If the machine loses power mid-recording the file stays
+            # playable up to the last fragment instead of being lost entirely.
+            "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
             "-t", str(max_duration_sec),
             "-y",
             target_path,

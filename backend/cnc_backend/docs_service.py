@@ -25,6 +25,17 @@ class DocsService:
         ("docs", "Dokumentation"),
         ("docs/hardware", "Hardware"),
     )
+    # Image directories that documents may reference. Everything outside these
+    # is unreachable, so an asset id cannot escape the installation.
+    ASSET_DIRECTORIES = ("docs/images", "docs/hardware/images")
+    ASSET_CONTENT_TYPES = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".svg": "image/svg+xml",
+    }
 
     def __init__(self, config):
         self.config = config
@@ -49,6 +60,26 @@ class DocsService:
                 return None
             return {**self._describe(entry), "markdown": markdown}
         return None
+
+    def get_asset(self, asset_id):
+        """Resolve an image referenced by a document to (path, content type)."""
+        candidate = str(asset_id or "").strip().replace("\\", "/")
+        if not candidate:
+            return None
+
+        directory, _, name = candidate.rpartition("/")
+        if directory not in self.ASSET_DIRECTORIES or not name or "/" in name:
+            return None
+
+        extension = os.path.splitext(name)[1].lower()
+        content_type = self.ASSET_CONTENT_TYPES.get(extension)
+        if not content_type:
+            return None
+
+        path = os.path.join(self.root_directory, candidate.replace("/", os.sep))
+        if not os.path.isfile(path):
+            return None
+        return path, content_type
 
     def _collect_documents(self):
         root = self.root_directory

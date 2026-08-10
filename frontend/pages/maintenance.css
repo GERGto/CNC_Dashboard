@@ -1,0 +1,111 @@
+/* Nur seitenspezifische Werte; der Rest kommt aus assets/page-base.css. */
+:root{
+  --danger:#9d1111;
+  --danger-bg:#ffe6e6;
+}
+
+.layout{
+  height:100%;
+  box-sizing:border-box;
+  padding:12px;
+  display:grid;
+  grid-template-rows: 1fr auto;
+  gap:10px;
+}
+
+.table{
+  border:2px solid var(--line);
+  border-radius:2px;
+  display:grid;
+  grid-template-rows:auto 1fr;
+  overflow:hidden;
+}
+
+.row{
+  display:grid;
+  grid-template-columns: 1.5fr 1fr 0.45fr;
+  gap:10px;
+  align-items:center;
+  padding:10px 12px;
+  box-sizing:border-box;
+  font-size:16px;
+}
+
+.thead{
+  border-bottom:2px solid var(--line);
+  font-size:14px;
+  font-weight:800;
+  letter-spacing:0.3px;
+  text-transform:none;
+}
+
+.tbody{
+  display:grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+}
+
+.task-row{
+  border-bottom:1px solid var(--line);
+  background:#fff;
+  border-left:0;
+  border-right:0;
+  border-top:0;
+  text-align:left;
+  width:100%;
+  cursor:pointer;
+  font-size:16px;
+  color:#000;
+}
+
+.task-row:last-child{
+  border-bottom:0;
+}
+
+.task-row.is-due{
+  color:var(--danger);
+  background:var(--danger-bg);
+  font-weight:700;
+}
+
+.task-row.is-empty{
+  cursor:default;
+  color:transparent;
+  background:#fff;
+}
+
+.task-row:active{
+  background:#f0f0f0;
+}
+
+.task-row.is-due:active{
+  background:#ffd9d9;
+}
+
+.pager{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+}
+
+.arrow{
+  width:58px;
+  height:44px;
+  border:2px solid var(--line);
+  border-radius:2px;
+  background:#fff;
+  color:#000;
+  font-size:20px;
+  font-weight:700;
+}
+
+.arrow:disabled{
+  opacity:0.35;
+}
+
+.page-indicator{
+  min-width:110px;
+  text-align:center;
+  font-size:16px;
+  font-weight:700;
+}

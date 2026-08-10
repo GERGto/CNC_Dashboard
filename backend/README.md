@@ -41,6 +41,8 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
 - GET `/api/camera/status`
   - `{ enabled, onDemandEnabled, idleTimeoutSec, available, streamState, serviceStates, devicePath, ffmpegPath, mediamtxPath, backend, transport, streamPath, whepPath, webrtcPort, rtspPort, width, height, fps, videoBitrate, inputFormat, error }`
   - The monitor uses this metadata to open the WebRTC stream directly from MediaMTX via `http://<host>:<webrtcPort>/<streamPath>/whep`
+  - `streamState` is `inactive` | `starting` | `active`. `active` and `available` require MediaMTX to actually have a publisher on the path, not just running systemd units - reporting the units alone made viewers attempt WebRTC connections during the whole startup window
+  - `error` carries real failures only; startup phases are not errors
 - GET `/api/machine/status`
   - `{ reportedStatus, reportedSource, reportedAt, spindleRuntimeSec, maintenanceDue, maintenanceDueTaskIds, eStopEngaged, hardwareEStopEngaged, hardwareEStopInputIds, eStopResetLocked, spindleRunning, spindleRunningInputIds, effectiveStatus, effectiveReason, indicator }`
 - POST `/api/machine/status`
@@ -89,7 +91,8 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - `{ available, active, fileName, startedAt, elapsedSec, maxDurationSec, freeBytes, error, recordings }`
 - POST `/api/camera/recording/start`
   - Records the MediaMTX RTSP stream to MP4 with `ffmpeg -c copy` (remux only, no re-encoding)
-  - Waits for the on-demand camera services to actually publish before starting; `503` if the stream stays unavailable
+  - Fragmented MP4, so a recording interrupted by a power cut stays playable
+  - Waits for MediaMTX to actually publish the path (RTSP `DESCRIBE`, not an ffmpeg probe, which costs ~2s); `503` if the stream stays unavailable
   - `507` when free disk space is below `RECORDING_MIN_FREE_BYTES`, `409` while a recording is already running
 - POST `/api/camera/recording/stop`
   - `{ ok, status, recording }`; stops via `SIGINT` so ffmpeg writes the MP4 index
@@ -99,6 +102,8 @@ For the camera stack, the backend no longer serves MJPEG itself. Instead:
   - `{ documents: [{ id, group, title }] }` for the built-in system guide
 - GET `/api/docs?id=<relative path>`
   - `{ id, group, title, markdown }`; only ids present in the index are served
+- GET `/api/docs/asset?id=<relative path>`
+  - Serves images referenced by a document; restricted to `docs/images` and `docs/hardware/images`
 - GET `/api/programs`
   - Lists CNC program files in the persistent Pi staging directory and their SMB transfer state
 - POST `/api/programs/upload?name=<filename>`
@@ -349,6 +354,9 @@ The shared camera environment lives in `backend/camera-stream.env`.
 - `machine_stats.json`: machine statistics (`machineOnTimeSec`, `spindleRuntimeSec`, `axisRuntimeSec`, `backendStartCount`, `spindleStartCount`, `spindleLastActiveAt`, `eStopCount`, `manualEStopCount`, `hardwareEStopCount`)
 - `/var/lib/cnc-dashboard/recordings`: camera recordings (`RECORDINGS_DIRECTORY`), capped by `RECORDING_MAX_DURATION_SEC`, `RECORDING_MAX_FILES` and `RECORDING_MAX_TOTAL_BYTES`
 
-All three JSON files are written atomically (temporary file plus `os.replace`).
-The appliance is switched off at the wall, and a truncating write could otherwise
-leave a half-written settings or maintenance file behind.
+All three JSON files are written atomically (temporary file, `fsync`,
+`os.replace`, then `fsync` on the directory) and keep a `.bak` generation that
+is at most five minutes old. The appliance is switched off at the wall: a
+truncating write could leave a half-written file behind, and a corrupt file used
+to be read as "empty", silently resetting runtime counters and maintenance
+history to their defaults.

@@ -134,6 +134,8 @@ const state = {
   cameraAvailable: false,
   cameraDevicePath: "",
   cameraError: "",
+  cameraStreamState: "",
+  cameraTroubleSince: 0,
   cameraLoaded: false,
   axes: { x: 0, y: 0, z: 0, spindle: 0 },
   spindleRunning: false,
@@ -343,7 +345,29 @@ function attachCameraStream(stream) {
   }
   state.cameraLoaded = true;
   state.cameraError = "";
+  state.cameraTroubleSince = 0;
   renderCamera();
+}
+
+// The stream needs a few seconds from a cold start: services come up, the USB
+// camera opens, WebRTC negotiates. Every step can fail once on the way and is
+// retried, so a message is only shown once the trouble outlasts the grace time.
+const CAMERA_TROUBLE_GRACE_MS = 8000;
+
+function noteCameraTrouble(message) {
+  if (!state.cameraTroubleSince) {
+    state.cameraTroubleSince = Date.now();
+  }
+  state.cameraError = Date.now() - state.cameraTroubleSince >= CAMERA_TROUBLE_GRACE_MS ? message : "";
+}
+
+function cameraStartupText() {
+  if (state.cameraStreamState === "inactive") {
+    return "Der Stream wird bei Bedarf gestartet.";
+  }
+  return state.cameraDevicePath
+    ? `Kamera ${state.cameraDevicePath} wird gestartet.`
+    : "Kamera wird gestartet.";
 }
 
 function ensureCameraReader() {
@@ -392,9 +416,11 @@ function ensureCameraReader() {
       }
       // The recording runs on the Pi and survives a broken browser stream.
       state.cameraLoaded = false;
-      state.cameraError = message
-        ? `MediaMTX/WebRTC-Verbindung unterbrochen: ${message}`
-        : "MediaMTX/WebRTC-Verbindung unterbrochen.";
+      // Reconnect attempts during startup are normal and must not flash an
+      // error message; only a lasting failure is worth showing.
+      noteCameraTrouble(
+        message ? `MediaMTX/WebRTC-Verbindung unterbrochen: ${message}` : "MediaMTX/WebRTC-Verbindung unterbrochen."
+      );
       stopCameraReader(false);
       scheduleCameraReconnect();
       renderCamera();
@@ -503,21 +529,15 @@ function renderCamera() {
     state.cameraLoaded = false;
     dom.cameraFeed.hidden = true;
     dom.cameraPlaceholder.hidden = false;
-    dom.cameraPlaceholderTitle.textContent = "Kamera-Feed";
-    dom.cameraPlaceholderText.textContent = state.cameraError
-      ? state.cameraError
-      : "Der MediaMTX-WebRTC-Stream der USB-Kamera wird automatisch eingebunden.";
+    dom.cameraPlaceholderTitle.textContent = state.cameraError ? "Kamera nicht erreichbar" : "Kamera-Feed";
+    dom.cameraPlaceholderText.textContent = state.cameraError ? state.cameraError : cameraStartupText();
   } else {
     ensureCameraReader();
     dom.cameraPlaceholder.hidden = state.cameraLoaded;
     dom.cameraFeed.hidden = !state.cameraLoaded;
     if (!state.cameraLoaded) {
-      dom.cameraPlaceholderTitle.textContent = state.cameraError ? "Stream nicht erreichbar" : "Verbinde Kamera";
-      dom.cameraPlaceholderText.textContent = state.cameraError
-        ? state.cameraError
-          : state.cameraDevicePath
-          ? `MediaMTX/WebRTC verbindet ${state.cameraDevicePath}.`
-          : "MediaMTX/WebRTC-Stream wird geladen.";
+      dom.cameraPlaceholderTitle.textContent = state.cameraError ? "Kamera nicht erreichbar" : "Verbinde Kamera";
+      dom.cameraPlaceholderText.textContent = state.cameraError ? state.cameraError : cameraStartupText();
     }
   }
 
@@ -941,7 +961,17 @@ function applyCameraStatus(snapshot) {
   state.cameraTransport = String(snapshot.transport || "").trim();
   state.cameraAvailable = !!snapshot.available;
   state.cameraDevicePath = String(snapshot.devicePath || "").trim();
-  state.cameraError = String(snapshot.error || "").trim();
+  state.cameraStreamState = String(snapshot.streamState || "").trim();
+
+  const reportedError = String(snapshot.error || "").trim();
+  if (!reportedError) {
+    state.cameraError = "";
+    if (state.cameraAvailable) {
+      state.cameraTroubleSince = 0;
+    }
+  } else {
+    noteCameraTrouble(reportedError);
+  }
 
   const nextWhepUrl =
     state.cameraAvailable && state.cameraTransport === "webrtc"
@@ -954,9 +984,6 @@ function applyCameraStatus(snapshot) {
     stopCameraReader(!nextWhepUrl);
   }
 
-  if (!state.cameraWhepUrl && state.recordingActive) {
-    stopRecording(false);
-  }
 }
 
 async function fetchJson(path) {

@@ -1,5 +1,7 @@
 # PCF8574 Safety- und Spindel-Inputs
 
+![PCF8574 Optokoppler-Eingangsmodul](images/pcf8574-input-module.jpg)
+
 ## Rolle im System
 
 - Modultyp: `PCF8574`-kompatibles 8-Kanal-Optokoppler-Eingangsmodul

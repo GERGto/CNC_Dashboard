@@ -95,7 +95,7 @@ Inhalt der Kacheln:
 - unnötige Beschreibungstexte innerhalb der Kacheln werden vermieden, um die Höhe für `1024x600` klein zu halten
 - unter den Systemwerten folgt eine zweispaltige Zeile mit `Spindel zuletzt aktiv` und `Spindelanläufe`
 - `Spindel zuletzt aktiv` zeigt innerhalb der letzten 24 Stunden nur die Uhrzeit `hh:mm`, danach zusätzlich das Datum; ohne bisherigen Spindellauf steht dort `Noch nie`
-- `NETZWERK`: zuerst WLAN-Verbindungsstatus, SSID und IP-Adresse mit dem Button zum WLAN-Modal; darunter der per SMB-Port geprüfte DDCS-V4.1-Verbindungsstatus und die gemeinsame DDCS-/Windows-Anleitung
+- `NETZWERK`: zuerst WLAN-Verbindungsstatus, SSID und IP-Adresse mit dem Button zum WLAN-Modal; darunter der per SMB-Port geprüfte DDCS-V4.1-Verbindungsstatus. Der Button `DDCS Fileshare` sitzt wie `System-Anleitung` in der Fußzeile der Karte, damit beide Karten unten auf einer Linie abschließen
 - `Remote-Dashboard`: QR-Code und Zieladresse, darunter die Remote-Wartung und ganz unten der Vollbreiten-Button `System-Anleitung`
 - alle kleinen Zwischenüberschriften der Seite (`WLAN-VERBINDUNG`, `CNC-CONTROLLER`, `REMOTE-WARTUNG`) teilen sich bewusst eine einzige CSS-Regel, damit sie nicht auseinanderlaufen
 
@@ -117,10 +117,11 @@ Interaktion:
 Remote-Dashboard:
 
 - der QR-Code wird clientseitig über `frontend/assets/vendor/qrcode.min.js` erzeugt
-- als Ziel wird `http://<hostname>/` verwendet, also `http://cncpi/`; der Hostname bleibt über DHCP-Leases hinweg gültig, die IP nicht
-- die IP-Adresse steht weiterhin als Hinweistext unter dem Code, weil die Namensauflösung vom Router abhängt
-- gemessen im Zielnetz: die FritzBox löst `cncpi` direkt auf `192.168.178.61` auf; auf Geräten im Tailnet greift stattdessen MagicDNS und liefert die Tailscale-IP, was ebenfalls funktioniert, den Zugriff aber durch den Tunnel leitet
-- `cncpi.local` ist keine Alternative über den Router-DNS, das wäre reines mDNS
+- als Ziel wird `http://<wifiIpAddress>` verwendet
+- der Hostname `http://cncpi/` war zwischenzeitlich das Ziel, weil er DHCP-Leases überdauert. In der Praxis löste er zu unzuverlässig auf: er hängt am Router, und auf Geräten im Tailnet greift stattdessen MagicDNS und liefert die Tailscale-IP, was den Zugriff durch den Tunnel leitet. Die IP funktioniert überall
+- aus demselben Grund nutzt auch der SMB-Pfad in der Anleitung `\\<ip>\cnc-programs` statt des Hostnamens
+- `cncpi.local` wäre reines mDNS und über den Router-DNS ohnehin nicht auflösbar
+- die Adresse steht in einer eigenen Größe, weil eine IP deutlich länger ist als der Hostname und sonst mitten in der Zahl umbricht
 - ohne aktives WLAN oder ohne vergebene IP zeigt die Karte einen kompakten Platzhalterzustand
 
 ### Eingebaute System-Anleitung
@@ -138,12 +139,31 @@ Aufbau:
 - `frontend/assets/modules/markdown.js` rendert Markdown ohne Fremdbibliothek: Überschriften, Absätze, Listen, Codeblöcke, Inline-Code, Tabellen, Zitate, Trenner und Links
 - `frontend/assets/modules/docs.js` steuert Dokumentenliste, Blättern, interne Verweise und den Cache
 
+Komponentenbilder:
+
+- die Bilder liegen in `docs/hardware/images/`, einheitlich auf 640x640 und rund 45 KB normiert
+- `GET /api/docs/asset?id=<pfad>` liefert sie aus, erlaubt sind ausschließlich Dateien direkt in `docs/images` oder `docs/hardware/images`
+- der Renderer erzeugt `<img>` nur, wenn der Aufrufer einen Auflöser mitgibt; nur der Docs-Controller weiß, zu welchem Dokument ein relativer Pfad gehört
+
 Bewusste Entscheidungen:
 
 - der gesamte Text wird zuerst escaped und erst danach ausgezeichnet, damit Dokumentinhalte kein HTML einschleusen können
 - Verweise auf andere `.md`-Dateien bleiben im Modal; externe Adressen werden **nicht** verlinkt, sondern als Text ausgegeben, weil der Kiosk kein Browserfenster und keinen Zurück-Weg hat
 - Ressourcenbedarf ist unkritisch: die gesamte Dokumentation umfasst rund 110 KB, das Rendern aller 13 Dokumente wurde headless auf dem Pi ohne Fehler durchgemessen
 - `.modal__panel.docs__panel` nutzt bewusst zwei Klassen, weil `ui-common.css` nach `app.css` geladen wird und `.modal__panel` sonst die Breite gewinnt
+
+Zwei Layoutfallen, die real aufgetreten sind:
+
+- **Abgeschnittene Einträge in der Dokumentliste.** Die Liste ist ein Grid; die
+  impliziten Zeilen wurden aus der einzeiligen Höhe der Buttons berechnet, und
+  `align-items: stretch` presste einen umgebrochenen Titel anschließend in
+  genau diese Zeile. Gemessen: 34 px Zeilenhöhe bei 42 bis 58 px Inhalt, jeder
+  mehrzeilige Eintrag war unten aufgeschnitten. `grid-auto-rows: min-content`
+  löst es. `display:block` oder `height:auto` am Button hilft **nicht**, das
+  Problem liegt in der Zeilenberechnung des Containers.
+- **Aufgeschnittene Code-Chips.** Ein Inline-Element mit Rahmen und Polsterung
+  verliert beides auf allen Fragmenten nach einem Zeilenumbruch.
+  `box-decoration-break: clone` gibt jedem Fragment die eigene Box.
 
 ### Kamera-Live-Stream via MediaMTX/WebRTC
 
@@ -178,6 +198,15 @@ Wichtige Ports:
 - `127.0.0.1:8554` fuer lokales RTSP-Ingest nach MediaMTX
 - `:8889` fuer MediaMTX-WebRTC/WHEP im Heimnetz
 
+`streamState` unterscheidet `inactive`, `starting` und `active`. `active` und
+`available` setzen voraus, dass MediaMTX tatsaechlich einen Publisher auf dem
+Pfad hat, nicht nur dass die systemd-Units laufen. Vorher meldete das Backend
+waehrend der gesamten Startphase `available: true`; jeder Betrachter versuchte
+daraufhin eine WebRTC-Verbindung, die noch nicht klappen konnte, und das UI
+zeigte im Sekundentakt kurz Fehlermeldungen. Startphasen stehen ausserdem nicht
+mehr in `error` - dort steht nur noch, was wirklich kaputt ist. Ergaenzend
+blendet das Remote-UI eine Stoerung erst ein, wenn sie acht Sekunden anhaelt.
+
 Schnelle Verifikation:
 
 - `curl -s http://127.0.0.1:8080/api/camera/status`
@@ -197,7 +226,13 @@ Aktuelles Zielbild:
 - `backend/cnc_backend/recording_service.py` startet `ffmpeg` auf dem Pi
 - Quelle ist der bereits vorhandene H.264-RTSP-Stream `rtsp://127.0.0.1:8554/camera`
 - `-c copy` remuxt nur, es wird kein Bild neu kodiert; die Aufnahme kostet damit praktisch keine CPU und behaelt 1280x720 bei 30 fps
-- `-movflags +faststart` schiebt den `moov`-Atom an den Dateianfang, die Datei ist also sofort abspielbar
+- `-movflags +frag_keyframe+empty_moov+default_base_moof` schreibt einen
+  fragmentierten MP4-Container. Der Index steht am Dateianfang und wird pro
+  Fragment fortgeschrieben: die Datei ist sofort abspielbar und ueberlebt einen
+  harten Abbruch. Verifiziert mit `SIGKILL` mitten in der Aufnahme - die Datei
+  war danach vollstaendig abspielbar. Mit dem vorher genutzten `+faststart`
+  waere sie komplett verloren gewesen, weil der Index erst beim sauberen Ende
+  geschrieben wird
 - Ablage in `/var/lib/cnc-dashboard/recordings`, gesteuert ueber `RECORDINGS_DIRECTORY`
 
 Routen:
@@ -213,8 +248,11 @@ Zwei Fallstricke, die real aufgetreten sind:
   bereits als aktiv, waehrend `ffmpeg` die USB-Kamera noch oeffnet. Verbindet
   sich der Recorder in diesem Fenster, beendet MediaMTX ihn sofort mit
   `no stream is available on path 'camera'` und die Aufnahme bricht nach
-  Sekundenbruchteilen ab. Der Dienst probet deshalb den Pfad vorher mit einem
-  kurzen `ffmpeg -t 0.2 -f null -` und wartet bis zu 30 Sekunden.
+  Sekundenbruchteilen ab. Der Dienst wartet deshalb, bis der Pfad wirklich
+  veroeffentlicht ist, und zwar ueber ein direktes RTSP `DESCRIBE` per Socket.
+  Ein `ffmpeg`-Probe beantwortet dieselbe Frage, verbringt davor aber rund zwei
+  Sekunden mit der Streamanalyse - gemessen war genau das die komplette
+  Startverzoegerung: warmer Stream 1,90 s vorher, 0,06 s nachher.
 - **Der Leerlauf-Watchdog stoppt den Stream.** `CameraService` faehrt
   MediaMTX und Publisher 20 Sekunden nach der letzten Nachfrage herunter. Ohne
   Gegenmassnahme trifft das eine laufende Aufnahme, sobald der letzte Browser
@@ -229,6 +267,73 @@ Schnelle Verifikation:
 
 - `curl -sS -X POST http://127.0.0.1:8080/api/camera/recording/start`
 - `ffprobe -v error -show_entries format=duration:stream=codec_name,width,height <datei>`
+
+### Umgang mit hartem Ausschalten
+
+In der Praxis wird die Maschine haeufig ueber den Hauptschalter stromlos
+gemacht statt sauber heruntergefahren. Das System ist darauf ausgelegt.
+
+Was bereits vorhanden war und gemessen bestaetigt wurde:
+
+- `fsck.repair=yes` in der Kernel-Kommandozeile. Das ist fuer diese Appliance
+  tragend: ohne automatische Reparatur landet ein unsauberes Dateisystem im
+  Wartungs-Shell-Modus, was auf einem Kiosk ohne Tastatur ein dauerhaft
+  schwarzes Bild bedeutet. Der Installer setzt jetzt zusaetzlich
+  `fsck.mode=auto`, damit das auch nach einer Neuinstallation gilt
+- `/tmp` und `/var/log` liegen als tmpfs im RAM (DietPi `AUTO_SETUP_LOGGING_INDEX=-1`),
+  es gibt also kein Journal auf der SD-Karte
+- Root ist mit `noatime,lazytime` und `errors=remount-ro` gemountet
+- Programm-Uploads werden bereits ueber eine Temporaerdatei mit `fsync` und
+  `os.replace` geschrieben
+
+Was ergaenzt wurde:
+
+- Alle Zustandsdateien (`settings.json`, `tasks.json`, `machine_stats.json`)
+  werden atomar geschrieben: Temporaerdatei, `fsync`, `os.replace`, danach
+  `fsync` auf das Verzeichnis. Ohne den Verzeichnis-`fsync` waere die
+  Umbenennung selbst nicht dauerhaft
+- Von jeder Zustandsdatei liegt eine hoechstens fuenf Minuten alte, garantiert
+  parsebare Vorgaengerversion als `.bak` daneben. Beim Lesen wird darauf
+  zurueckgefallen, wenn die Hauptdatei unlesbar ist
+- Das ist der eigentlich wichtige Punkt: vorher lieferte eine abgeschnittene
+  Datei still ein leeres Ergebnis, und damit wurden Spindellaufzeit,
+  Zaehlerstaende und die komplette Wartungshistorie kommentarlos auf
+  Standardwerte zurueckgesetzt. Verifiziert, indem `settings.json` auf die
+  Haelfte gekuerzt wurde: das Backend meldete die Datei als unlesbar, lud die
+  Sicherung und behielt Helligkeit und Tailscale-Schalter
+- Kamera-Aufnahmen werden als fragmentiertes MP4 geschrieben und ueberleben
+  einen harten Abbruch (siehe Abschnitt zur Aufnahme)
+
+Was bewusst nicht gemacht wurde:
+
+- Kein erzwungener periodischer `fsck` ueber `Maximum mount count`. Der
+  wuerde den Bootvorgang gelegentlich sichtbar verlaengern, und die Appliance
+  ist auf einen schnellen, gleichmaessigen Start ausgelegt
+- Kein Read-only-Root. Das waere die naechste Stufe, kostet aber Overlay-
+  Verwaltung fuer alle schreibenden Pfade und steht in keinem Verhaeltnis zum
+  verbleibenden Risiko
+
+### Aufbau des Frontends
+
+Die drei Seiten in `frontend/pages/` werden als iframes vom Dashboard geladen.
+Sie enthalten nur noch Markup; Stil und Verhalten liegen daneben:
+
+- `pages/<name>.html` - reines Markup
+- `pages/<name>.css` - Layout genau dieser Seite
+- `pages/<name>.js` - Verhalten genau dieser Seite, als ES-Modul geladen
+- `assets/page-base.css` - der Kiosk-Sockel, den alle Seiten brauchen: kein
+  Scrollen, keine Textauswahl, kein Mauszeiger, keine Browsergesten
+- `assets/modules/pageBridge.js` - `createApiBase`, `postToParent`,
+  `onParentMessage`, `fetchJson`
+
+Vorher steckten in den drei Seiten zusammen rund 1900 Zeilen CSS und
+JavaScript inline, inklusive dreifach kopiertem `createApiBase` und einem
+zweiten, nie geoeffneten Klon des SMB-Modals in `system.html`. Der Umbau ist
+reines Verschieben: Screenshots vor und nach dem Umbau unterscheiden sich nur
+in den Live-Messwerten.
+
+`onParentMessage` prueft die Herkunft zentral. Die Seiten handeln auf das, was
+sie empfangen, deshalb darf ein fremdes Fenster ihnen nichts diktieren.
 
 ### Ethernet fuer DDCS V4.1 als lokales Netz
 

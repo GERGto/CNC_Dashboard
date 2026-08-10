@@ -1,5 +1,7 @@
 # Pololu 5411 Spindellast-Sensor
 
+![Pololu 5411 Stromsensor](images/pololu-5411.jpg)
+
 ## Rolle im System
 
 - Modultyp: `Pololu 5411`

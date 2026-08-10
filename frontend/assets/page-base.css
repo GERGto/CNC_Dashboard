@@ -1,0 +1,54 @@
+/* Base for the pages loaded into the dashboard iframes. Every one of them
+   needs the same appliance rules: no scrolling, no text selection, no cursor,
+   no browser gestures. Page specific layout lives in pages/<name>.css. */
+
+:root{
+  --line:#000;
+  --bg:#fff;
+  --fg:#000;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+}
+
+html,
+body{
+  width:100%;
+  height:100%;
+  margin:0;
+  padding:0;
+  overflow:hidden;
+  overscroll-behavior:none;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:var(--font);
+  -webkit-tap-highlight-color:transparent;
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  touch-action:manipulation;
+  user-select:none;
+}
+
+body *{
+  -webkit-touch-callout:none;
+  -webkit-user-select:none;
+  user-select:none;
+}
+
+/* Inputs stay selectable so the on-screen keyboard behaves normally. */
+input,
+textarea,
+[contenteditable="true"]{
+  -webkit-touch-callout:default;
+  -webkit-user-select:text;
+  user-select:text;
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea,
+iframe,
+*{
+  cursor:none !important;
+}

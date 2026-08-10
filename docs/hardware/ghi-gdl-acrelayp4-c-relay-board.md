@@ -1,5 +1,7 @@
 # GHI GDL-ACRELAYP4-C 4-Kanal-Relais
 
+![GHI GDL-ACRELAYP4-C Relaisplatine](images/ghi-gdl-acrelayp4-c.jpg)
+
 ## Rolle im System
 
 - Modul: `GHI Electronics GDL-ACRELAYP4-C`
