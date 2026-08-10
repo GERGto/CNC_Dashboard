@@ -18,6 +18,10 @@ class WiFiService:
         self.config = config
         self.store = store
         self.operation_lock = threading.Lock()
+        # Last result of a real scan. The kernel's own BSS table drops every
+        # entry except the associated AP after a few minutes, so it cannot
+        # back the network dropdown on its own.
+        self.scan_cache = []
 
     def get_wifi_interface(self):
         interfaces = self._discover_wifi_interfaces()
@@ -166,14 +170,19 @@ class WiFiService:
     def scan_wifi_networks(self, force_refresh=True):
         """Collect visible SSIDs.
 
-        An active scan sweeps every regulatory channel, including the 2.4 GHz
-        band, and the resulting RF bursts disturb the HDMI link to the machine
-        panel (visibly sheared image for several seconds). Opening the Wi-Fi
-        dialog therefore reads the kernel's cached scan table instead; only an
-        explicit refresh triggers a new active scan.
+        An active scan sweeps every regulatory channel and the resulting RF
+        bursts disturb the HDMI link to the machine panel (visibly sheared
+        image for several seconds). Opening the Wi-Fi dialog therefore serves
+        the remembered result of the last real scan; only an explicit refresh
+        scans again. Without a remembered result - first dialog after a
+        restart - one real scan still runs, otherwise the dropdown would be
+        empty.
         """
         candidates = []
         interface = self.get_wifi_interface()
+
+        if not force_refresh and self.scan_cache:
+            return self._with_saved_ssid(list(self.scan_cache))
 
         if interface and os.name == "posix":
             run_command(
@@ -184,29 +193,15 @@ class WiFiService:
                 sudo_only=True,
             )
 
-            if not force_refresh:
-                cached = run_command(
-                    ["iw", "dev", interface, "scan", "dump"],
-                    timeout=5,
-                    allow_sudo=True,
-                    prefer_sudo=True,
-                    sudo_only=True,
-                )
-                if cached and cached.returncode == 0:
-                    candidates.extend(self._parse_scan_results_from_iw(cached.stdout))
-
-            # An empty cache (fresh boot) still needs one real scan, otherwise
-            # the dialog would offer no networks at all.
-            if not candidates:
-                result = run_command(
-                    ["iw", "dev", interface, "scan", "ap-force"],
-                    timeout=max(5, self.config.wifi_scan_timeout_sec),
-                    allow_sudo=True,
-                    prefer_sudo=True,
-                    sudo_only=True,
-                )
-                if result and result.returncode == 0:
-                    candidates.extend(self._parse_scan_results_from_iw(result.stdout))
+            result = run_command(
+                ["iw", "dev", interface, "scan", "ap-force"],
+                timeout=max(5, self.config.wifi_scan_timeout_sec),
+                allow_sudo=True,
+                prefer_sudo=True,
+                sudo_only=True,
+            )
+            if result and result.returncode == 0:
+                candidates.extend(self._parse_scan_results_from_iw(result.stdout))
 
             if not candidates:
                 trigger_result = run_command(
@@ -256,10 +251,15 @@ class WiFiService:
                     candidates.append(parts[1].strip())
 
         networks = dedupe_strings(candidates)
+        if networks:
+            self.scan_cache = list(networks)
+        return self._with_saved_ssid(networks)
+
+    def _with_saved_ssid(self, networks):
         saved_ssid = self.store.load_ui_settings().get("wifiSsid", "")
         if saved_ssid:
-            networks = dedupe_strings(networks + [saved_ssid])
-        return networks
+            return dedupe_strings(list(networks) + [saved_ssid])
+        return dedupe_strings(list(networks))
 
     def connect_wifi(self):
         with self.operation_lock:
