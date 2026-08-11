@@ -44,13 +44,36 @@
 - Über `Qwiic` werden nur `3V3`, `GND`, `SDA` und `SCL` geführt.
 - Die eigentliche Messverdrahtung läuft separat über die Schraubklemmen des Moduls.
 - Für das System ist vorgesehen:
-  - die zu messende Spindelzuleitung in Serie durch den Strompfad des Boards zu führen
+  - `L` der Spindelversorgung in Serie durch den Strompfad des Boards zu führen
   - positive Messrichtung gemäß Pololu-Markierung von `IP+` nach `IP-`
-  - die Spannungsreferenzseite gemäß Pololu-Schaltbild an die überwachte Spindelversorgung anzubinden
+  - beide `V-`-Klemmen als gemeinsamen Neutralleiter zu nutzen
 - Praktisch bedeutet das:
   - `Qwiic` ist nur die Logik-/Busseite
   - die Spindel-Leistungsverdrahtung bleibt vollständig auf der Klemmen- und Strompfadseite des Boards
-- Die exakte endgültige Zuordnung der Spindel-Versorgungsleitung an `IP+`, `IP-` und die Spannungsreferenz sollte zusätzlich noch im Schaltschrank dokumentiert werden.
+
+Verdrahtung der 230-V-AC-Spindelversorgung:
+
+```text
+POLOLU 5411 (ACS37800) - 230 V AC (Spindel)
+
+       Spindel N      Netz N       Netz L      Spindel L
+          |             |            |             |
+          v             v            v             v
+       +--+-------------+------------+-------------+--+
+       |  [ V- ]      [ V- ]      [ IP+ ]      [ IP- ] |
+       |  aussen      innen        innen       aussen  |
+       |                                               |
+       |    Strompfad (+i):   IP+  ====>  IP-          |
+       |    ACS37800  =  galvanisch getrennt           |
+       +-----------------------------------------------+
+
+   Netz-Kabel (Quelle):   L -> IP+   ,   N -> V- (innen)
+   Spindel-Kabel (Last):  L -> IP-   ,   N -> V- (aussen)
+
+   Beide V- sind intern verbunden -> gemeinsamer Neutralleiter.
+   Strom fliesst:  Netz L -> IP+ -> Sensor -> IP- -> Spindel L
+                   Spindel N -> V- -> V- -> Netz N
+```
 
 ## Einsatz im Projekt
 
@@ -148,6 +171,5 @@ curl -fsS "http://127.0.0.1:8080/api/axes"
 
 ## Offene Punkte
 
-- Reale Verdrahtung des Lastpfads an den Schraubklemmen im Schaltschrank noch separat fotografisch dokumentieren
 - Prüfen, ob `SPINDLE_LOAD_SENSOR_REFERENCE_CURRENT_A = 30.0` dauerhaft gut zur Maschine passt oder nach Kalibrierfahrt enger gesetzt werden sollte
 - Optional: zusätzlich Rohwerte in `A` oder `W` sichtbar im lokalen oder Remote-Dashboard einblenden

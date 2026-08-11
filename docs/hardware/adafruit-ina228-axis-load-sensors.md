@@ -68,13 +68,13 @@ Wichtig:
 - Daraus folgt fuer den CNC-Aufbau: pro Achse kommt ein INA228-Modul in Serie zwischen `48V+` des Netzteils und `48V+` des jeweiligen Stepper-Treibers.
 - Die `48V-`-Leitung des Netzteils geht direkt zum `-`-Eingang des jeweiligen Treibers und **nicht** durch den INA228.
 
-Klemmenbelegung des 3-poligen Schraubblocks:
+Klemmenbelegung des 3-poligen Schraubblocks in physischer Reihenfolge:
 
 | Schraubklemme | INA228-Pin | Funktion im Achs-Aufbau |
 |---|---|---|
-| `V+` links | `VIN+` | Eingang von `+48V` vom Netzteil |
-| `Mitte` | `VBUS` | Busspannungs-Messpunkt, ebenfalls an `+48V` |
-| `V-` rechts | `VIN-` | Ausgang weiter zum `+48V`-Eingang des Stepper-Treibers |
+| links | `VIN-` | Ausgang weiter zum `+48V`-Eingang des Stepper-Treibers |
+| Mitte | `VBUS` | Busspannungs-Messpunkt, ebenfalls an `+48V` |
+| rechts | `VIN+` | Eingang von `+48V` vom Netzteil |
 
 Die mittlere Klemme ist also nicht "ungenutzt", sondern der `VBUS`-Messanschluss.
 
@@ -85,28 +85,38 @@ Fuer `High-Side` muss `VIN+` und `VBUS` auf demselben `+48V`-Potential liegen. D
 
 Empfohlene Verdrahtung pro Achse:
 
-1. `48V Netzteil +` an `V+` des passenden INA228-Moduls.
+1. `48V Netzteil +` an `VIN+` des passenden INA228-Moduls.
 2. `48V Netzteil +` zusaetzlich an die mittlere `VBUS`-Klemme desselben Moduls, falls der `VBUS`-Jumper **nicht** gesetzt ist.
-3. `V-` des INA228 an den `+48V`-Eingang des Stepper-Treibers dieser Achse.
+3. `VIN-` des INA228 an den `+48V`-Eingang des Stepper-Treibers dieser Achse.
 4. `48V Netzteil -` direkt an den `-`-Eingang des Stepper-Treibers.
 5. `Qwiic` verbindet nur `3V3`, `GND`, `SDA`, `SCL` mit dem Raspberry Pi und fuehrt **nicht** den Motorstrom.
 
 Kurz gesagt:
 
-- `Netzteil + -> INA228 V+ / VBUS -> INA228 V- -> Treiber +`
+- `Netzteil + -> INA228 VIN+ / VBUS -> INA228 VIN- -> Treiber +`
 - `Netzteil - -> Treiber -`
 
 Grafik fuer eine Achse:
 
-```mermaid
-flowchart LR
-    PSU_PLUS["+48V Netzteil +"] --> INA_VPLUS["INA228 V+ / VIN+"]
-    PSU_PLUS --> INA_VBUS["INA228 Mitte / VBUS"]
-    INA_VPLUS -. gleiches Potential .- INA_VBUS
-    INA_VMINUS["INA228 V- / VIN-"] --> DRIVER_PLUS["Stepper-Treiber +48V"]
-    PSU_MINUS["48V Netzteil -"] --> DRIVER_MINUS["Stepper-Treiber 0V / -"]
-    INA_VPLUS --> INA_VMINUS
-    PI["Raspberry Pi via Qwiic"] --> INA_LOGIC["INA228 VIN / GND / SDA / SCL"]
+```text
+ADAFRUIT INA228 - High-Side-Messung (48 V DC)
+
+  Schraubklemmen (physische Reihenfolge):
+
+           +--------+--------+--------+
+           |  VIN-  |  VBUS  |  VIN+  |
+           +--------+--------+--------+
+               |        |        |
+               v        v        v
+            Last +    Jumper    Netzteil
+                    (Rueckseite   +48V
+                      -> zu)
+
+  Intern:  VIN+ ==( 15 mOhm Shunt, on-board )== VIN-
+
+  Netzteil GND  ----------------------------------> Last -
+
+  Strompfad:  +48V -> VIN+ -> Shunt -> VIN- -> Last+ -> Last -> GND
 ```
 
 Grafik fuer alle drei Achsen:
@@ -116,18 +126,18 @@ flowchart TB
     PSU_PLUS["+48V Netzteil +"]
     PSU_MINUS["48V Netzteil -"]
 
-    PSU_PLUS --> INA_X_P["INA228 X: V+ / VBUS"]
-    INA_X_P --> INA_X_M["INA228 X: V-"]
+    PSU_PLUS --> INA_X_P["INA228 X: VIN+ / VBUS"]
+    INA_X_P --> INA_X_M["INA228 X: VIN-"]
     INA_X_M --> DRV_X_P["X-Treiber +48V"]
     PSU_MINUS --> DRV_X_M["X-Treiber -"]
 
-    PSU_PLUS --> INA_Y_P["INA228 Y: V+ / VBUS"]
-    INA_Y_P --> INA_Y_M["INA228 Y: V-"]
+    PSU_PLUS --> INA_Y_P["INA228 Y: VIN+ / VBUS"]
+    INA_Y_P --> INA_Y_M["INA228 Y: VIN-"]
     INA_Y_M --> DRV_Y_P["Y-Treiber +48V"]
     PSU_MINUS --> DRV_Y_M["Y-Treiber -"]
 
-    PSU_PLUS --> INA_Z_P["INA228 Z: V+ / VBUS"]
-    INA_Z_P --> INA_Z_M["INA228 Z: V-"]
+    PSU_PLUS --> INA_Z_P["INA228 Z: VIN+ / VBUS"]
+    INA_Z_P --> INA_Z_M["INA228 Z: VIN-"]
     INA_Z_M --> DRV_Z_P["Z-Treiber +48V"]
     PSU_MINUS --> DRV_Z_M["Z-Treiber -"]
 
