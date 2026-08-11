@@ -7,7 +7,7 @@
 - Modultyp: `PCF8574`-kompatibles 8-Kanal-Optokoppler-Eingangsmodul
 - Aufgabe im Projekt: Hardware-Safety-Signale und das echte `Spindel laeuft`-Signal in das Backend einspeisen
 - Aktuelle feste Betriebsadresse: `0x21`
-- Aktuelle Eingangslogik im Projekt: `active-low`
+- Aktuelle Eingangslogik im Projekt: E-Stop `active-low`, Spindel-Running `active-high`
 
 ## Aktuelle Belegung
 
@@ -23,7 +23,7 @@
 - Ein Ruecksetzen ueber Web-UI oder lokales UI ist waehrend eines aktiven Hardware-E-Stop gesperrt.
 - Das lokale UI zeigt in diesem Zustand die rote Statusleiste `E-STOP`.
 - Der `WS2812B`-Statusstreifen wechselt ueber die normale Maschinenstatus-Synchronisation auf rot.
-- Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist.
+- Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` high ist.
 
 ## Anschluss und Kommunikation
 
@@ -67,6 +67,7 @@ Relevante Umgebungsvariablen:
 - `EMERGENCY_INPUT_MODULE_I2C_ADDRESS`
 - `EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS`
 - `EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS`
+- `EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_ACTIVE_LOW` (Default: `false`)
 - `HARDWARE_ESTOP_POLL_INTERVAL_SEC`
 
 ## API-Sicht

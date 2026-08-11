@@ -701,6 +701,10 @@ def create_hardware_backend():
         "EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS",
         PCF8574InputModule.DEFAULT_SPINDLE_RUNNING_CHANNELS,
     )
+    emergency_input_spindle_running_active_low = _read_bool_env(
+        "EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_ACTIVE_LOW",
+        False,
+    )
     status_indicator_enabled = _read_bool_env("STATUS_INDICATOR_ENABLED", True)
     status_indicator_pixel_count = max(1, _read_int_env("STATUS_INDICATOR_LED_COUNT", 59))
     status_indicator_gpio_pin = _read_int_env("STATUS_INDICATOR_GPIO_PIN", 18)
@@ -773,6 +777,7 @@ def create_hardware_backend():
         bus_number=primary_i2c_bus,
         address=emergency_input_module_address,
         enabled=emergency_input_module_enabled,
+        spindle_running_active_low=emergency_input_spindle_running_active_low,
         hardware_estop_channels=emergency_input_estop_channels,
         spindle_running_channels=emergency_input_spindle_running_channels,
     )

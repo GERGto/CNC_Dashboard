@@ -155,7 +155,7 @@ The project is prepared for a `GHI GDL-ACRELAYP4-C` 4-channel relay board.
 The project now uses a `PCF8574`-compatible 8-channel optocoupler input module for hardware safety signals.
 
 - Fixed I2C address in the current machine: `0x21`
-- Input logic in the current setup: `active-low`
+- Input logic in the current setup: E-Stop `active-low`, spindle-running `active-high`
 - Current hardware E-Stop inputs:
   - `Input 1`
   - `Input 2`
@@ -166,7 +166,7 @@ The project now uses a `PCF8574`-compatible 8-channel optocoupler input module f
   - the RGB status strip switches to red through the normal machine-status sync
   - relay channel `4` is driven into the E-Stop state automatically
   - the web frontend cannot clear this state while the hardware input is still active and receives `HTTP 409`
-  - spindle runtime is counted only while `Input 3` is active
+  - spindle runtime is counted only while `Input 3` is active-high
 
 ## Status Indicator
 
@@ -302,6 +302,7 @@ set EMERGENCY_INPUT_MODULE_ENABLED=1
 set EMERGENCY_INPUT_MODULE_I2C_ADDRESS=0x21
 set EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS=1,2
 set EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS=3
+set EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_ACTIVE_LOW=0
 set HARDWARE_ESTOP_POLL_INTERVAL_SEC=0.1
 set STATUS_INDICATOR_ENABLED=1
 set STATUS_INDICATOR_LED_COUNT=59

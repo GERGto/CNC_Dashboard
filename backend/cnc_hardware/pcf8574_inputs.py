@@ -35,6 +35,7 @@ class PCF8574InputModule:
         address=DEFAULT_ADDRESS,
         enabled=True,
         active_low=True,
+        spindle_running_active_low=False,
         hardware_estop_channels=None,
         spindle_running_channels=None,
     ):
@@ -42,6 +43,7 @@ class PCF8574InputModule:
         self.address = int(address)
         self.enabled = bool(enabled)
         self.active_low = bool(active_low)
+        self.spindle_running_active_low = bool(spindle_running_active_low)
         self.hardware_estop_channels = self._normalize_channel_list(
             hardware_estop_channels if hardware_estop_channels is not None else self.DEFAULT_ESTOP_CHANNELS
         )
@@ -70,6 +72,7 @@ class PCF8574InputModule:
             "address": self.address,
             "addressHex": f"0x{self.address:02x}",
             "activeLow": self.active_low,
+            "spindleRunningActiveLow": self.spindle_running_active_low,
             "hardwareEStopChannelIndexes": list(self.hardware_estop_channels),
             "hardwareEStopInputIds": [self._channel_id(index) for index in self.hardware_estop_channels],
             "spindleRunningChannelIndexes": list(self.spindle_running_channels),
@@ -133,14 +136,19 @@ class PCF8574InputModule:
 
         for index in range(1, self.PORT_WIDTH + 1):
             bit_high = bool(raw_value & (1 << (index - 1)))
-            active = (not bit_high) if self.active_low else bit_high
+            channel_active_low = (
+                self.spindle_running_active_low
+                if index in self.spindle_running_channels
+                else self.active_low
+            )
+            active = (not bit_high) if channel_active_low else bit_high
             channel_id = self._channel_id(index)
             channels[channel_id] = {
                 "id": channel_id,
                 "index": index,
                 "label": f"Input {index}",
                 "active": active,
-                "activeLow": self.active_low,
+                "activeLow": channel_active_low,
                 "rawHigh": bit_high,
                 "isHardwareEStop": index in self.hardware_estop_channels,
                 "isSpindleRunning": index in self.spindle_running_channels,
@@ -182,7 +190,11 @@ class PCF8574InputModule:
                     "index": index,
                     "label": f"Input {index}",
                     "active": False,
-                    "activeLow": self.active_low,
+                    "activeLow": (
+                        self.spindle_running_active_low
+                        if index in self.spindle_running_channels
+                        else self.active_low
+                    ),
                     "rawHigh": None,
                     "isHardwareEStop": index in self.hardware_estop_channels,
                     "isSpindleRunning": index in self.spindle_running_channels,

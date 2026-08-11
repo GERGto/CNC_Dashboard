@@ -139,7 +139,7 @@ Das `PCF8574`-kompatible Optokoppler-Eingangsmodul ist aktuell fest so verdrahte
 
 - Bus: `/dev/i2c-1`
 - Adresse: `0x21`
-- Logik: `active-low`
+- Logik: E-Stop `active-low`, Spindel-Running `active-high`
 - `Input 1`: mechanischer Hardware-E-Stop
 - `Input 2`: mechanischer Hardware-E-Stop
 - `Input 3`: `Spindel laeuft`
@@ -149,7 +149,7 @@ Laufzeitverhalten:
 - Sobald `Input 1` oder `Input 2` aktiv wird, markiert das Backend die Maschine sofort als `E-STOP`.
 - Relaiskanal `4` wird automatisch in den E-Stop-Zustand gedrueckt.
 - Ein Frontend-Reset wird geblockt, solange der mechanische Taster noch ausgeloest ist.
-- Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` aktiv ist.
+- Die Spindellaufzeit wird nur hochgezaehlt, solange `Input 3` high ist.
 
 Konfigurierbare Umgebungsvariablen:
 
@@ -157,6 +157,7 @@ Konfigurierbare Umgebungsvariablen:
 - `EMERGENCY_INPUT_MODULE_I2C_ADDRESS`
 - `EMERGENCY_INPUT_MODULE_ESTOP_CHANNELS`
 - `EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_CHANNELS`
+- `EMERGENCY_INPUT_MODULE_SPINDLE_RUNNING_ACTIVE_LOW` (Default: `false`)
 - `HARDWARE_ESTOP_POLL_INTERVAL_SEC`
 
 ## Status-LED-Streifen-Konfiguration
